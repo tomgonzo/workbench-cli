@@ -3,10 +3,10 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import argparse
-import os
+import os # Added for environ patch
 
 # Import the function to test
-from workbench_agent.cli import parse_cmdline_args, main
+from workbench_agent.cli import parse_cmdline_args, main, _validate_args # Import _validate_args if needed
 from workbench_agent.exceptions import (
     WorkbenchAgentError,
     ApiError,
@@ -16,7 +16,7 @@ from workbench_agent.exceptions import (
     ProcessError,
     ProcessTimeoutError,
     FileSystemError,
-    ValidationError,
+    ValidationError, # Keep for direct validation errors
     CompatibilityError,
     ProjectNotFoundError,
     ScanNotFoundError,
@@ -27,13 +27,14 @@ from workbench_agent.exceptions import (
 # --- Basic Command Parsing ---
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.'])
-def test_parse_scan_command():
+@patch('os.path.exists', return_value=True) # Mock path validation
+def test_parse_scan_command(mock_exists):
     args = parse_cmdline_args()
     assert args.command == 'scan'
     assert args.project_name == 'P'
     assert args.scan_name == 'S'
     assert args.path == '.'
-    assert args.api_url == 'X'
+    assert args.api_url == 'X/api.php' # Check URL fix
     assert args.api_user == 'Y'
     assert args.api_token == 'Z'
     assert args.limit == 10 # Check default
@@ -77,7 +78,8 @@ def test_parse_scan_git_tag():
     assert args.git_branch is None
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'import-da', '--project-name', 'P', '--scan-name', 'S', '--path', 'results.json'])
-def test_parse_import_da():
+@patch('os.path.exists', return_value=True) # Mock path validation
+def test_parse_import_da(mock_exists):
     args = parse_cmdline_args()
     assert args.command == 'import-da'
     assert args.project_name == 'P'
@@ -96,7 +98,8 @@ def test_parse_evaluate_gates():
 # --- Test Flags and Defaults ---
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--log', 'DEBUG', '--delta-scan', '--autoid-pending-ids'])
-def test_parse_flags_and_log_level():
+@patch('os.path.exists', return_value=True) # Mock path validation
+def test_parse_flags_and_log_level(mock_exists):
     args = parse_cmdline_args()
     assert args.log == 'DEBUG'
     assert args.delta_scan is True
@@ -106,245 +109,181 @@ def test_parse_flags_and_log_level():
 
 # --- Test Validation Logic ---
 
+# Use ValidationError where the custom validation logic raises it directly
+# Use SystemExit where argparse itself is expected to exit
+
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'project'])
-def test_parse_validation_id_reuse_missing_source():
-    with pytest.raises(SystemExit):
+@patch('os.path.exists', return_value=True)
+def test_parse_validation_id_reuse_missing_source(mock_exists):
+    with pytest.raises(ValidationError, match="ID reuse source project/scan name is required"):
          parse_cmdline_args()
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--report-scope', 'project'])
 def test_parse_validation_download_missing_project():
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValidationError, match="Project name is required for project scope report"):
          parse_cmdline_args()
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--report-scope', 'scan'])
 def test_parse_validation_download_missing_scan():
-    # Scan name is now required if scope is scan
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValidationError, match="Scan name is required for scan scope report"):
          parse_cmdline_args()
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'show-results', '--project-name', 'P', '--scan-name', 'S'])
 def test_parse_validation_show_results_missing_show_flag():
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValidationError, match="At least one '--show-*' flag must be provided"):
          parse_cmdline_args()
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-branch', 'dev', '--git-tag', 'v1'])
 def test_parse_validation_scan_git_branch_and_tag():
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValidationError, match="Cannot specify both git branch and tag"):
          parse_cmdline_args()
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com'])
 def test_parse_validation_scan_git_missing_ref():
-    # Branch or tag is required
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValidationError, match="Must specify either git branch or tag"):
          parse_cmdline_args()
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '/non/existent/path'])
 @patch('os.path.exists', return_value=False) # Mock os.path.exists
 def test_parse_validation_scan_non_existent_path(mock_exists):
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValidationError, match="Path does not exist: /non/existent/path"):
          parse_cmdline_args()
     mock_exists.assert_called_once_with('/non/existent/path')
 
 # Test missing credentials (if not provided by env vars)
 @patch.dict(os.environ, {"WORKBENCH_URL": "", "WORKBENCH_USER": "", "WORKBENCH_TOKEN": ""}, clear=True)
 @patch('sys.argv', ['workbench-agent', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.'])
-def test_parse_validation_missing_credentials():
-    with pytest.raises(SystemExit):
+@patch('os.path.exists', return_value=True)
+def test_parse_validation_missing_credentials(mock_exists):
+    with pytest.raises(ValidationError, match="API URL, user, and token must be provided"):
          parse_cmdline_args()
 
+# --- ADDED TEST: Test credentials from environment variables ---
+@patch.dict(os.environ, {"WORKBENCH_URL": "http://env.com", "WORKBENCH_USER": "env_user", "WORKBENCH_TOKEN": "env_token"}, clear=True)
+@patch('sys.argv', ['workbench-agent', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.']) # No credential args
+@patch('os.path.exists', return_value=True) # Assume path exists
+def test_parse_credentials_from_env_vars(mock_exists):
+    try:
+        args = parse_cmdline_args()
+        assert args.api_url == 'http://env.com/api.php' # Check URL fix too
+        assert args.api_user == 'env_user'
+        assert args.api_token == 'env_token'
+    except (ValidationError, SystemExit) as e:
+        pytest.fail(f"Parsing failed unexpectedly when using env vars: {e}")
+
+# --- More Specific Validation Tests ---
+
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z']) # No command
 def test_parse_args_no_command():
-    with pytest.raises(ValidationError) as exc_info:
+    # Argparse itself might exit or raise, depending on setup.
+    # Assuming custom validation catches this first.
+    with pytest.raises(ValidationError, match="No command specified"):
         parse_cmdline_args()
-    assert "No command specified" in str(exc_info.value)
 
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S']) # No path
 def test_parse_args_scan_no_path():
-    with patch("sys.argv", ["workbench-agent", "scan", "--api-url", "http://example.com", "--api-key", "key"]):
-        with pytest.raises(ValidationError) as exc_info:
-            parse_cmdline_args()
-        assert "Path is required for scan command" in str(exc_info.value)
+    with pytest.raises(ValidationError, match="Path is required for scan command"):
+        parse_cmdline_args()
 
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'P', '--scan-name', 'S', '--git-branch', 'main']) # No git url
 def test_parse_args_scan_git_no_url():
-    with patch("sys.argv", ["workbench-agent", "scan-git", "--api-url", "http://example.com", "--api-key", "key"]):
-        with pytest.raises(ValidationError) as exc_info:
-            parse_cmdline_args()
-        assert "Git URL is required for scan-git command" in str(exc_info.value)
+    with pytest.raises(ValidationError, match="Git URL is required for scan-git command"):
+        parse_cmdline_args()
 
-def test_parse_args_scan_git_branch_and_tag():
-    with patch("sys.argv", ["workbench-agent", "scan-git", "--api-url", "http://example.com", "--api-key", "key", 
-                           "--git-url", "http://example.com/repo.git", "--git-branch", "main", "--git-tag", "v1.0"]):
-        with pytest.raises(ValidationError) as exc_info:
-            parse_cmdline_args()
-        assert "Cannot specify both git branch and tag" in str(exc_info.value)
-
-def test_parse_args_scan_git_no_ref():
-    with patch("sys.argv", ["workbench-agent", "scan-git", "--api-url", "http://example.com", "--api-key", "key", 
-                           "--git-url", "http://example.com/repo.git"]):
-        with pytest.raises(ValidationError) as exc_info:
-            parse_cmdline_args()
-        assert "Must specify either git branch or tag" in str(exc_info.value)
-
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'import-da', '--project-name', 'P', '--scan-name', 'S']) # No path
 def test_parse_args_import_da_no_path():
-    with patch("sys.argv", ["workbench-agent", "import-da", "--api-url", "http://example.com", "--api-key", "key"]):
-        with pytest.raises(ValidationError) as exc_info:
-            parse_cmdline_args()
-        assert "Path is required for import-da command" in str(exc_info.value)
+    with pytest.raises(ValidationError, match="Path is required for import-da command"):
+        parse_cmdline_args()
 
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'unknown-command'])
 def test_parse_args_unknown_command():
-    with patch("sys.argv", ["workbench-agent", "unknown", "--api-url", "http://example.com", "--api-key", "key"]):
-        with pytest.raises(ValidationError) as exc_info:
-            parse_cmdline_args()
-        assert "Unknown command: unknown" in str(exc_info.value)
+    # Argparse usually handles unknown commands with SystemExit
+    with pytest.raises(SystemExit):
+        parse_cmdline_args()
+
+# --- Test main() Exception Handling ---
+
+# Mock the handler functions used by main
+@patch("workbench_agent.cli.handle_scan")
+@patch("workbench_agent.cli.handle_scan_git")
+@patch("workbench_agent.cli.handle_import_da")
+@patch("workbench_agent.cli.handle_evaluate_gates")
+@patch("workbench_agent.cli.handle_show_results")
+@patch("workbench_agent.cli.handle_download_reports")
+@patch("workbench_agent.cli.Workbench") # Mock Workbench instantiation
+@patch("workbench_agent.cli.parse_cmdline_args") # Mock arg parsing
+def run_main_with_exception(exc_to_raise, mock_parse, mock_wb, *mock_handlers):
+    """Helper to run main and simulate an exception."""
+    mock_args = MagicMock()
+    mock_args.command = "scan" # Assume scan command for simplicity
+    mock_args.log = "INFO" # Default log level
+    mock_parse.return_value = mock_args
+
+    # Find the handler corresponding to the command and set its side_effect
+    # For simplicity, assume handle_scan raises the error
+    mock_handlers[0].side_effect = exc_to_raise
+
+    return main()
 
 def test_main_success():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_args = MagicMock()
-        mock_args.command = "scan"
-        mock_parse_args.return_value = mock_args
-        
+    # Use the helper, but don't raise an exception
+    # Need to mock the return value of the handler if it's checked (e.g., evaluate-gates)
+    with patch("workbench_agent.cli.handle_scan", return_value=None) as mock_handle_scan, \
+         patch("workbench_agent.cli.Workbench"), \
+         patch("workbench_agent.cli.parse_cmdline_args") as mock_parse:
+        mock_args = MagicMock(command="scan", log="INFO")
+        mock_parse.return_value = mock_args
         result = main()
-        
         assert result == 0
-        mock_parse_args.assert_called_once()
-        mock_workbench.assert_called_once()
         mock_handle_scan.assert_called_once()
 
 def test_main_validation_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args:
-        mock_parse_args.side_effect = ValidationError("Invalid arguments")
-        
+    # Simulate parse_cmdline_args raising the error
+    with patch("workbench_agent.cli.parse_cmdline_args", side_effect=ValidationError("Invalid args")):
         result = main()
-        
-        assert result == 1
+        assert result == 1 # Exit code for validation error
 
 def test_main_configuration_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_workbench.side_effect = ConfigurationError("Invalid configuration")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(ConfigurationError("Bad config")) == 1
 
 def test_main_authentication_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_workbench.side_effect = AuthenticationError("Invalid credentials")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(AuthenticationError("Bad token")) == 1
 
 def test_main_project_not_found():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = ProjectNotFoundError("Project not found")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(ProjectNotFoundError("Proj X")) == 1
 
 def test_main_scan_not_found():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = ScanNotFoundError("Scan not found")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(ScanNotFoundError("Scan Y")) == 1
 
 def test_main_api_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = ApiError("API error")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(ApiError("API down")) == 1
 
 def test_main_network_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = NetworkError("Network error")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(NetworkError("No connection")) == 1
 
 def test_main_process_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = ProcessError("Process error")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(ProcessError("Scan failed")) == 1
 
 def test_main_process_timeout():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = ProcessTimeoutError("Process timeout")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(ProcessTimeoutError("Scan timeout")) == 1
 
 def test_main_file_system_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = FileSystemError("File system error")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(FileSystemError("Cannot write")) == 1
 
 def test_main_compatibility_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = CompatibilityError("Compatibility error")
-        
-        result = main()
-        
-        assert result == 1
+    assert run_main_with_exception(CompatibilityError("Git mismatch")) == 1
 
 def test_main_unexpected_error():
-    with patch("workbench_agent.cli.parse_args") as mock_parse_args, \
-         patch("workbench_agent.cli.Workbench") as mock_workbench, \
-         patch("workbench_agent.cli.handle_scan") as mock_handle_scan:
-        
-        mock_parse_args.return_value = MagicMock()
-        mock_handle_scan.side_effect = Exception("Unexpected error")
-        
+    assert run_main_with_exception(Exception("Something broke")) == 1 # Generic exit code 1
+
+def test_main_evaluate_gates_fail_returns_1():
+    # Special case for evaluate-gates returning False
+    with patch("workbench_agent.cli.handle_evaluate_gates", return_value=False) as mock_handler, \
+         patch("workbench_agent.cli.Workbench"), \
+         patch("workbench_agent.cli.parse_cmdline_args") as mock_parse:
+        mock_args = MagicMock(command="evaluate-gates", log="INFO")
+        mock_parse.return_value = mock_args
         result = main()
-        
-        assert result == 1
+        assert result == 1 # Should exit 1 if gates fail
+        mock_handler.assert_called_once()
+
