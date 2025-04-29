@@ -8,6 +8,7 @@ from typing import Optional
 from .cli import parse_cmdline_args
 from .api import Workbench
 from . import handlers
+from .utils import format_duration
 from .exceptions import (
     WorkbenchAgentError,
     ApiError,
@@ -143,7 +144,7 @@ def main() -> int:
         end_time = time.monotonic()
         duration_seconds = end_time - start_time
         # Use the static method from Workbench class for formatting
-        duration_str = Workbench.format_duration(duration_seconds)
+        duration_str = format_duration(duration_seconds)
         print(f"\nTotal Execution Time: {duration_str}")
         if logger: logger.info("Total execution time: %s", duration_str)
 

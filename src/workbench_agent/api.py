@@ -241,7 +241,6 @@ class Workbench:
         progress_indicator: bool = True
         # NO on_status_update parameter here
     ):
-        # ... (simplified implementation from previous step) ...
         print(f"Waiting for {process_description}...")
         last_status = "UNKNOWN"
 
@@ -1067,7 +1066,7 @@ class Workbench:
 
         try:
             return self._wait_for_process(
-                f"{scan_type} scan",
+                f"Operation: {scan_type}",
                 self.get_scan_status,
                 {"scan_type": scan_type, "scan_code": scan_code},
                 status_accessor,
@@ -1078,12 +1077,12 @@ class Workbench:
                 progress_indicator=True # Keep True as fallback
             )
         except ProcessTimeoutError as e:
-            raise ProcessTimeoutError(f"Timeout waiting for {scan_type} scan {scan_code}", details=e.details)
+            raise ProcessTimeoutError(f"Timed out waiting for {scan_type} in scan {scan_code} to finish", details=e.details)
         except ProcessError as e:
-            raise ProcessError(f"{scan_type} scan failed for {scan_code}", details=e.details)
+            raise ProcessError(f"{scan_type} failed for {scan_code}", details=e.details)
         except Exception as e:
             # Catch any other unexpected errors from _wait_for_process or status_accessor
-            raise ApiError(f"Error during {scan_type} scan: {str(e)}", details={"scan_code": scan_code})
+            raise ApiError(f"Error during {scan_type} operation: {str(e)}", details={"scan_code": scan_code})
 
 # Fetching Results
     def get_scan_folder_metrics(self, scan_code: str) -> Dict[str, Any]:
@@ -1593,16 +1592,3 @@ class Workbench:
         except Exception as final_dl_err:
             logger.error(f"Unexpected error within download_report function for process {process_id}: {final_dl_err}", exc_info=True)
             raise ApiError(f"Unexpected error during report download (process ID {process_id})", details={"error": str(final_dl_err)})
-
-    @staticmethod
-    def format_duration(duration_seconds):
-        """Formats a duration in seconds into a 'X minutes, Y seconds' string."""
-        if duration_seconds is None:
-            return "N/A"
-        duration_seconds = round(duration_seconds) # Round to nearest second
-        minutes = int(duration_seconds // 60)
-        seconds = int(duration_seconds % 60)
-        if minutes > 0:
-            return f"{minutes} minutes, {seconds} seconds"
-        else:
-            return f"{seconds} seconds"

@@ -288,7 +288,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
 
         if user_reuse_type == "project":
             if not user_provided_name_for_reuse:
-                 raise ValidationError("Missing project name in --id-reuse-source for ID reuse type 'project'.")
+                 raise ConfigurationError("Missing project name in --id-reuse-source for ID reuse type 'project'.")
             print(f"Resolving project code for ID reuse source project: '{user_provided_name_for_reuse}'...")
             try:
                 resolved_specific_code_for_reuse = _resolve_project(workbench, user_provided_name_for_reuse, create_if_missing=False)
@@ -303,20 +303,46 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
 
         elif user_reuse_type == "scan":
             if not user_provided_name_for_reuse:
-                 raise ValidationError("Missing scan name in --id-reuse-source for ID reuse type 'scan'.")
-            print(f"Resolving scan code for ID reuse source scan: '{user_provided_name_for_reuse}'...")
+                 raise ConfigurationError("Missing scan name in --id-reuse-source for ID reuse type 'scan'.")
+            
             try:
-                 resolved_specific_code_for_reuse, _ = _resolve_scan(workbench, user_provided_name_for_reuse, project_name=None, create_if_missing=False, params=params)
-                 print(f"Found scan code for reuse: '{resolved_specific_code_for_reuse}'")
-                 api_reuse_type = "specific_scan"
-            except ScanNotFoundError:
-                 raise ValidationError(f"The scan specified in --id-reuse-source ('{user_provided_name_for_reuse}') was not found globally.")
-            except (ApiError, NetworkError, ValidationError) as e:
-                raise ApiError(f"Error looking up scan code for reuse: {e}") from e
+                # Step 1: Try to find the reuse source scan within the CURRENT project first
+                logger.debug(f"Attempting to find reuse source scan '{user_provided_name_for_reuse}' within current project '{params.project_name}' ({project_code})...")
+                resolved_specific_code_for_reuse, _ = _resolve_scan(
+                    workbench,
+                    user_provided_name_for_reuse,
+                    project_name=params.project_name, # Use current project name
+                    create_if_missing=False,
+                    params=params # Pass params for logging context if needed
+                )
+                logger.info(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' within the current project.")
+                api_reuse_type = "specific_scan" # API expects this value
+
+            except (ScanNotFoundError, ValidationError) as e: # Catch if not found in current project
+                # Step 2: If not found in the current project, try a global search.
+                logger.warning(f"Reuse source scan '{user_provided_name_for_reuse}' not found within current project '{params.project_name}'. Attempting global search...")
+                try:
+                    resolved_specific_code_for_reuse, _ = _resolve_scan(
+                        workbench,
+                        user_provided_name_for_reuse,
+                        project_name=None, # Perform global search; no project name provided.
+                        create_if_missing=False,
+                        params=params
+                    )
+                    logger.info(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' globally.")
+                    api_reuse_type = "specific_scan" # API expects this value
+                except (ScanNotFoundError, ValidationError, ApiError) as global_e:
+                    # If global search also fails (not found or ambiguous globally), raise an error.
+                    err_msg = (f"Error looking up scan code '{user_provided_name_for_reuse}' for reuse: "
+                               f"Not found in project '{params.project_name}' and global search failed: {global_e}")
+                    logger.error(err_msg)
+                    # Raise ValidationError as it's an input/setup issue
+                    raise ValidationError(err_msg) from global_e
+            except (ApiError, NetworkError) as e:
+                 # Catch other potential errors during the initial local lookup
+                 raise ApiError(f"Error looking up scan code for reuse within project: {e}") from e
             except Exception as e:
-                raise WorkbenchAgentError(f"Unexpected error looking up scan code for reuse: {e}", details={"error": str(e)}) from e
-        else:
-            api_reuse_type = user_reuse_type
+                 raise WorkbenchAgentError(f"Unexpected error looking up scan code for reuse: {e}", details={"error": str(e)}) from e
 
     print("\nStarting KB Scan process...")
     try:
@@ -396,6 +422,27 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
         print("\nKB Scan did not complete successfully. Skipping results display.")
 
 # --- Scan Flow and Result Processing ---
+def format_duration(duration_seconds: Optional[Union[int, float]]) -> str:
+    """Formats a duration in seconds into a 'X minutes, Y seconds' string."""
+    if duration_seconds is None:
+        return "N/A"
+    try:
+        duration_seconds = round(float(duration_seconds)) # Ensure float then round
+    except (ValueError, TypeError):
+        return "Invalid Duration" # Handle non-numeric input
+
+    minutes = int(duration_seconds // 60)
+    seconds = int(duration_seconds % 60)
+
+    if minutes > 0 and seconds > 0:
+        return f"{minutes} minutes, {seconds} seconds"
+    elif minutes > 0:
+        return f"{minutes} minutes"
+    elif seconds == 1:
+         return f"{seconds} second" # Singular second
+    else:
+        return f"{seconds} seconds" # Plural seconds or zero
+
 def _print_operation_summary(params: argparse.Namespace, da_completed: bool, project_code: str, scan_code: str):
     """Prints a standardized summary of the scan operations performed and settings used."""
     print(f"\n--- Operation Summary for Scan '{scan_code}' (Project '{project_code}') ---")
