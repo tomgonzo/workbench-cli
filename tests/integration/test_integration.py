@@ -7,7 +7,8 @@ import shutil
 from unittest.mock import patch, MagicMock
 
 # Import the main entry point of your application
-from workbench_agent.cli import main
+from workbench_agent.main import main # Correct import
+from workbench_agent.cli import parse_cmdline_args # Keep this if testing parsing separately
 
 # --- Helper Function to Create Dummy Files/Dirs ---
 def create_dummy_path(tmp_path, is_dir=False, content="dummy content"):

@@ -6,7 +6,9 @@ import argparse
 import os # Added for environ patch
 
 # Import the function to test
-from workbench_agent.cli import parse_cmdline_args, main, _validate_args # Import _validate_args if needed
+from workbench_agent.main import main # Correct import
+from workbench_agent.cli import parse_cmdline_args # Keep this if testing parsing separately
+
 from workbench_agent.exceptions import (
     WorkbenchAgentError,
     ApiError,
