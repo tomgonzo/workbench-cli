@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "workbench-agent"
 version = "1.0.0"
-description = "A command-line tool for interacting with the FossID Workbench via API."
+description = "A CLI for interacting with scans and results in FossID Workbench via the Workbench API."
 license = { text="MIT" }
 authors = [
   { name="Cristian Pana", email="cristian.pana@fossid.com" },
