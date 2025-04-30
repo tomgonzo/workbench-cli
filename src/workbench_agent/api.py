@@ -1304,6 +1304,37 @@ class Workbench:
                 details=response
             )
 
+    def list_vulnerabilities(self, scan_code: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves the list of vulnerabilities associated with a scan.
+
+        Args:
+            scan_code: Code of the scan to get vulnerabilities for.
+
+        Returns:
+            List[Dict[str, Any]]: List of vulnerability details.
+
+        Raises:
+            ApiError: If there are API issues.
+            ScanNotFoundError: If the scan doesn't exist.
+            NetworkError: If there are network issues.
+        """
+        logger.debug(f"Fetching vulnerabilities for scan '{scan_code}'...")
+        payload = {
+            "group": "vulnerabilities",
+            "action": "list_vulnerabilities",
+            "data": {"scan_code": scan_code}
+        }
+        response = self._send_request(payload)
+
+        if response.get("status") == "1" and "data" in response and isinstance(response["data"], dict) and "list" in response["data"]:
+            vuln_list = response["data"]["list"]
+            logger.info(f"Successfully fetched {len(vuln_list)} vulnerabilities for scan '{scan_code}'.")
+            return vuln_list if isinstance(vuln_list, list) else []
+        else:
+            error_msg = response.get("error", f"Unexpected response format or status: {response}")
+            raise ApiError(f"Failed to list vulnerabilities for scan '{scan_code}': {error_msg}", details=response)
+
 # Reporting
     def generate_report(
         self,

@@ -42,7 +42,7 @@ def handle_scan(workbench: Workbench, params: argparse.Namespace):
             raise FileSystemError(f"The provided path does not exist: {params.path}")
 
         # Resolve project and scan (find or create)
-        print("\nChecking if the Project and Scan exist...")
+        print("\nChecking if the Project and Scan exist or need to be created...")
         project_code = _resolve_project(workbench, params.project_name, create_if_missing=True)
         scan_code, scan_id = _resolve_scan(
             workbench,

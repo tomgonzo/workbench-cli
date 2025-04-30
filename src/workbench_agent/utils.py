@@ -215,9 +215,7 @@ def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: D
     existing_git_repo = existing_scan_info.get("git_repo_url", existing_scan_info.get("git_url"))
     # The API puts both branch and tag *values* in the 'git_branch' field
     existing_git_ref_value = existing_scan_info.get("git_branch")
-    # --- CORRECTED: Read the actual ref type field from the API response ---
     existing_git_ref_type = existing_scan_info.get("git_ref_type") # Directly get the type ('tag' or 'branch')
-    # --- END CORRECTION ---
 
     # --- Read current command info ---
     current_command = params.command
@@ -499,7 +497,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
     and optionally saves all collected results to a JSON file.
     Always attempts to fetch data if requested by flags.
     """
-    print("\n--- Requested Scan Results ---")
+    print("\n=== Requested Results ===")
 
     # Get flags from parameters
     should_fetch_licenses = getattr(params, 'show_licenses', False)
@@ -507,10 +505,12 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
     should_fetch_dependencies = getattr(params, 'show_dependencies', False)
     should_fetch_metrics = getattr(params, 'show_scan_metrics', False)
     should_fetch_policy = getattr(params, 'show_policy_warnings', False)
+    should_fetch_vulnerabilities = getattr(params, 'show_vulnerabilities', False)
     save_path = getattr(params, 'path_result', None)
 
-    if not (should_fetch_licenses or should_fetch_components or should_fetch_dependencies or should_fetch_metrics or should_fetch_policy):
-        print("Nothing to show! Add (--show-licenses, --show-components, --show-dependencies, --show-scan-metrics, --show-policy-warnings) to see results.")
+    if not (should_fetch_licenses or should_fetch_components or should_fetch_dependencies or should_fetch_metrics or should_fetch_policy or should_fetch_vulnerabilities):
+        print("No results were requested, so nothing to show.)")
+        print("Add (--show-licenses, --show-components, --show-dependencies, --show-scan-metrics, --show-policy-warnings, --show-vulnerabilities) to see results.")
         return
 
     collected_results = {}
@@ -519,6 +519,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
     kb_components_data = None
     scan_metrics_data = None
     policy_warnings_data = None
+    vulnerabilities_data = None
 
     # --- Fetch DA Results ---
     if should_fetch_licenses or should_fetch_dependencies:
@@ -608,8 +609,24 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
              print(f"Warning: Unexpected error fetching Scan Policy Warnings: {e}")
              logger.warning(f"Unexpected error fetching policy warnings for {scan_code}", exc_info=True)
 
+    # --- Fetch Vulnerabilities ---
+    if should_fetch_vulnerabilities:
+        try:
+            print(f"\nFetching Vulnerabilities for '{scan_code}'...")
+            vulnerabilities_data = workbench.list_vulnerabilities(scan_code)
+            if vulnerabilities_data:
+                print(f"Successfully fetched {len(vulnerabilities_data)} vulnerability entries.")
+                collected_results['vulnerabilities'] = vulnerabilities_data
+            else:
+                print("No Vulnerabilities found or returned.")
+        except (ApiError, NetworkError, ScanNotFoundError) as e:
+            print(f"Warning: Could not fetch Vulnerabilities: {e}")
+            logger.warning(f"Failed to fetch vulnerabilities for {scan_code}", exc_info=False)
+        except Exception as e:
+             print(f"Warning: Unexpected error fetching Vulnerabilities: {e}")
+             logger.warning(f"Unexpected error fetching vulnerabilities for {scan_code}", exc_info=True)
 
-    # --- Display based on flags (Logic remains largely the same, relies on fetched data being None/empty) ---
+    # --- Display Based on Flags ---
     print("\n--- Results Summary ---")
     displayed_something = False
 
@@ -637,7 +654,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
         da_licenses_found = False
 
         if kb_licenses_found:
-            print("From Identified Components - Unique):")
+            print("Unique Licenses in Identified Components):")
             for lic in kb_licenses_data:
                 identifier = lic.get('identifier', 'N/A')
                 name = lic.get('name', 'N/A')
@@ -650,7 +667,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
             )))
             # Check if any valid licenses were found in DA data
             if da_lic_names and any(lic != 'N/A' for lic in da_lic_names):
-                print("From Dependency Analysis:")
+                print("Unique Licenses in Dependencies:")
                 da_licenses_found = True
                 for lic_name in da_lic_names:
                     if lic_name and lic_name != 'N/A':
@@ -658,7 +675,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
                 print("-" * 25)
 
         if not kb_licenses_found and not da_licenses_found:
-             print("No Licenses found to report.")
+             print("No Licenses to report.")
 
     # Display KB Components
     if should_fetch_components:
@@ -700,7 +717,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
 
     # Display Policy Warnings
     if should_fetch_policy:
-        print("\n=== Scan Policy Warnings (Counter) ===")
+        print("\n=== Policy Warnings Summary ===")
         displayed_something = True
         if policy_warnings_data is not None:
             # Check if we have real data with non-zero values
@@ -714,9 +731,74 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
                       f"Warnings in Dependencies: {deps_with_warnings}.")
                 
             else:
-                print("No policy violations found.")
+                print("No policy warnings found.")
         else:
             print("Policy warnings counter data could not be fetched or was empty.")
+        print("-" * 25)
+
+    # Display Vulnerability Summary
+    if should_fetch_vulnerabilities:
+        print("\n=== Vulnerability Summary ===")
+        displayed_something = True
+        if vulnerabilities_data:
+            num_cves = len(vulnerabilities_data)
+            unique_components = set()
+            severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
+
+            for vuln in vulnerabilities_data:
+                comp_name = vuln.get("component_name", "Unknown")
+                comp_version = vuln.get("component_version", "Unknown")
+                unique_components.add(f"{comp_name}:{comp_version}")
+                severity = vuln.get("severity", "UNKNOWN").upper()
+                severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+            num_unique_components = len(unique_components)
+            print(f"There are {num_cves} vulnerabilities affecting {num_unique_components} components.")
+            print(f"By CVSS Score, "
+                  f"{severity_counts['CRITICAL']} are Critical, "
+                  f"{severity_counts['HIGH']} are High, "
+                  f"{severity_counts['MEDIUM']} are Medium, and "
+                  f"{severity_counts['LOW']} are Low.")
+
+            if severity_counts['UNKNOWN'] > 0: print(f"  - Unknown:  {severity_counts['UNKNOWN']}")
+
+        print("\n=== Top Vulnerable Components ===")
+        if vulnerabilities_data:
+            components_vulns = {}
+            # Group vulnerabilities by component:version
+            for vuln in vulnerabilities_data:
+                comp_name = vuln.get("component_name", "UnknownComponent")
+                comp_version = vuln.get("component_version", "UnknownVersion")
+                comp_key = f"{comp_name}:{comp_version}"
+                if comp_key not in components_vulns:
+                    components_vulns[comp_key] = []
+                components_vulns[comp_key].append(vuln)
+
+            # Sort components by the number of vulnerabilities (descending)
+            sorted_components = sorted(components_vulns.items(), key=lambda item: len(item[1]), reverse=True)
+
+            # Define severity order for sorting vulnerabilities within each component
+            severity_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0}
+
+            for comp_key, vulns_list in sorted_components:
+                print(f"\n{comp_key} - {len(vulns_list)} vulnerabilities")
+
+                # Sort vulnerabilities within this component by severity
+                sorted_vulns_list = sorted(
+                    vulns_list,
+                    key=lambda v: severity_order.get(v.get("severity", "UNKNOWN").upper(), 0),
+                    reverse=True
+                )
+
+                # Display top 5 vulnerabilities for each component
+                for i, vuln in enumerate(sorted_vulns_list[:5]):
+                    severity = vuln.get("severity", "UNKNOWN").upper()
+                    cve = vuln.get("cve", "NO_CVE_ID")
+                    print(f"  - [{severity}] {cve}")
+                if len(sorted_vulns_list) > 5:
+                    print(f"  ... and {len(sorted_vulns_list) - 5} more.")
+        else:
+            print("Vulnerability data could not be fetched or was empty.")
         print("-" * 25)
 
     if not displayed_something:
@@ -731,7 +813,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
         else:
             print("\nNo results were successfully collected, skipping save.")
 
-# --- Helper for Saving Results ---
+# --- Scan Result Saving ---
 def _save_results_to_file(filepath: str, results: Dict, scan_code: str):
     """Helper to save collected results dictionary to a JSON file."""
     output_dir = os.path.dirname(filepath) or "."
@@ -748,7 +830,7 @@ def _save_results_to_file(filepath: str, results: Dict, scan_code: str):
          logger.warning(f"Unexpected error saving results to {filepath}: {e}", exc_info=True)
          print(f"\nWarning: Unexpected error saving results: {e}")
 
-# --- File Saving ---
+# --- Report Saving ---
 def _save_report_content(
     response_or_content: Union[requests.Response, str, bytes, dict, list],
     output_dir: str,
@@ -773,28 +855,19 @@ def _save_report_content(
 
     if isinstance(response_or_content, requests.Response):
         response = response_or_content
-        content_disposition = response.headers.get('content-disposition')
-        if content_disposition:
-            fname_match = re.search(r'filename\*?=(?:UTF-8\'\')?([^;]+)', content_disposition, re.IGNORECASE)
-            if fname_match:
-                filename = re.sub(r'[/\\]', '_', fname_match.group(1).strip('"\' '))
-                logger.debug(f"Using filename from Content-Disposition: {filename}")
-            else:
-                 logger.warning(f"Content-Disposition found but could not extract filename: {content_disposition}")
 
-        if not filename:
-            safe_name = re.sub(r'[^\w\-_.]', '_', name_component)
-            safe_scope = re.sub(r'[^\w\-_.]', '_', report_scope)
-            safe_type = re.sub(r'[^\w\-_.]', '_', report_type)
-            extension_map = {
-                "xlsx": "xlsx", "spdx": "spdx.json", "spdx_lite": "spdx-lite.json",
-                "cyclone_dx": "cdx.json", "html": "html", "dynamic_top_matched_components": "html",
-                "string_match": "txt", "basic": "txt",
-                "processed_results": "json"
-            }
-            ext = extension_map.get(report_type.lower(), "txt")
-            filename = f"{safe_scope}_{safe_name}_{safe_type}.{ext}"
-            logger.debug(f"Generated fallback filename: {filename}")
+        # --- Always generate filename based on desired format ---
+        safe_name = re.sub(r'[^\w\-]+', '_', name_component) # Allow letters, numbers, underscore, hyphen
+        safe_scope = report_scope # Scope is already validated ('scan' or 'project')
+        safe_type = re.sub(r'[^\w\-]+', '_', report_type)
+        extension_map = {
+            "xlsx": "xlsx", "spdx": "rdf", "spdx_lite": "xlsx",
+            "cyclone_dx": "json", "html": "html", "dynamic_top_matched_components": "html",
+            "string_match": "xlsx", "basic": "txt"
+        }
+        ext = extension_map.get(report_type.lower(), "txt") # Default to .txt if unknown
+        filename = f"{safe_scope}-{safe_name}-{safe_type}.{ext}"
+        logger.debug(f"Generated filename: {filename}")
 
         try:
             content_to_write = response.content
@@ -813,29 +886,30 @@ def _save_report_content(
             write_mode = 'wb'
 
     elif isinstance(response_or_content, (dict, list)):
-        safe_name = re.sub(r'[^\w\-_.]', '_', name_component)
-        safe_scope = re.sub(r'[^\w\-_.]', '_', report_scope)
-        safe_type = re.sub(r'[^\w\-_.]', '_', report_type)
-        filename = f"{safe_scope}_{safe_name}_{safe_type}.json"
+        # Handle direct JSON data (e.g., collected results)
+        safe_name = re.sub(r'[^\w\-]+', '_', name_component)
+        safe_scope = report_scope
+        safe_type = re.sub(r'[^\w\-]+', '_', report_type) # Use report_type if available, else generic
+        filename = f"{safe_scope}-{safe_name}-{safe_type}.json"
         try:
             content_to_write = json.dumps(response_or_content, indent=2)
             write_mode = 'w'
         except TypeError as e:
             raise ValidationError(f"Failed to serialize provided dictionary/list to JSON: {e}")
-
     elif isinstance(response_or_content, str):
-        safe_name = re.sub(r'[^\w\-_.]', '_', name_component)
-        safe_scope = re.sub(r'[^\w\-_.]', '_', report_scope)
-        safe_type = re.sub(r'[^\w\-_.]', '_', report_type)
-        filename = f"{safe_scope}_{safe_name}_{safe_type}.txt"
+        # Handle direct string content
+        safe_name = re.sub(r'[^\w\-]+', '_', name_component)
+        safe_scope = report_scope
+        safe_type = re.sub(r'[^\w\-]+', '_', report_type)
+        filename = f"{safe_scope}-{safe_name}-{safe_type}.txt"
         content_to_write = response_or_content
         write_mode = 'w'
-
     elif isinstance(response_or_content, bytes):
-        safe_name = re.sub(r'[^\w\-_.]', '_', name_component)
-        safe_scope = re.sub(r'[^\w\-_.]', '_', report_scope)
-        safe_type = re.sub(r'[^\w\-_.]', '_', report_type)
-        filename = f"{safe_scope}_{safe_name}_{safe_type}.bin"
+        # Handle direct bytes content
+        safe_name = re.sub(r'[^\w\-]+', '_', name_component)
+        safe_scope = report_scope
+        safe_type = re.sub(r'[^\w\-]+', '_', report_type)
+        filename = f"{safe_scope}-{safe_name}-{safe_type}.bin" # Generic binary extension
         content_to_write = response_or_content
         write_mode = 'wb'
     else:
@@ -861,4 +935,3 @@ def _save_report_content(
     except Exception as e:
         logger.error(f"Unexpected error writing report to {filepath}: {e}", exc_info=True)
         raise FileSystemError(f"Unexpected error writing report to '{filepath}': {e}") from e
-

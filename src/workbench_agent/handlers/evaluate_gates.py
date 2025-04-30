@@ -93,7 +93,7 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
                 num_pending = len(pending_files_details)
                 print(f"Check Result: Found {num_pending} file(s) Pending Identification.")
                 if params.show_pending_files:
-                    print("Files with Pending IDs:")
+                    print("Files Pending Identification:")
                     count = 0
                     for file_id, file_path in pending_files_details.items():
                         print(f"  - {file_path} (ID: {file_id})")
@@ -102,7 +102,7 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
                             print(f"  ... and {num_pending - count} more.")
                             break
             else:
-                print("Check Result: No files found with Pending Identification.")
+                print("Check Result: No are Pending Identification.")
         except (ApiError, NetworkError) as e:
             print(f"\nWarning: Could not check for pending identifications due to API/Network error: {e}")
             logger.warning(f"API/Network error checking pending files for scan '{scan_code}': {e}")
@@ -124,7 +124,7 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
             
             if total_warnings > 0:
                 found_policy_warnings = True
-                print(f"Check Result: There are {total_warnings} policy warnings. "
+                print(f"There are {total_warnings} policy warnings. "
                       f"Warnings in Identified Files: {files_with_warnings}. "
                       f"Warnings in Dependencies: {deps_with_warnings}.")
                 

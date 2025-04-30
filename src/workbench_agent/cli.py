@@ -41,6 +41,7 @@ def add_common_result_options(subparser):
     results_display_args.add_argument("--show-dependencies", help="Shows all components found by Dependency Analysis.", action="store_true", default=False)
     results_display_args.add_argument("--show-scan-metrics", help="Show metrics on file identifications (total files, pending id, identified, no matches).", action="store_true", default=False)
     results_display_args.add_argument("--show-policy-warnings", help="Shows Policy Warnings in identified components or dependencies.", action="store_true", default=False)
+    results_display_args.add_argument("--show-vulnerabilities", help="Shows a summary of vulnerabilities found in the scan.", action="store_true", default=False)
     results_display_args.add_argument("--path-result", help="Saves the requested results to this file/directory (JSON format).", metavar="PATH")
 
 # --- Main Parsing Function ---
@@ -261,7 +262,7 @@ Example Usage:
              logger.warning(f"--id-reuse-source ('{args.id_reuse_source}') provided but --id-reuse-type is '{args.id_reuse_type}'. Source name will be ignored.")
              args.id_reuse_source = None
     elif args.command == 'show-results':
-        if not (args.show_licenses or args.show_components or args.show_policy_warnings or args.show_scan_metrics or args.show_dependencies):
+        if not (args.show_licenses or args.show_components or args.show_policy_warnings or args.show_scan_metrics):
             parser.error("The 'show-results' command requires at least one --show-* flag.")
 
     return args
