@@ -491,14 +491,19 @@ def _print_operation_summary(params: argparse.Namespace, da_completed: bool, pro
     print("------------------------------------")
 
 # --- Fetching and Displaying Results ---
-def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespace, scan_code: str):
-    """
-    Fetches requested scan results based on --show-* flags, displays them,
-    and optionally saves all collected results to a JSON file.
-    Always attempts to fetch data if requested by flags.
-    """
-    print("\n=== Requested Results ===")
 
+def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code: str) -> Dict[str, Any]:
+    """
+    Fetches requested scan results based on --show-* flags.
+    
+    Args:
+        workbench: The Workbench API client instance
+        params: Command-line parameters
+        scan_code: Scan code to fetch results for
+        
+    Returns:
+        Dict[str, Any]: Dictionary containing all collected results
+    """
     # Get flags from parameters
     should_fetch_licenses = getattr(params, 'show_licenses', False)
     should_fetch_components = getattr(params, 'show_components', False)
@@ -506,21 +511,18 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
     should_fetch_metrics = getattr(params, 'show_scan_metrics', False)
     should_fetch_policy = getattr(params, 'show_policy_warnings', False)
     should_fetch_vulnerabilities = getattr(params, 'show_vulnerabilities', False)
-    save_path = getattr(params, 'path_result', None)
-
-    if not (should_fetch_licenses or should_fetch_components or should_fetch_dependencies or should_fetch_metrics or should_fetch_policy or should_fetch_vulnerabilities):
-        print("No results were requested, so nothing to show.)")
+    
+    # Check if anything should be fetched
+    if not (should_fetch_licenses or should_fetch_components or should_fetch_dependencies or 
+            should_fetch_metrics or should_fetch_policy or should_fetch_vulnerabilities):
+        print("\n=== No Results Requested ===")
+        print("No results were requested, so nothing to show.")
         print("Add (--show-licenses, --show-components, --show-dependencies, --show-scan-metrics, --show-policy-warnings, --show-vulnerabilities) to see results.")
-        return
+        return {}
 
+    print("\n=== Fetching Requested Results ===")
     collected_results = {}
-    da_results_data = None
-    kb_licenses_data = None
-    kb_components_data = None
-    scan_metrics_data = None
-    policy_warnings_data = None
-    vulnerabilities_data = None
-
+    
     # --- Fetch DA Results ---
     if should_fetch_licenses or should_fetch_dependencies:
         try:
@@ -535,10 +537,9 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
         except (ApiError, NetworkError) as e:
             print(f"Warning: Could not fetch Dependency Analysis results: {e}")
             logger.warning(f"Failed to fetch DA results for {scan_code}", exc_info=False)
-        except Exception as e: # Catch unexpected errors
-             print(f"Warning: Unexpected error fetching Dependency Analysis results: {e}")
-             logger.warning(f"Unexpected error fetching DA results for {scan_code}", exc_info=True)
-
+        except Exception as e:  # Catch unexpected errors
+            print(f"Warning: Unexpected error fetching Dependency Analysis results: {e}")
+            logger.warning(f"Unexpected error fetching DA results for {scan_code}", exc_info=True)
 
     # --- Fetch Identified Licenses ---
     if should_fetch_licenses:
@@ -555,8 +556,8 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
             print(f"Warning: Could not fetch KB Identified Licenses: {e}")
             logger.warning(f"Failed to fetch KB licenses for {scan_code}", exc_info=False)
         except Exception as e:
-             print(f"Warning: Unexpected error fetching KB Identified Licenses: {e}")
-             logger.warning(f"Unexpected error fetching KB licenses for {scan_code}", exc_info=True)
+            print(f"Warning: Unexpected error fetching KB Identified Licenses: {e}")
+            logger.warning(f"Unexpected error fetching KB licenses for {scan_code}", exc_info=True)
 
     # --- Fetch Identified Components ---
     if should_fetch_components:
@@ -573,8 +574,8 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
             print(f"Warning: Could not fetch KB Identified Scan Components: {e}")
             logger.warning(f"Failed to fetch KB components for {scan_code}", exc_info=False)
         except Exception as e:
-             print(f"Warning: Unexpected error fetching KB Identified Scan Components: {e}")
-             logger.warning(f"Unexpected error fetching KB components for {scan_code}", exc_info=True)
+            print(f"Warning: Unexpected error fetching KB Identified Scan Components: {e}")
+            logger.warning(f"Unexpected error fetching KB components for {scan_code}", exc_info=True)
 
     # --- Fetch Scan File Metrics ---
     if should_fetch_metrics:
@@ -591,8 +592,8 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
             print(f"Warning: Could not fetch Scan File Metrics: {e}")
             logger.warning(f"Failed to fetch scan metrics for {scan_code}", exc_info=False)
         except Exception as e:
-             print(f"Warning: Unexpected error fetching Scan File Metrics: {e}")
-             logger.warning(f"Unexpected error fetching scan metrics for {scan_code}", exc_info=True)
+            print(f"Warning: Unexpected error fetching Scan File Metrics: {e}")
+            logger.warning(f"Unexpected error fetching scan metrics for {scan_code}", exc_info=True)
 
     # --- Fetch Policy Warnings ---
     if should_fetch_policy:
@@ -606,8 +607,8 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
             print(f"Warning: Could not fetch Scan Policy Warnings: {e}")
             logger.warning(f"Failed to fetch policy warnings for {scan_code}", exc_info=False)
         except Exception as e:
-             print(f"Warning: Unexpected error fetching Scan Policy Warnings: {e}")
-             logger.warning(f"Unexpected error fetching policy warnings for {scan_code}", exc_info=True)
+            print(f"Warning: Unexpected error fetching Scan Policy Warnings: {e}")
+            logger.warning(f"Unexpected error fetching policy warnings for {scan_code}", exc_info=True)
 
     # --- Fetch Vulnerabilities ---
     if should_fetch_vulnerabilities:
@@ -623,13 +624,42 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
             print(f"Warning: Could not fetch Vulnerabilities: {e}")
             logger.warning(f"Failed to fetch vulnerabilities for {scan_code}", exc_info=False)
         except Exception as e:
-             print(f"Warning: Unexpected error fetching Vulnerabilities: {e}")
-             logger.warning(f"Unexpected error fetching vulnerabilities for {scan_code}", exc_info=True)
+            print(f"Warning: Unexpected error fetching Vulnerabilities: {e}")
+            logger.warning(f"Unexpected error fetching vulnerabilities for {scan_code}", exc_info=True)
+            
+    return collected_results
 
-    # --- Display Based on Flags ---
+def _display_results(collected_results: Dict[str, Any], params: argparse.Namespace) -> bool:
+    """
+    Displays scan results based on the collected data and user preferences.
+    
+    Args:
+        collected_results: Dictionary containing collected results
+        params: Command-line parameters with display preferences
+        
+    Returns:
+        bool: True if any data was displayed, False otherwise
+    """
+    # Get flags from parameters
+    should_fetch_licenses = getattr(params, 'show_licenses', False)
+    should_fetch_components = getattr(params, 'show_components', False)
+    should_fetch_dependencies = getattr(params, 'show_dependencies', False)
+    should_fetch_metrics = getattr(params, 'show_scan_metrics', False)
+    should_fetch_policy = getattr(params, 'show_policy_warnings', False)
+    should_fetch_vulnerabilities = getattr(params, 'show_vulnerabilities', False)
+    
+    # Get data from collected results
+    da_results_data = collected_results.get('dependency_analysis')
+    kb_licenses_data = collected_results.get('kb_licenses')
+    kb_components_data = collected_results.get('kb_components')
+    scan_metrics_data = collected_results.get('scan_metrics')
+    policy_warnings_data = collected_results.get('policy_warnings')
+    vulnerabilities_data = collected_results.get('vulnerabilities')
+    
     print("\n--- Results Summary ---")
     displayed_something = False
 
+    # Display Scan Metrics
     if should_fetch_metrics:
         print("\n=== Scan File Metrics ===")
         displayed_something = True
@@ -675,7 +705,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
                 print("-" * 25)
 
         if not kb_licenses_found and not da_licenses_found:
-             print("No Licenses to report.")
+            print("No Licenses to report.")
 
     # Display KB Components
     if should_fetch_components:
@@ -713,7 +743,7 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
                       f"(Scope: {scopes_display}, License: {comp.get('license_identifier', 'N/A')})")
             print("-" * 25)
         else:
-             print("No Components found through Dependency Analysis.")
+            print("No Components found through Dependency Analysis.")
 
     # Display Policy Warnings
     if should_fetch_policy:
@@ -729,7 +759,6 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
                 print(f"There are {total_warnings} policy warnings. "
                       f"Warnings in Identified Files: {files_with_warnings}. "
                       f"Warnings in Dependencies: {deps_with_warnings}.")
-                
             else:
                 print("No policy warnings found.")
         else:
@@ -804,8 +833,28 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
     if not displayed_something:
         print("No results were successfully fetched or displayed for the specified flags.")
     print("------------------------------------")
+    
+    return displayed_something
 
-    # --- Save Collected Results ---
+def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespace, scan_code: str):
+    """
+    Fetches requested scan results, displays them, and optionally saves them to a file.
+    This function orchestrates the fetch, display, and save operations.
+    
+    Args:
+        workbench: The Workbench API client instance
+        params: Command-line parameters
+        scan_code: Scan code to fetch results for
+    """
+    # 1. Fetch the results
+    collected_results = _fetch_results(workbench, params, scan_code)
+    
+    # 2. Display the results
+    if collected_results:
+        _display_results(collected_results, params)
+    
+    # 3. Save the results if requested
+    save_path = getattr(params, 'path_result', None)
     if save_path:
         if collected_results:
             print(f"\nSaving collected results to '{save_path}'...")
