@@ -25,7 +25,6 @@ from ..exceptions import (
 # Get logger
 logger = logging.getLogger("log")
 
-
 def handle_scan_git(workbench: Workbench, params: argparse.Namespace):
     """
     Handler for the 'scan-git' command. Clones repo, runs KB scan, optional DA, shows/saves results.
@@ -34,7 +33,8 @@ def handle_scan_git(workbench: Workbench, params: argparse.Namespace):
     try:
         if not params.git_url:
             raise ValidationError("Git URL is required for scan-git command")
-
+        
+        print("\nChecking if the Project and Scan exist or need to be created...")
         project_code = _resolve_project(workbench, params.project_name, create_if_missing=True)
         scan_code, scan_id = _resolve_scan(
             workbench,

@@ -24,7 +24,6 @@ from ..exceptions import (
 # Get logger
 logger = logging.getLogger("log")
 
-
 def handle_show_results(workbench: Workbench, params: argparse.Namespace):
     """
     Handler for the 'show-results' command. Fetches, displays, and saves results for an existing scan.

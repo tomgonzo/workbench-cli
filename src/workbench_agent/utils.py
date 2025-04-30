@@ -36,7 +36,6 @@ from .exceptions import (
 logger = logging.getLogger("log")
 
 # --- Project and Scan Resolution ---
-
 def _resolve_project(workbench: 'Workbench', project_name: str, create_if_missing: bool = False) -> str:
     """
     Resolve project name to project code.
@@ -66,7 +65,7 @@ def _resolve_project(workbench: 'Workbench', project_name: str, create_if_missin
             project_code = project.get("project_code")
             if not project_code:
                  raise ApiError(f"Found project '{project_name}' but it is missing the 'code' attribute.", details=project)
-            print(f"Found existing project '{project_name}' with code '{project_code}'.")
+            logger.debug(f"Found existing project '{project_name}' with code '{project_code}'.")
             return project_code
         else:
             # Project not found
@@ -74,7 +73,7 @@ def _resolve_project(workbench: 'Workbench', project_name: str, create_if_missin
                 print(f"A Project called '{project_name}' was not found. Creating it...")
                 try:
                     project_code = workbench.create_project(project_name)
-                    print(f"Created new project '{project_name}' with code '{project_code}'.")
+                    logger.debug(f"Created new project '{project_name}' with code '{project_code}'.")
                     return project_code
                 except ProjectExistsError:
                     logger.warning(f"Project '{project_name}' was not found initially, but creation failed because it exists. Re-fetching.")
@@ -109,7 +108,7 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
 
     if project_name:
         search_context = f"in project '{project_name}'"
-        print(f"Looking for a scan called '{scan_name}' in the '{project_name}' project. (Create if missing: {create_if_missing})...")
+        logger.debug(f"Looking for a scan called '{scan_name}' in the '{project_name}' project. (Create if missing: {create_if_missing})...")
         project_code = _resolve_project(workbench, project_name, create_if_missing=create_if_missing)
         try:
             scan_list = workbench.get_project_scans(project_code)
@@ -204,7 +203,6 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
             raise ScanNotFoundError(f"Scan '{scan_name}' not found {search_context}")
 
 # --- Scan Compatibility Checking ---
-
 def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: Dict[str, Any], scan_code: str):
     """Checks if the existing scan configuration is compatible with the current command."""
     if not existing_scan_info: return
@@ -288,10 +286,10 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
         if user_reuse_type == "project":
             if not user_provided_name_for_reuse:
                  raise ConfigurationError("Missing project name in --id-reuse-source for ID reuse type 'project'.")
-            print(f"Resolving project code for ID reuse source project: '{user_provided_name_for_reuse}'...")
+            logger.debug(f"Resolving project code for ID reuse source project: '{user_provided_name_for_reuse}'...")
             try:
                 resolved_specific_code_for_reuse = _resolve_project(workbench, user_provided_name_for_reuse, create_if_missing=False)
-                print(f"Found project code for reuse: '{resolved_specific_code_for_reuse}'")
+                logger.debug(f"Found project code for reuse: '{resolved_specific_code_for_reuse}'")
                 api_reuse_type = "specific_project"
             except ProjectNotFoundError:
                  raise ValidationError(f"The project specified in --id-reuse-source ('{user_provided_name_for_reuse}') was not found.")
@@ -314,7 +312,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
                     create_if_missing=False,
                     params=params # Pass params for logging context if needed
                 )
-                logger.info(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' within the current project.")
+                logger.debug(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' within the current project.")
                 api_reuse_type = "specific_scan" # API expects this value
 
             except (ScanNotFoundError, ValidationError) as e: # Catch if not found in current project
@@ -343,7 +341,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
             except Exception as e:
                  raise WorkbenchAgentError(f"Unexpected error looking up scan code for reuse: {e}", details={"error": str(e)}) from e
 
-    print("\nStarting KB Scan process...")
+    logger.debug("\nStarting Scan process...")
     try:
         workbench.assert_process_can_start("SCAN", scan_code)
         workbench.run_scan(
@@ -358,7 +356,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
             api_reuse_type,
             resolved_specific_code_for_reuse
         )
-        print("KB Scan initiated.")
+        logger.debug("Scan process initiated.")
     except (CompatibilityError, ApiError, NetworkError, ScanNotFoundError, ValueError) as e:
         raise WorkbenchAgentError(f"Unexpected error starting KB Scan: {e}") from e
     except Exception as e:
@@ -370,7 +368,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
             "SCAN", scan_code, params.scan_number_of_tries, params.scan_wait_time
         )
         scan_completed = True
-        print("KB Scan process complete.")
+        print("Scan process complete!")
     except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
         raise
     except Exception as e:
@@ -378,7 +376,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
         raise WorkbenchAgentError(f"Unexpected error waiting for KB scan: {e}", details={"error": str(e)}) from e
 
     if scan_completed and params.run_dependency_analysis:
-        print("\nStarting optional Dependency Analysis...")
+        print("\nStarting Dependency Analysis...")
         try:
             workbench.assert_process_can_start("DEPENDENCY_ANALYSIS", scan_code)
             workbench.start_dependency_analysis(scan_code, import_only=False)
@@ -404,9 +402,9 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
         try:
             pending_files = workbench.get_pending_files(scan_code)
             if pending_files:
-                print(f"\nNote: {len(pending_files)} files have Pending Identification.")
+                print(f"\nNote: {len(pending_files)} files are Pending Identification.")
             else:
-                print("\nNote: No files found with Pending Identification.")
+                print("\nNote: No files are Pending Identification.")
         except (ApiError, NetworkError) as e:
             logger.warning(f"Could not retrieve pending file count for scan '{scan_code}': {e}")
             print(f"\nWarning: Could not retrieve pending file count: {e}")
@@ -418,7 +416,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
         _fetch_display_save_results(workbench, params, scan_code)
 
     elif not scan_completed:
-        print("\nKB Scan did not complete successfully. Skipping results display.")
+        print("\nScan process did not complete successfully. Skipping results display.")
 
 # --- Scan Flow and Result Processing ---
 def format_duration(duration_seconds: Optional[Union[int, float]]) -> str:
@@ -444,11 +442,11 @@ def format_duration(duration_seconds: Optional[Union[int, float]]) -> str:
 
 def _print_operation_summary(params: argparse.Namespace, da_completed: bool, project_code: str, scan_code: str):
     """Prints a standardized summary of the scan operations performed and settings used."""
-    print(f"\n--- Operation Summary for Scan '{scan_code}' (Project '{project_code}') ---")
+    print(f"\n--- Operation Summary ---")
 
     print("Workbench Agent Operation Details:")
     if params.command == 'scan':
-        print(f"  - Method: Standard Upload (using --path)")
+        print(f"  - Method: Code Upload (using --path)")
         print(f"  - Source Path: {getattr(params, 'path', 'N/A')}")
         print(f"  - Recursive Archive Extraction: {getattr(params, 'recursively_extract_archives', 'N/A')}")
         print(f"  - JAR File Extraction: {getattr(params, 'jar_file_extraction', 'N/A')}")
@@ -470,9 +468,7 @@ def _print_operation_summary(params: argparse.Namespace, da_completed: bool, pro
         print(f"  - Method: Unknown ({params.command})")
 
     if params.command in ['scan', 'scan-git']:
-        print("\nKB Scan Settings:")
-        print(f"  - Limit: {getattr(params, 'limit', 'N/A')}")
-        print(f"  - Sensitivity: {getattr(params, 'sensitivity', 'N/A')}")
+        print("\nScan Parameters:")
         print(f"  - Auto-ID File Licenses: {'Yes' if getattr(params, 'autoid_file_licenses', False) else 'No'}")
         print(f"  - Auto-ID File Copyrights: {'Yes' if getattr(params, 'autoid_file_copyrights', False) else 'No'}")
         print(f"  - Auto-ID Pending IDs: {'Yes' if getattr(params, 'autoid_pending_ids', False) else 'No'}")
@@ -485,13 +481,12 @@ def _print_operation_summary(params: argparse.Namespace, da_completed: bool, pro
 
     print("\nAnalysis Performed:")
     kb_scan_performed = params.command in ['scan', 'scan-git']
-    print(f"  - Signature (KB) Scan: {'Yes' if kb_scan_performed else 'No'}")
+    print(f"  - Signature Scan: {'Yes' if kb_scan_performed else 'No'}")
     print(f"  - Dependency Analysis: {'Yes' if da_completed else ('Imported' if params.command == 'import-da' else 'No')}")
 
     print("------------------------------------")
 
 # --- Fetching and Displaying Results ---
-
 def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code: str) -> Dict[str, Any]:
     """
     Fetches requested scan results based on --show-* flags.

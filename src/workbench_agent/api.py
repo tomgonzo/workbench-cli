@@ -191,10 +191,8 @@ class Workbench:
                     data_list[0].get("code") == "RequestData.Base.field_not_valid_option" and
                     data_list[0].get("message_parameters", {}).get("fieldname") == "type"):
 
-                    logger.warning(
-                        f"This version of Workbench does not support check_status for '{process_type}'. "
-                        f"Skipping status check for this operation. (API indicated invalid type option)"
-                    )
+                    logger.warning(f"This version of Workbench does not support check_status for '{process_type}'. ")
+
                     # Optionally log the valid types listed by the API
                     valid_options = data_list[0].get("message_parameters", {}).get("options")
                     if valid_options:
@@ -240,7 +238,7 @@ class Workbench:
         wait_interval: int,
         progress_indicator: bool = True
     ):
-        print(f"Waiting for {process_description}...")
+        logger.debug(f"Waiting for {process_description}...")
         last_status = "UNKNOWN"
 
         for i in range(max_tries):
@@ -267,7 +265,7 @@ class Workbench:
             # Check for Success
             if current_status in success_values:
                 print()
-                print(f"{process_description} completed successfully (Status: {current_status}).")
+                logger.debug(f"{process_description} completed successfully (Status: {current_status}).")
                 return True
 
             # Check for Failure (includes ACCESS_ERROR)
@@ -590,7 +588,8 @@ class Workbench:
         try:
             # --- Archive Directory if Necessary ---
             if os.path.isdir(path):
-                logger.info(f"Compressing target directory '{path}'...")
+                print("The path provided is a directory. Compressing for upload...")
+                logger.debug(f"Compressing target directory '{path}'...")
                 # Use a temporary directory for the archive to ensure cleanup
                 with tempfile.TemporaryDirectory() as temp_dir:
                     base_name = os.path.join(temp_dir, f"{original_basename}_temp_archive")
@@ -605,7 +604,7 @@ class Workbench:
 
                         archive_path = shutil.make_archive(base_name, 'zip', root_dir=parent_dir, base_dir=dir_to_archive)
                         upload_path = archive_path # Upload the created archive
-                        logger.info(f"Archive created: {upload_path}")
+                        logger.debug(f"Archive created: {upload_path}")
 
                         # --- Perform Upload Logic for Archive ---
                         # This block is now inside the temp dir context if archiving
@@ -649,7 +648,7 @@ class Workbench:
                                 )
                                 logger.debug(f"Chunk {i+1} upload response status: {resp_chunk.status_code}")
                                 resp_chunk.raise_for_status() # Check for HTTP errors per chunk
-                            logger.info("Chunked upload completed successfully.")
+                            logger.debug("Chunked upload completed successfully.")
                         else:
                             # Standard upload for smaller files (send all data at once)
                             resp = self.session.post(
@@ -690,9 +689,9 @@ class Workbench:
                 }
                 if is_da_import:
                     headers["FOSSID-UPLOAD-TYPE"] = "dependency_analysis"
-                    logger.info(f"Uploading DA results file '{upload_basename}' ({file_size} bytes)...")
+                    logger.debug(f"Uploading DA results file '{upload_basename}' ({file_size} bytes)...")
                 else:
-                    logger.info(f"Uploading file '{upload_basename}' ({file_size} bytes)...")
+                    logger.debug(f"Uploading file '{upload_basename}' ({file_size} bytes)...")
 
                 logger.debug(f"Upload Request Headers: {headers}")
 
@@ -726,7 +725,7 @@ class Workbench:
                     logger.debug(f"Upload Response Status: {resp.status_code}")
                     logger.debug(f"Upload Response Text (first 500): {resp.text[:500]}")
                     resp.raise_for_status()
-                    logger.info(f"Upload for '{upload_basename}' completed.")
+                    logger.debug(f"Upload for '{upload_basename}' completed.")
 
         except FileSystemError as e:
              logger.error(f"File system error during upload preparation for {path}: {e}", exc_info=True)
@@ -763,7 +762,7 @@ class Workbench:
             ScanNotFoundError: If the scan doesn't exist
             NetworkError: If there are network issues
         """
-        print(f"Extracting Uploaded Archives for Scan '{scan_code}'...")
+        logger.debug(f"Extracting Uploaded Archives for Scan '{scan_code}'...")
         payload = {
             "group": "scans",
             "action": "extract_archives",
@@ -776,7 +775,7 @@ class Workbench:
         }
         response = self._send_request(payload)
         if response.get("status") == "1":
-            print(f"Archive Extraction operation successfully queued/completed for scan '{scan_code}'.")
+            logger.debug(f"Archive Extraction operation successfully queued/completed for scan '{scan_code}'.")
             return True
         else:
             error_msg = response.get("error", "Unknown error")
@@ -873,7 +872,7 @@ class Workbench:
                 raise CompatibilityError(
                     f"Cannot start {process_type.lower()} for '{scan_code}'. Current status is {current_status} (Must be one of {allowed_statuses})."
                 )
-            print(f"The {process_type.capitalize()} for '{scan_code}' can start (Current status: {current_status}).")
+            logger.debug(f"The {process_type.capitalize()} for '{scan_code}' can start (Current status: {current_status}).")
         except (ApiError, NetworkError, ScanNotFoundError):
             raise
         except Exception as e:

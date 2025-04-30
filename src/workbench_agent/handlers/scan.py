@@ -80,7 +80,7 @@ def handle_scan(workbench: Workbench, params: argparse.Namespace):
                     )
                     print("Archive extraction completed.")
                 else:
-                    print("Skipping archive extraction status check (likely older Workbench)...")
+                    print("This version of Workbench doesn't support checking the status of archive extraction.")
                     print("Waiting 5 seconds before starting KB scan...")
                     time.sleep(5)
             else:

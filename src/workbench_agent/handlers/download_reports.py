@@ -26,7 +26,6 @@ from ..exceptions import (
 # Get logger
 logger = logging.getLogger("log")
 
-
 def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
     """
     Handler for the 'download-reports' command. Generates and downloads reports.
