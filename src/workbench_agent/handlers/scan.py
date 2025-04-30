@@ -4,13 +4,14 @@ import os
 import time
 import logging
 import argparse
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Tuple
 
 from ..api import Workbench
 from ..utils import (
     _resolve_project,
     _resolve_scan,
-    _execute_standard_scan_flow
+    _execute_standard_scan_flow,
+    _fetch_display_save_results
 )
 from ..exceptions import (
     WorkbenchAgentError,
@@ -80,7 +81,7 @@ def handle_scan(workbench: Workbench, params: argparse.Namespace):
                     )
                     print("Archive extraction completed.")
                 else:
-                    print("This version of Workbench doesn't support checking the status of archive extraction.")
+                    print("Consider upgrading to 25.1 to support checking the status of archive extraction.")
                     print("Waiting 5 seconds before starting KB scan...")
                     time.sleep(5)
             else:
@@ -93,9 +94,16 @@ def handle_scan(workbench: Workbench, params: argparse.Namespace):
             raise WorkbenchAgentError(f"Unexpected error during archive extraction: {e}",
                                     details={"error": str(e), "scan_code": scan_code})
 
-        # Execute the main scan flow (KB Scan -> Wait -> Optional DA -> Wait -> Summary -> Results)
+        # Execute the main scan flow (KB Scan -> Wait -> Optional DA -> Wait -> Summary)
         print("\nStarting the Scan Process...")
-        _execute_standard_scan_flow(workbench, params, project_code, scan_code, scan_id)
+        scan_completed, da_completed = _execute_standard_scan_flow(workbench, params, project_code, scan_code, scan_id)
+        
+        # Fetch and display results if scan completed successfully
+        if scan_completed or da_completed:
+            logger.debug("\nFetching and Displaying Results...")
+            _fetch_display_save_results(workbench, params, scan_code)
+        else:
+            print("\nSkipping result fetching since scan did not complete successfully.")
 
     except (ProjectNotFoundError, ScanNotFoundError, FileSystemError, ApiError,
             NetworkError, ProcessError, ProcessTimeoutError, ValidationError, CompatibilityError) as e:

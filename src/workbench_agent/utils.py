@@ -268,10 +268,13 @@ def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: D
              logger.debug(f"Reusing existing scan '{scan_code}' for DA import.")
 
 # --- Standard Scan Flow ---
-def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespace, project_code: str, scan_code: str, scan_id: int):
+def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespace, project_code: str, scan_code: str, scan_id: int) -> Tuple[bool, bool]:
     """
     Executes the standard workflow after initial scan setup:
-    Run KB Scan -> Wait -> Optional DA -> Wait -> Summary -> Optional Results Display/Save.
+    Run KB Scan -> Wait -> Optional DA -> Wait -> Summary.
+    
+    Returns:
+        Tuple[bool, bool]: A tuple of (scan_completed, da_completed)
     """
     da_completed = False
     scan_completed = False
@@ -326,7 +329,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
                         create_if_missing=False,
                         params=params
                     )
-                    logger.info(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' globally.")
+                    logger.debug(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' globally.")
                     api_reuse_type = "specific_scan" # API expects this value
                 except (ScanNotFoundError, ValidationError, ApiError) as global_e:
                     # If global search also fails (not found or ambiguous globally), raise an error.
@@ -394,7 +397,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
             logger.error(f"Unexpected error during dependency analysis for scan '{scan_code}': {e}", exc_info=True)
             raise WorkbenchAgentError(f"Unexpected error during dependency analysis: {e}", details={"error": str(e)}) from e
 
-    # --- Print Summary and Handle Results ---
+    # --- Print Summary ---
     if scan_completed:
         _print_operation_summary(params, da_completed, project_code, scan_code)
 
@@ -412,11 +415,11 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
             logger.warning(f"Unexpected error retrieving pending file count for scan '{scan_code}': {e}", exc_info=True)
             print(f"\nWarning: Could not retrieve pending file count: {e}")
 
-        # --- Fetch, Display, and Save Results using the new utility function ---
-        _fetch_display_save_results(workbench, params, scan_code)
-
     elif not scan_completed:
         print("\nScan process did not complete successfully. Skipping results display.")
+        
+    # Return the completion status
+    return scan_completed, da_completed
 
 # --- Scan Flow and Result Processing ---
 def format_duration(duration_seconds: Optional[Union[int, float]]) -> str:
@@ -515,20 +518,20 @@ def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code
         print("Add (--show-licenses, --show-components, --show-dependencies, --show-scan-metrics, --show-policy-warnings, --show-vulnerabilities) to see results.")
         return {}
 
-    print("\n=== Fetching Requested Results ===")
+    logger.debug("\n=== Fetching Requested Results ===")
     collected_results = {}
     
     # --- Fetch DA Results ---
     if should_fetch_licenses or should_fetch_dependencies:
         try:
-            print(f"\nFetching Dependency Analysis results for '{scan_code}'...")
+            logger.debug(f"\nFetching Dependency Analysis results for '{scan_code}'...")
             da_results_data = workbench.get_dependency_analysis_results(scan_code)
             if da_results_data:
-                print(f"Successfully fetched {len(da_results_data)} DA entries.")
+                logger.debug(f"Successfully fetched {len(da_results_data)} DA entries.")
                 collected_results['dependency_analysis'] = da_results_data
             else:
                 # API method handles "not run" or empty cases
-                print("No Dependency Analysis data found or returned.")
+                logger.debug("No Dependency Analysis data found or returned.")
         except (ApiError, NetworkError) as e:
             print(f"Warning: Could not fetch Dependency Analysis results: {e}")
             logger.warning(f"Failed to fetch DA results for {scan_code}", exc_info=False)
@@ -539,14 +542,14 @@ def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code
     # --- Fetch Identified Licenses ---
     if should_fetch_licenses:
         try:
-            print(f"\nFetching KB Identified Licenses for '{scan_code}'...")
+            logger.debug(f"\nLicenses for Identified Components in '{scan_code}'...")
             kb_licenses_raw = workbench.get_scan_identified_licenses(scan_code)
             kb_licenses_data = sorted(kb_licenses_raw, key=lambda x: x.get('identifier', '').lower())
             if kb_licenses_data:
-                print(f"Successfully fetched {len(kb_licenses_data)} unique KB licenses.")
+                logger.debug(f"Successfully fetched {len(kb_licenses_data)} unique KB licenses.")
                 collected_results['kb_licenses'] = kb_licenses_data
             else:
-                print("No KB Identified Licenses found.")
+                logger.debug("No Licenses in Identified Components were returned.")
         except (ApiError, NetworkError) as e:
             print(f"Warning: Could not fetch KB Identified Licenses: {e}")
             logger.warning(f"Failed to fetch KB licenses for {scan_code}", exc_info=False)
@@ -557,14 +560,14 @@ def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code
     # --- Fetch Identified Components ---
     if should_fetch_components:
         try:
-            print(f"\nFetching KB Identified Scan Components for '{scan_code}'...")
+            logger.debug(f"\nFetching Identified Components for '{scan_code}'...")
             kb_components_raw = workbench.get_scan_identified_components(scan_code)
             kb_components_data = sorted(kb_components_raw, key=lambda x: (x.get('name', '').lower(), x.get('version', '')))
             if kb_components_data:
-                print(f"Successfully fetched {len(kb_components_data)} unique KB scan components.")
+                logger.debug(f"Successfully fetched {len(kb_components_data)} unique identified components.")
                 collected_results['kb_components'] = kb_components_data
             else:
-                print("No KB Identified Scan Components found.")
+                logger.debug("No Identified Components found.")
         except (ApiError, NetworkError) as e:
             print(f"Warning: Could not fetch KB Identified Scan Components: {e}")
             logger.warning(f"Failed to fetch KB components for {scan_code}", exc_info=False)
@@ -575,14 +578,14 @@ def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code
     # --- Fetch Scan File Metrics ---
     if should_fetch_metrics:
         try:
-            print(f"\nFetching Scan File Metrics for '{scan_code}'...")
+            logger.debug(f"\nFetching Scan File Metrics for '{scan_code}'...")
             scan_metrics_data = workbench.get_scan_folder_metrics(scan_code)
             if scan_metrics_data:
-                print("Successfully fetched scan file metrics.")
+                logger.debug("Successfully fetched scan file metrics.")
                 collected_results['scan_metrics'] = scan_metrics_data
             else:
                 # Should not happen if API method raises error on failure/empty
-                print("No scan file metrics data found or returned.")
+                logger.debug("No scan file metrics data found or returned.")
         except (ApiError, NetworkError, ScanNotFoundError) as e:
             print(f"Warning: Could not fetch Scan File Metrics: {e}")
             logger.warning(f"Failed to fetch scan metrics for {scan_code}", exc_info=False)
@@ -593,10 +596,10 @@ def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code
     # --- Fetch Policy Warnings ---
     if should_fetch_policy:
         try:
-            print(f"\nFetching Scan Policy Warnings Counter for '{scan_code}'...")
+            logger.debug(f"\nFetching Scan Policy Warnings Counter for '{scan_code}'...")
             # Use the counter method for summary display
             policy_warnings_data = workbench.scans_get_policy_warnings_counter(scan_code)
-            print("Successfully fetched policy warnings counter.")
+            logger.debug("Successfully fetched policy warnings counter.")
             collected_results['policy_warnings'] = policy_warnings_data
         except (ApiError, NetworkError) as e:
             print(f"Warning: Could not fetch Scan Policy Warnings: {e}")
@@ -608,13 +611,13 @@ def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code
     # --- Fetch Vulnerabilities ---
     if should_fetch_vulnerabilities:
         try:
-            print(f"\nFetching Vulnerabilities for '{scan_code}'...")
+            logger.debug(f"\nFetching Vulnerabilities for '{scan_code}'...")
             vulnerabilities_data = workbench.list_vulnerabilities(scan_code)
             if vulnerabilities_data:
-                print(f"Successfully fetched {len(vulnerabilities_data)} vulnerability entries.")
+                logger.debug(f"Successfully fetched {len(vulnerabilities_data)} vulnerability entries.")
                 collected_results['vulnerabilities'] = vulnerabilities_data
             else:
-                print("No Vulnerabilities found or returned.")
+                logger.debug("No Vulnerabilities found or returned.")
         except (ApiError, NetworkError, ScanNotFoundError) as e:
             print(f"Warning: Could not fetch Vulnerabilities: {e}")
             logger.warning(f"Failed to fetch vulnerabilities for {scan_code}", exc_info=False)

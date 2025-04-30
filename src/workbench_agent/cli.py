@@ -183,11 +183,21 @@ Example Usage:
     evaluate_gates_parser.add_argument("--scan-name", help="Scan name to evaluate gates for.", type=str, required=True, metavar="NAME")
     evaluate_gates_parser.add_argument("--show-pending-files", help="Display the File Names with Pending IDs.", action="store_true", default=False)
     evaluate_gates_parser.add_argument(
-        "--fail-on",
-        help="Sets whether to cause the command to fail (exit code 1). Default: none.",
-        choices=['none', 'pending', 'policy', 'both'],
-        default='none',
-        metavar='MODE'
+        "--fail-on-vuln-severity",
+        help="Fail if vulnerabilities of this severity OR HIGHER are found.",
+        choices=['critical', 'high', 'medium', 'low'],
+        default=None, # Default is None, meaning don't fail based on severity unless specified
+        metavar='SEVERITY'
+    )
+    evaluate_gates_parser.add_argument(
+        "--fail-on-pending",
+        help="Fail the gate if any files are found in the 'Pending Identification' state.",
+        action="store_true"
+    )
+    evaluate_gates_parser.add_argument(
+        "--fail-on-policy",
+        help="Fail the gate if any policy violations are found.",
+        action="store_true"
     )
     add_common_monitoring_options(evaluate_gates_parser)
 

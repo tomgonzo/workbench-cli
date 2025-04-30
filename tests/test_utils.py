@@ -238,13 +238,14 @@ def test_resolve_scan_network_error_project_scope(mock_workbench, mock_params):
             _resolve_scan(mock_workbench, "test_scan", "test_project", create_if_missing=False, params=mock_params)
 
 # --- Tests for _execute_standard_scan_flow (verify context) ---
-@patch("workbench_agent.utils._fetch_display_save_results") # Patch the correct function name
-def test_execute_standard_scan_flow_success(mock_fetch_results, mock_workbench, mock_params):
+def test_execute_standard_scan_flow_success(mock_workbench, mock_params):
     # Assume start_scan and wait_for_scan_to_finish succeed via mock_workbench
     mock_params.project_name = "TEST_PROJECT_NAME" # Need project name for reuse lookup logic
 
-    _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
+    # Function should now return scan_completed and da_completed flags
+    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
 
+    # Verify the function calls
     mock_workbench.assert_process_can_start.assert_called_once_with("SCAN", "TEST_SCAN")
     mock_workbench.run_scan.assert_called_once_with(
         "TEST_SCAN",
@@ -255,20 +256,21 @@ def test_execute_standard_scan_flow_success(mock_fetch_results, mock_workbench, 
     mock_workbench.wait_for_scan_to_finish.assert_called_once_with(
         "SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
     )
-    # Check _fetch_display_save_results call
-    mock_fetch_results.assert_called_once_with(mock_workbench, mock_params, "TEST_SCAN")
+    
+    # Check return values
+    assert scan_completed is True
+    assert da_completed is False  # DA is not requested by default in test params
 
 # Test ID Reuse Logic within _execute_standard_scan_flow
-@patch("workbench_agent.utils._fetch_display_save_results")
 @patch("workbench_agent.utils._resolve_project") # Mock project lookup for reuse
-def test_execute_standard_scan_flow_id_reuse_project(mock_resolve_proj_reuse, mock_fetch_results, mock_workbench, mock_params):
+def test_execute_standard_scan_flow_id_reuse_project(mock_resolve_proj_reuse, mock_workbench, mock_params):
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "project"
     mock_params.id_reuse_source = "ReuseSourceProject"
     mock_params.project_name = "CurrentProject" # Needed for context
     mock_resolve_proj_reuse.return_value = "REUSE_PROJ_CODE"
 
-    _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
+    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
 
     mock_resolve_proj_reuse.assert_called_once_with(mock_workbench, "ReuseSourceProject", create_if_missing=False)
     mock_workbench.run_scan.assert_called_once_with(
@@ -277,11 +279,10 @@ def test_execute_standard_scan_flow_id_reuse_project(mock_resolve_proj_reuse, mo
         params.autoid_file_copyrights, params.autoid_pending_ids, params.delta_scan,
         True, "specific_project", "REUSE_PROJ_CODE" # Check reuse args
     )
-    mock_fetch_results.assert_called_once()
+    assert scan_completed is True
 
-@patch("workbench_agent.utils._fetch_display_save_results")
 @patch("workbench_agent.utils._resolve_scan") # Mock scan lookup for reuse
-def test_execute_standard_scan_flow_id_reuse_scan_local(mock_resolve_scan_reuse, mock_fetch_results, mock_workbench, mock_params):
+def test_execute_standard_scan_flow_id_reuse_scan_local(mock_resolve_scan_reuse, mock_workbench, mock_params):
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "scan"
     mock_params.id_reuse_source = "ReuseSourceScan"
@@ -289,7 +290,7 @@ def test_execute_standard_scan_flow_id_reuse_scan_local(mock_resolve_scan_reuse,
     # Simulate finding the reuse scan in the *current* project
     mock_resolve_scan_reuse.return_value = ("REUSE_SCAN_CODE", 456)
 
-    _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
+    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
 
     # Check that _resolve_scan was called for reuse lookup within the current project
     mock_resolve_scan_reuse.assert_called_once_with(
@@ -301,11 +302,10 @@ def test_execute_standard_scan_flow_id_reuse_scan_local(mock_resolve_scan_reuse,
         params.autoid_file_copyrights, params.autoid_pending_ids, params.delta_scan,
         True, "specific_scan", "REUSE_SCAN_CODE" # Check reuse args
     )
-    mock_fetch_results.assert_called_once()
+    assert scan_completed is True
 
-@patch("workbench_agent.utils._fetch_display_save_results")
 @patch("workbench_agent.utils._resolve_scan") # Mock scan lookup for reuse
-def test_execute_standard_scan_flow_id_reuse_scan_global(mock_resolve_scan_reuse, mock_fetch_results, mock_workbench, mock_params):
+def test_execute_standard_scan_flow_id_reuse_scan_global(mock_resolve_scan_reuse, mock_workbench, mock_params):
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "scan"
     mock_params.id_reuse_source = "ReuseSourceScan"
@@ -316,7 +316,7 @@ def test_execute_standard_scan_flow_id_reuse_scan_global(mock_resolve_scan_reuse
         ("REUSE_SCAN_CODE_GLOBAL", 789)      # Second call (global) succeeds
     ]
 
-    _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
+    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
 
     # Check that _resolve_scan was called twice (local then global)
     assert mock_resolve_scan_reuse.call_count == 2
@@ -332,11 +332,10 @@ def test_execute_standard_scan_flow_id_reuse_scan_global(mock_resolve_scan_reuse
         params.autoid_file_copyrights, params.autoid_pending_ids, params.delta_scan,
         True, "specific_scan", "REUSE_SCAN_CODE_GLOBAL" # Check reuse args
     )
-    mock_fetch_results.assert_called_once()
+    assert scan_completed is True
 
-@patch("workbench_agent.utils._fetch_display_save_results")
 @patch("workbench_agent.utils._resolve_scan", side_effect=ValidationError("Global lookup failed")) # Mock scan lookup for reuse
-def test_execute_standard_scan_flow_id_reuse_scan_fails(mock_resolve_scan_reuse, mock_fetch_results, mock_workbench, mock_params):
+def test_execute_standard_scan_flow_id_reuse_scan_fails(mock_resolve_scan_reuse, mock_workbench, mock_params):
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "scan"
     mock_params.id_reuse_source = "NonExistentScan"
@@ -347,6 +346,28 @@ def test_execute_standard_scan_flow_id_reuse_scan_fails(mock_resolve_scan_reuse,
 
     assert mock_resolve_scan_reuse.call_count >= 1 # At least local lookup attempted
     mock_workbench.run_scan.assert_not_called() # Should fail before run_scan
+
+# Test with dependency analysis enabled
+def test_execute_standard_scan_flow_with_da(mock_workbench, mock_params):
+    mock_params.project_name = "TEST_PROJECT_NAME"
+    mock_params.run_dependency_analysis = True
+
+    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
+
+    # Verify both scan and DA were started and completed
+    mock_workbench.assert_process_can_start.assert_any_call("SCAN", "TEST_SCAN")
+    mock_workbench.wait_for_scan_to_finish.assert_any_call(
+        "SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
+    )
+    mock_workbench.assert_process_can_start.assert_any_call("DEPENDENCY_ANALYSIS", "TEST_SCAN")
+    mock_workbench.start_dependency_analysis.assert_called_once_with("TEST_SCAN", import_only=False)
+    mock_workbench.wait_for_scan_to_finish.assert_any_call(
+        "DEPENDENCY_ANALYSIS", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
+    )
+    
+    # Check that both flags are True
+    assert scan_completed is True
+    assert da_completed is True
 
 # Other error tests for _execute_standard_scan_flow remain largely the same, just ensure mock_params has project_name if needed
 def test_execute_standard_scan_flow_start_api_error(mock_workbench, mock_params):
@@ -374,16 +395,6 @@ def test_execute_standard_scan_flow_wait_process_timeout(mock_workbench, mock_pa
     mock_workbench.wait_for_scan_to_finish.side_effect = ProcessTimeoutError("Process timeout on wait")
     with pytest.raises(ProcessTimeoutError): # Not wrapped
         _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
-
-@patch("workbench_agent.utils._fetch_display_save_results", side_effect=ApiError("API error on fetch"))
-def test_execute_standard_scan_flow_fetch_error(mock_fetch_results, mock_workbench, mock_params):
-    mock_params.project_name = "TEST_PROJECT_NAME"
-    # Assume start and wait succeed
-    with pytest.raises(ApiError): # Not wrapped if raised by _fetch_display_save_results
-        _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
-    mock_workbench.run_scan.assert_called_once()
-    mock_workbench.wait_for_scan_to_finish.assert_called_once()
-    mock_fetch_results.assert_called_once()
 
 
 # --- REMOVED Tests for fetch_and_process_results ---

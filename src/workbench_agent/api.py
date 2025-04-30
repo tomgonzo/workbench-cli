@@ -480,31 +480,44 @@ class Workbench:
             raise ApiError(f"Failed to create project '{project_name}'", details={"error": str(e)})
 
     def create_webapp_scan(
-            self,
-            scan_name: str,
-            project_code: str,
-            git_url: Optional[str] = None,
-            git_branch: Optional[str] = None,
-            git_tag: Optional[str] = None,
-            git_depth: Optional[int] = None
-        ) -> bool:
+        self,
+        scan_name: str,
+        project_code: str,
+        git_url: Optional[str] = None,
+        git_branch: Optional[str] = None,
+        git_tag: Optional[str] = None,
+        git_depth: Optional[int] = None
+    ) -> bool:
         """
         Creates a new webapp scan inside a project, handling Git parameters as needed.
-        Returns True if successful trigger, False if scan already existed.
+        
+        Args:
+            scan_name: Name for the new scan.
+            project_code: Project code where the scan should be created.
+            git_url: Optional URL to a Git repository for Git-based scan.
+            git_branch: Optional branch name (if git_url is provided).
+            git_tag: Optional tag name (if git_url is provided, alternative to branch).
+            git_depth: Optional git clone depth (if git_url is provided).
+            
+        Returns:
+            True if the scan was successfully created, raises exception otherwise.
+            
+        Raises:
+            ApiError: If the API call fails.
+            NetworkError: If there's a network issue.
+            ScanExistsError: If a scan with this code already exists.
         """
-        logger.info(f"Attempting to create or find the '{scan_name}' scan inside the '{project_code}' project...")
-
-        # Prepare the base payload data
+        logger.info(f"Creating new scan '{scan_name}' in project '{project_code}'")
+        
         payload_data = {
-            "scan_name": scan_name, # Use 'name' as corrected previously
+            "scan_name": scan_name,
             "project_code": project_code,
-            "description": f"Scan created by Workbench Agent.", # Add description
         }
-
+        
         # --- Correct Git Parameter Handling ---
         git_ref_value = None
         git_ref_type = None
-
+        
         if git_tag:
             git_ref_value = git_tag
             git_ref_type = "tag"
@@ -515,63 +528,145 @@ class Workbench:
             logger.info(f"  Including Git Branch: {git_branch}")
         # If neither branch nor tag is provided but git_url is, API might default,
         # but our argparse setup requires one or the other for scan-git.
-
+        
         if git_url:
-            # Use the key from the monolith script
+            # Include Git parameters only if a Git URL is provided
             payload_data["git_repo_url"] = git_url
             logger.info(f"  Including Git URL: {git_url}")
-        if git_ref_value:
-            # API uses 'git_branch' field for BOTH branch and tag values
-            payload_data["git_branch"] = git_ref_value
-        if git_ref_type:
-            # Send the explicit type
-            payload_data["git_ref_type"] = git_ref_type
-            logger.info(f"  Setting Git Ref Type to: {git_ref_type}")
-        if git_depth is not None:
-            # Send depth as string
-            payload_data["git_depth"] = str(git_depth)
-            logger.info(f"  Setting Git Clone Depth to: {git_depth}")
-            # Ensure ref type is set if depth is used (API requirement?)
-            if not git_ref_type:
-                 logger.warning("Git depth specified, but no branch or tag provided. Setting ref type to 'branch' as a default.")
-                 payload_data["git_ref_type"] = "branch"
-
+            if git_ref_value:
+                # API uses 'git_branch' field for BOTH branch and tag values
+                payload_data["git_branch"] = git_ref_value
+                if git_ref_type:
+                    # Explicit ref_type helps Workbench know if it's a branch or tag
+                    payload_data["git_ref_type"] = git_ref_type
+                    logger.info(f"  Setting Git Ref Type to: {git_ref_type}")
+                if git_depth is not None:
+                    # Only include depth if a positive number is provided
+                    payload_data["git_depth"] = str(git_depth)
+                    logger.info(f"  Setting Git Clone Depth to: {git_depth}")
+            elif git_depth is not None:
+                # If depth is provided but no ref type, we need to set a default
+                if not git_ref_type:
+                    logger.warning("Git depth specified, but no branch or tag provided. Setting ref type to 'branch' as a default.")
+                    payload_data["git_ref_type"] = "branch"
+                payload_data["git_depth"] = str(git_depth)
+                logger.info(f"  Setting Git Clone Depth to: {git_depth}")
+        
         payload = {
             "group": "scans",
             "action": "create",
-            "data": payload_data,
+            "data": payload_data
         }
-
+        
         try:
             response = self._send_request(payload)
-            # API returns scan_id on success
-            if response.get("status") == "1" and "data" in response and "scan_id" in response["data"]:
-                 scan_id = response["data"]["scan_id"]
-                 print(f"Successfully created the '{scan_name}' scan (ID: {scan_id}).")
-                 return True # Signal success
-            # Handle "already exists" - return False to signal it existed
-            elif response.get("status") == "0" and \
-               ("Scan code already exists" in response.get("error", "") or "Legacy.controller.scans.code_already_exists" in response.get("error", "")):
-                 logger.warning(f"Scan creation skipped: Scan with name/code '{scan_name}' likely already exists in project '{project_code}'.")
-                 # We need to signal to _resolve_scan that it existed, raising ScanExistsError is one way
-                 raise ScanExistsError(f"Scan '{scan_name}' already exists in project '{project_code}' (detected during creation attempt)")
+            if response.get("status") == "1":
+                logger.info(f"Successfully created scan '{scan_name}'")
+                return True
             else:
-                # Handle other API errors during creation
-                error_msg = response.get("error", f"Unexpected response: {response}")
-                if "Project does not exist" in error_msg:
-                    raise ProjectNotFoundError(f"Project '{project_code}' not found during scan creation")
-                raise ApiError(f"Failed to trigger creation for scan '{scan_name}': {error_msg}", details=response)
-        except ScanExistsError:
-             raise # Re-raise ScanExistsError to be caught by _resolve_scan
-        except ProjectNotFoundError:
-             raise # Re-raise ProjectNotFoundError
-        except Exception as e:
-             # Catch other errors from _send_request or logic
-             logger.error(f"Unexpected error during scan creation trigger for '{scan_name}': {e}", exc_info=True)
-             # Re-raise as ApiError for consistency in _resolve_scan
-             raise ApiError(f"Failed to trigger creation for scan '{scan_name}': {e}") from e
-
-# Scan Target Upload and Extraction
+                logger.warning(f"Unexpected response when creating scan: {response}")
+                # This shouldn't happen as _send_request should raise ApiError for status 0
+                # But handle it just in case
+                error_msg = response.get("error", "Unknown error")
+                raise ApiError(f"Failed to create scan: {error_msg}", details=response)
+        except ApiError as e:
+            if "Scan code already exists" in str(e) or "Legacy.controller.scans.code_already_exists" in str(e):
+                logger.info(f"Scan '{scan_name}' already exists.")
+                raise ScanExistsError(f"Scan '{scan_name}' already exists", details=getattr(e, 'details', None))
+            raise
+        
+    def download_content_from_git(self, scan_code: str) -> bool:
+        """
+        Initiates the Git clone process for a scan.
+        
+        Args:
+            scan_code: The code of the scan to download Git content for.
+            
+        Returns:
+            True if the Git clone was successfully initiated.
+            
+        Raises:
+            ApiError: If the API call fails.
+            NetworkError: If there's a network issue.
+        """
+        logger.info(f"Initiating Git clone for scan '{scan_code}'")
+        
+        payload = {
+            "group": "scans",
+            "action": "download_content_from_git",
+            "data": {"scan_code": scan_code}
+        }
+        
+        response = self._send_request(payload)
+        if response.get("status") != "1":
+            error_msg = response.get("error", "Unknown error")
+            raise ApiError(f"Failed to initiate download from Git: {error_msg}", details=response)
+        
+        logger.debug("Successfully started Git Clone.")
+        return True
+        
+    def check_status_download_content_from_git(self, scan_code: str) -> str:
+        """
+        Checks the status of a Git clone operation.
+        
+        Args:
+            scan_code: The code of the scan to check Git clone status for.
+            
+        Returns:
+            The status of the Git clone operation ("FINISHED", "RUNNING", "FAILED", etc.).
+            
+        Raises:
+            ApiError: If the API call fails.
+            NetworkError: If there's a network issue.
+        """
+        logger.debug(f"Checking Git clone status for scan '{scan_code}'")
+        
+        payload = {
+            "group": "scans",
+            "action": "check_status_download_content_from_git",
+            "data": {"scan_code": scan_code}
+        }
+        
+        response = self._send_request(payload)
+        return response.get("data", "UNKNOWN")
+        
+    def wait_for_git_clone(self, scan_code: str, max_tries: int, wait_interval: int) -> None:
+        """
+        Waits for a Git clone operation to complete.
+        
+        Args:
+            scan_code: The code of the scan to wait for.
+            max_tries: Maximum number of status check attempts.
+            wait_interval: Seconds to wait between status checks.
+            
+        Raises:
+            ProcessTimeoutError: If the maximum number of tries is exceeded.
+            ProcessError: If the Git clone process fails.
+            ApiError: If the API call fails.
+            NetworkError: If there's a network issue.
+        """
+        print("\nWaiting for Git Clone to complete...")
+        
+        self._wait_for_process(
+            process_description=f"Git Clone for scan '{scan_code}'",
+            check_function=self._send_request,
+            check_args={
+                "payload": {
+                    "group": "scans",
+                    "action": "check_status_download_content_from_git",
+                    "data": {"scan_code": scan_code}
+                }
+            },
+            status_accessor=lambda response: response.get("data", "UNKNOWN"),
+            success_values={"FINISHED"},
+            failure_values={"FAILED", "ERROR"},
+            max_tries=max_tries,
+            wait_interval=wait_interval,
+            progress_indicator=True
+        )
+        
+        print("Git Clone completed.")
+    
     def upload_files(self, scan_code: str, path: str, is_da_import: bool = False):
         """
         Uploads a file or directory (as zip) to a scan using the direct data
@@ -1082,7 +1177,7 @@ class Workbench:
             # Catch any other unexpected errors from _wait_for_process or status_accessor
             raise ApiError(f"Error during {scan_type} operation: {str(e)}", details={"scan_code": scan_code})
 
-# Fetching Results
+# Fetching Results from a Scan
     def get_scan_folder_metrics(self, scan_code: str) -> Dict[str, Any]:
         """
         Retrieves scan folder metrics (total files, pending, identified, no match).
@@ -1226,7 +1321,7 @@ class Workbench:
             return data if isinstance(data, list) else []
         elif response.get("status") == "1": # Success but no data key
             logger.info(f"Dependency Analysis results requested for '{scan_code}', but no 'data' key in response. Assuming empty.")
-            return []
+            return [] # Return empty list, not an error
         else:
             # Check for specific "not run yet" error
             error_msg = response.get("error", "")
@@ -1253,7 +1348,7 @@ class Workbench:
         if response.get("status") == "1" and "data" in response:
             data = response["data"]
             if isinstance(data, dict):
-                logger.info(f"The scan {scan_code} has {len(data)} files pending ID'.")
+                logger.debug(f"The scan {scan_code} has {len(data)} files pending ID'.")
                 return data
             elif isinstance(data, list) and not data: # Handle API sometimes returning empty list?
                  logger.info(f"Pending files API returned empty list for scan '{scan_code}'.")
@@ -1326,10 +1421,21 @@ class Workbench:
         }
         response = self._send_request(payload)
 
-        if response.get("status") == "1" and "data" in response and isinstance(response["data"], dict) and "list" in response["data"]:
-            vuln_list = response["data"]["list"]
-            logger.info(f"Successfully fetched {len(vuln_list)} vulnerabilities for scan '{scan_code}'.")
-            return vuln_list if isinstance(vuln_list, list) else []
+        if response.get("status") == "1":
+            data = response.get("data")
+            # Case 1: Expected structure with vulnerabilities
+            if isinstance(data, dict) and "list" in data:
+                vuln_list = data["list"]
+                if isinstance(vuln_list, list):
+                    logger.debug(f"Successfully fetched {len(vuln_list)} vulnerabilities for scan '{scan_code}'.")
+                    return vuln_list
+            # Case 2: API indicates success but no vulnerabilities found (e.g., data is empty list or dict without 'list')
+            elif response.get("message") == "No vulnerabilities found." or data == []:
+                 logger.info(f"No vulnerabilities found for scan '{scan_code}' (API message or empty data).")
+                 return []
+            # Case 3: Status 1 but unexpected data format
+            logger.warning(f"Vulnerabilities API returned status 1 but unexpected data format for scan '{scan_code}': {data}")
+            raise ApiError(f"Unexpected data format received for vulnerabilities: {data}", details=response)
         else:
             error_msg = response.get("error", f"Unexpected response format or status: {response}")
             raise ApiError(f"Failed to list vulnerabilities for scan '{scan_code}': {error_msg}", details=response)
