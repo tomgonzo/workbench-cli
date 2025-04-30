@@ -115,21 +115,21 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
         # --- 3. Check Policy Violations ---
         print("\nChecking for Policy Violations...")
         try:
-            policy_violations_details = workbench.get_policy_violations(scan_code) # Returns list of dicts or []
-            total_violations = 0
-            if policy_violations_details:
-                for violation in policy_violations_details:
-                    total_violations += violation.get('count', 0)
-
-            if total_violations > 0:
-                found_policy_violations = True
-                print(f"Check Result: Found {total_violations} policy violation(s).")
-                if params.show_policy_summary:
-                    print("Policy Violation Summary:")
-                    for violation in policy_violations_details:
-                         print(f"  - Level: {violation.get('level', 'N/A')}, Count: {violation.get('count', 0)}")
+            policy_warnings_data = workbench.scans_get_policy_warnings_counter(scan_code)
+    
+            # Get totals from the data
+            total_warnings = int(policy_warnings_data.get("policy_warnings_total", 0))
+            files_with_warnings = int(policy_warnings_data.get("identified_files_with_warnings", 0))
+            deps_with_warnings = int(policy_warnings_data.get("dependencies_with_warnings", 0))
+            
+            if total_warnings > 0:
+                found_policy_warnings = True
+                print(f"Check Result: There are {total_warnings} policy warnings. "
+                      f"Warnings in Identified Files: {files_with_warnings}. "
+                      f"Warnings in Dependencies: {deps_with_warnings}.")
+                
             else:
-                print("Check Result: No policy violations found.")
+                print("Check Result: No policy warnings found.")
 
         except (ApiError, NetworkError) as e:
             print(f"\nWarning: Could not check for policy violations due to API/Network error: {e}")
@@ -158,7 +158,7 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
                 final_gates_passed = False
                 failure_reason.append("pending identifications found")
 
-            if params.fail_on in ['policy', 'both'] and found_policy_violations:
+            if params.fail_on in ['policy', 'both'] and found_policy_warnings:
                 final_gates_passed = False
                 failure_reason.append("policy violations found")
 

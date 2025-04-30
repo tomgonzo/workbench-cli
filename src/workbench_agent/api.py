@@ -1304,34 +1304,6 @@ class Workbench:
                 details=response
             )
 
-    def get_policy_violations(self, scan_code: str) -> List[Dict[str, Any]]:
-        """ Retrieves policy violations for a scan. """
-        print(f"Checking the '{scan_code}' scan for policy violations...")
-        # Option 1: Use the counter (simple, just counts)
-        try:
-            warnings_data = self.scans_get_policy_warnings_counter(scan_code)
-            violations = []
-            total_violations = 0
-            for level, count_str in warnings_data.items():
-                try:
-                    count = int(count_str)
-                    if count > 0:
-                        violations.append({"level": level, "count": count, "description": f"{count} {level.capitalize()} policy violations found."})
-                        total_violations += count
-                except ValueError:
-                    logger.warning(f"Could not parse policy warning count for level '{level}': {count_str}")
-
-            if total_violations > 0:
-                 print(f"Found {total_violations} policy violations (based on counter).")
-            else:
-                 print("No policy violations found (based on counter).")
-            return violations # Return a list summarizing counts
-
-        except Exception as e:
-             print(f"Warning: Could not retrieve policy violation counts: {e}")
-             # Fallback or re-raise depending on desired behavior
-             return []
-
 # Reporting
     def generate_report(
         self,

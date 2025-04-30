@@ -703,10 +703,18 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
         print("\n=== Scan Policy Warnings (Counter) ===")
         displayed_something = True
         if policy_warnings_data is not None:
-            if not policy_warnings_data or all(int(v or 0) == 0 for v in policy_warnings_data.values()):
-                 print("No policy violations found.")
+            # Check if we have real data with non-zero values
+            total_warnings = int(policy_warnings_data.get("policy_warnings_total", 0))
+            files_with_warnings = int(policy_warnings_data.get("identified_files_with_warnings", 0))
+            deps_with_warnings = int(policy_warnings_data.get("dependencies_with_warnings", 0))
+            
+            if total_warnings > 0:
+                print(f"There are {total_warnings} policy warnings. "
+                      f"Warnings in Identified Files: {files_with_warnings}. "
+                      f"Warnings in Dependencies: {deps_with_warnings}.")
+                
             else:
-                 print(json.dumps(policy_warnings_data, indent=4))
+                print("No policy violations found.")
         else:
             print("Policy warnings counter data could not be fetched or was empty.")
         print("-" * 25)
