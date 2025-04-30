@@ -82,7 +82,7 @@ Example Usage:
 
   # Evaluate gates for a scan
   workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
-    evaluate-gates --project-name MYPROJ --scan-name MYSCAN01 --policy-check --show-files
+    evaluate-gates --project-name MYPROJ --scan-name MYSCAN01 --policy-check --show-pending-files
 
   # Scan a Git repository
   workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
@@ -180,7 +180,7 @@ Example Usage:
     )
     evaluate_gates_parser.add_argument("--project-name", help="Project name containing the scan.", type=str, required=True, metavar="NAME")
     evaluate_gates_parser.add_argument("--scan-name", help="Scan name to evaluate gates for.", type=str, required=True, metavar="NAME")
-    evaluate_gates_parser.add_argument("--show-files", help="Display the File Names with Pending IDs.", action="store_true", default=False)
+    evaluate_gates_parser.add_argument("--show-pending-files", help="Display the File Names with Pending IDs.", action="store_true", default=False)
     evaluate_gates_parser.add_argument(
         "--fail-on",
         help="Sets whether to cause the command to fail (exit code 1). Default: none.",

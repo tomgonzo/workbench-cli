@@ -239,7 +239,6 @@ class Workbench:
         max_tries: int,
         wait_interval: int,
         progress_indicator: bool = True
-        # NO on_status_update parameter here
     ):
         print(f"Waiting for {process_description}...")
         last_status = "UNKNOWN"
@@ -328,7 +327,7 @@ class Workbench:
         if response.get("status") == "1" and "data" in response:
             data = response["data"]
             if isinstance(data, list):
-                logger.info(f"Successfully listed {len(data)} projects.")
+                logger.debug(f"Successfully listed {len(data)} projects.")
                 return data
             else:
                 logger.warning(f"API returned success for list_projects but 'data' was not a list: {type(data)}")
@@ -375,10 +374,10 @@ class Workbench:
                         scan_list.append(scan_details)
                     else:
                         logger.warning(f"Unexpected format for scan details with ID {scan_id}: {type(scan_details)}")
-                logger.info(f"Successfully listed {len(scan_list)} scans.")
+                logger.debug(f"Successfully listed {len(scan_list)} scans.")
                 return scan_list
             elif isinstance(data, list) and not data: # Handle API returning empty list for no scans
-                logger.info("Successfully listed 0 scans (API returned empty list).")
+                logger.debug("Successfully listed 0 scans (API returned empty list).")
                 return []
             else:
                 logger.warning(f"API returned success for list_scans but 'data' was not a dict or empty list: {type(data)}")
@@ -417,7 +416,7 @@ class Workbench:
         if response.get("status") == "1" and "data" in response:
             data = response["data"]
             if isinstance(data, list):
-                logger.info(f"Successfully listed {len(data)} scans for project '{project_code}'.")
+                logger.debug(f"Successfully listed {len(data)} scans for project '{project_code}'.")
                 return data
             else:
                 logger.warning(f"API returned success for get_all_scans but 'data' was not a list: {type(data)}")
@@ -625,9 +624,9 @@ class Workbench:
                         }
                         if is_da_import:
                             headers["FOSSID-UPLOAD-TYPE"] = "dependency_analysis"
-                            logger.info(f"Uploading DA results file '{upload_basename}' ({file_size} bytes)...")
+                            logger.debug(f"Uploading DA results file '{upload_basename}' ({file_size} bytes)...")
                         else:
-                            logger.info(f"Uploading archive '{upload_basename}' ({file_size} bytes)...")
+                            logger.debug(f"Uploading archive '{upload_basename}' ({file_size} bytes)...")
 
                         logger.debug(f"Upload Request Headers: {headers}")
 
@@ -664,7 +663,7 @@ class Workbench:
                             logger.debug(f"Upload Response Text (first 500): {resp.text[:500]}")
                             resp.raise_for_status() # Check for HTTP errors
 
-                            logger.info(f"Upload for '{upload_basename}' completed.")
+                            logger.debug(f"Upload for '{upload_basename}' completed.")
 
                         # Close handle after upload completes inside the context
                         if file_handle and not file_handle.closed:

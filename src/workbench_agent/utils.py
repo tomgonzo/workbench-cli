@@ -109,7 +109,7 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
 
     if project_name:
         search_context = f"in project '{project_name}'"
-        print(f"Resolving scan '{scan_name}' within project '{project_name}' (Create if missing: {create_if_missing})...")
+        print(f"Looking for a scan called '{scan_name}' in the '{project_name}' project. (Create if missing: {create_if_missing})...")
         project_code = _resolve_project(workbench, project_name, create_if_missing=create_if_missing)
         try:
             scan_list = workbench.get_project_scans(project_code)
@@ -138,7 +138,8 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
 
         try:
             scan_id = int(scan_id_str)
-            print(f"Found existing scan '{scan_name}' with code '{scan_code}' and ID {scan_id} (Project: {resolved_project_code}).")
+            print(f"Successfully found the '{scan_name}' scan in the '{project_name}' project!")
+            logger.debug(f"'{scan_name}' has code '{scan_code}' and ID {scan_id} (Project Code: {resolved_project_code}).")
             _ensure_scan_compatibility(params, scan_info, scan_code)
             return scan_code, scan_id
         except (ValueError, TypeError):
@@ -208,7 +209,7 @@ def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: D
     """Checks if the existing scan configuration is compatible with the current command."""
     if not existing_scan_info: return
 
-    print(f"Verifying if the existing scan '{scan_code}' is compatible with the current operation...")
+    print(f"\nVerifying if the '{scan_code}' scan is compatible with the current operation...")
 
     # --- Read existing scan info ---
     existing_git_repo = existing_scan_info.get("git_repo_url", existing_scan_info.get("git_url"))
@@ -251,7 +252,7 @@ def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: D
                               f"but current command specified {current_git_ref_type or 'ref'} '{current_git_ref_value}'. "
                               f"Please use a different --scan-name or use the matching ref.")
     elif current_command == 'import-da':
-        # DA import doesn't usually care about the original scan type
+        # DA import doesn't care about the original scan type.
         pass
 
     # --- Error Handling ---
@@ -260,15 +261,15 @@ def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: D
         logger.error(f"Compatibility check failed for scan '{scan_code}': {error_message}")
         raise CompatibilityError(f"Incompatible usage for existing scan '{scan_code}': {error_message}")
     else:
-        print("Compatibility check passed.")
+        print("Compatibility check passed! Proceeding...")
         # Log reuse notes
         if current_uses_git and existing_git_repo:
              ref_display = f"{existing_git_ref_type or 'ref'} '{existing_git_ref_value}'" # Use corrected values
-             print(f"Note: Reusing existing scan '{scan_code}' configured for Git repository '{existing_git_repo}' ({ref_display}).")
+             logger.debug(f"Reusing existing scan '{scan_code}' configured for Git repository '{existing_git_repo}' ({ref_display}).")
         elif current_command == 'scan' and not existing_git_repo:
-             print(f"Note: Reusing existing scan '{scan_code}' configured for code upload.")
+             logger.debug(f"Reusing existing scan '{scan_code}' configured for code upload.")
         elif current_command == 'import-da':
-             print(f"Note: Reusing existing scan '{scan_code}' for DA import.")
+             logger.debug(f"Reusing existing scan '{scan_code}' for DA import.")
 
 # --- Standard Scan Flow ---
 def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespace, project_code: str, scan_code: str, scan_id: int):
