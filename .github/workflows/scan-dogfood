@@ -1,16 +1,16 @@
 ## This workflow runs any time code is pushed to a branch.
 ## By doing so, Branches always have up-to-date results in Workbench.
-name: Update Branch Scan using Git Clone
+name: Update Branch Scan using Zip Upload
 on: push
       
 jobs:
-  workbench_git_scan:
+  fossid_scan:
     runs-on: ubuntu-latest
     env:
       WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
       WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
       WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
-      
+
     steps:
       - name: Checkout Workbench Agent
         uses: actions/checkout@v4
@@ -21,14 +21,27 @@ jobs:
       - name: Install Workbench Agent
         run: pip install ./fossid-tools
 
-      - name: Pull from Git and Scan
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Upload Prep; Zip Code
+        run: |
+          zip -r $GITHUB_WORKSPACE/code.zip . -x \
+          '*.tmp' '*.temp' '*.bak' \
+          '*.cache' '*.db' '*.idx' \
+          '*.log' '*.txt' '*.event' \
+          '*.sample' '*.demo' '*.example' \
+          '*.sql' '*.hprof' '*.dmp' \
+          '.gitignore' '.dockerignore' \
+          '.git/*' '.github/*'
+
+      - name: Scan by Uploading a Zip
+        env:
         run: |
           workbench-agent scan-git \
             --project-name $GITHUB_REPOSITORY \
-            --scan-name $GITHUB_REF \
-            --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
-            --git-branch $GITHUB_REF_NAME \
-            --git-depth 1 \
+            --scan-name ZipScan-$GITHUB_REF \
+            --path $GITHUB_WORKSPACE/code.zip \
             --run-dependency-analysis \
             --autoid-file-licenses \
             --autoid-file-copyrights \
@@ -38,10 +51,11 @@ jobs:
             --show-scan-metrics
 
       - name: Show Scan Results
+        env:
         run: |
           workbench-agent show-results \
             --project-name $GITHUB_REPOSITORY \
-            --scan-name $GITHUB_REF \
+            --scan-name ZipScan-$GITHUB_REF \
             --show-components \
             --show-dependencies \
             --show-licenses \
