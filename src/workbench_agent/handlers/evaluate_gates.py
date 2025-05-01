@@ -32,7 +32,7 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
     Returns:
         bool: True if gate checks pass according to --fail-on, False otherwise.
     """
-    print(f"\n--- Running Command: {params.command} ---")
+    print(f"\n--- Running {params.command.upper()} Command ---")
     # Initialize check results
     found_pending = False
     found_policy_violations = False

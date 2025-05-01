@@ -30,7 +30,7 @@ def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
     """
     Handler for the 'download-reports' command. Generates and downloads reports.
     """
-    print(f"\n--- Running Command: {params.command} ---")
+    print(f"\n--- Running {params.command.upper()} Command ---")
 
     report_scope = params.report_scope.lower()
     project_code = None

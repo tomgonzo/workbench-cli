@@ -272,7 +272,7 @@ Example Usage:
              logger.warning(f"--id-reuse-source ('{args.id_reuse_source}') provided but --id-reuse-type is '{args.id_reuse_type}'. Source name will be ignored.")
              args.id_reuse_source = None
     elif args.command == 'show-results':
-        if not (args.show_licenses or args.show_components or args.show_policy_warnings or args.show_scan_metrics):
+        if not (args.show_licenses or args.show_components or args.show_policy_warnings or args.show_scan_metrics or args.show_dependencies or args.show_vulnerabilities):
             parser.error("The 'show-results' command requires at least one --show-* flag.")
 
     return args

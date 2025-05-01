@@ -29,7 +29,9 @@ from .exceptions import (
     ProjectNotFoundError,
     ScanNotFoundError,
     ProjectExistsError,
-    ScanExistsError
+    ScanExistsError,
+    ProcessError,
+    ProcessTimeoutError
 )
 
 # Assume logger is configured in main.py and get it
@@ -268,6 +270,110 @@ def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: D
              logger.debug(f"Reusing existing scan '{scan_code}' for DA import.")
 
 # --- Standard Scan Flow ---
+def _assert_scan_is_idle(
+    workbench: 'Workbench',
+    scan_code: str,
+    params: argparse.Namespace,
+    process_types_to_check: List[str]
+):
+    """
+    Checks if specified background processes for a scan are idle (not RUNNING or QUEUED).
+    If a process is running/queued, waits for it to finish.
+
+    Args:
+        workbench: The Workbench API client instance.
+        scan_code: The code of the scan to check.
+        params: Command-line parameters (used for wait settings).
+        process_types_to_check: List of process types (e.g., ["SCAN", "DEPENDENCY_ANALYSIS", "GIT_CLONE"]).
+
+    Raises:
+        ProcessError: If checking status fails or if waiting for a running process fails/times out.
+        ApiError: If API calls fail unexpectedly.
+        NetworkError: If network issues occur.
+    """
+    logger.debug(f"Asserting idle status for processes {process_types_to_check} on scan '{scan_code}'...")
+    print(f"\nChecking status of scan '{scan_code}' before proceeding...")
+
+    while True: # Loop until all processes are confirmed idle in one pass
+        all_processes_idle_this_pass = True
+        logger.debug("Starting a new pass to check idle status...")
+
+        for process_type in process_types_to_check:
+            process_type_upper = process_type.upper()
+            logger.debug(f"Checking status for process type: {process_type_upper}")
+            current_status = "UNKNOWN"
+            status_data = None
+
+            try:
+                if process_type_upper == "GIT_CLONE":
+                    # Use the specific check for Git clone status
+                    status_data = workbench._send_request({
+                        "group": "scans",
+                        "action": "check_status_download_content_from_git",
+                        "data": {"scan_code": scan_code}
+                    })
+                    # The status is directly in the 'data' field for this specific call
+                    current_status = status_data.get("data", "UNKNOWN").upper()
+                elif process_type_upper in ["SCAN", "DEPENDENCY_ANALYSIS", "EXTRACT_ARCHIVES"]: # Add other known types if needed
+                    # Use the generic get_scan_status
+                    status_data = workbench.get_scan_status(process_type_upper, scan_code)
+                    # Status is nested within 'data'->'status' for get_scan_status
+                    current_status = status_data.get("status", "UNKNOWN").upper()
+                else:
+                    logger.warning(f"Unknown process type '{process_type_upper}' requested for idle check. Skipping.")
+                    continue # Skip unknown types in this pass
+
+                logger.debug(f"Status check response for {process_type_upper}: {status_data}")
+                logger.info(f"Current status for {process_type_upper}: {current_status}")
+
+            except ScanNotFoundError:
+                # If the scan doesn't exist, it's implicitly idle for this process.
+                logger.debug(f"Scan '{scan_code}' not found during idle check for {process_type_upper}. Assuming idle.")
+                print(f"  - {process_type_upper}: Not found (considered idle).")
+                continue # Move to the next process type in this pass
+            except (ApiError, NetworkError) as e:
+                logger.error(f"Failed to check status for {process_type_upper} on scan '{scan_code}': {e}", exc_info=True)
+                raise ProcessError(f"Cannot proceed: Failed to check status for {process_type_upper} due to API/Network error: {e}") from e
+            except Exception as e:
+                logger.error(f"Unexpected error checking status for {process_type_upper} on scan '{scan_code}': {e}", exc_info=True)
+                raise ProcessError(f"Cannot proceed: Unexpected error checking status for {process_type_upper}: {e}") from e
+
+            # --- Wait if Running or Queued ---
+            # Added "NOT FINISHED" as a potential non-idle state from some API versions/calls
+            if current_status in ["RUNNING", "QUEUED", "NOT FINISHED"]:
+                all_processes_idle_this_pass = False # Mark that we found a running process
+                print(f"  - {process_type_upper}: Status is {current_status}. Waiting for completion...")
+                logger.info(f"Existing {process_type_upper} for '{scan_code}' is {current_status}. Waiting...")
+                try:
+                    if process_type_upper == "GIT_CLONE":
+                        workbench.wait_for_git_clone(scan_code, params.scan_number_of_tries, params.scan_wait_time)
+                    else:
+                        workbench.wait_for_scan_to_finish(process_type_upper, scan_code, params.scan_number_of_tries, params.scan_wait_time)
+                    print(f"  - {process_type_upper}: Previous run finished.")
+                    logger.info(f"Previous {process_type_upper} for '{scan_code}' finished.")
+                    # --- CRITICAL: Break inner loop to restart checks from the beginning ---
+                    logger.debug(f"Breaking inner loop after waiting for {process_type_upper} to re-check all statuses.")
+                    break # Exit the 'for' loop and restart the 'while' loop
+                except (ProcessTimeoutError, ProcessError) as wait_err:
+                    logger.error(f"Waiting for existing {process_type_upper} on scan '{scan_code}' failed: {wait_err}", exc_info=True)
+                    raise ProcessError(f"Cannot proceed: Waiting for existing {process_type_upper} failed: {wait_err}") from wait_err
+                except Exception as wait_exc:
+                        logger.error(f"Unexpected error waiting for {process_type_upper} on scan '{scan_code}': {wait_exc}", exc_info=True)
+                        raise ProcessError(f"Cannot proceed: Unexpected error waiting for {process_type_upper}: {wait_exc}") from wait_exc
+            else:
+                # Status is idle for this process type in this pass
+                print(f"  - {process_type_upper}: Status is {current_status} (considered idle).")
+                logger.debug(f"{process_type_upper} on scan '{scan_code}' is idle (Status: {current_status}).")
+
+        # --- Check if the inner loop completed without breaking ---
+        if all_processes_idle_this_pass:
+            logger.debug("All processes confirmed idle in this pass. Exiting check loop.")
+            break # Exit the 'while True' loop
+
+    # If all checks passed
+    print("Scan status checks passed. Proceeding with operation...")
+    logger.debug(f"All required processes {process_types_to_check} for scan '{scan_code}' are idle.")
+
 def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespace, project_code: str, scan_code: str, scan_id: int) -> Tuple[bool, bool]:
     """
     Executes the standard workflow after initial scan setup:
@@ -346,7 +452,12 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
 
     logger.debug("\nStarting Scan process...")
     try:
-        workbench.assert_process_can_start("SCAN", scan_code)
+        workbench.assert_process_can_start(
+            "SCAN",
+            scan_code,
+            params.scan_number_of_tries,
+            params.scan_wait_time
+        )
         workbench.run_scan(
             scan_code,
             params.limit,
@@ -381,7 +492,12 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
     if scan_completed and params.run_dependency_analysis:
         print("\nStarting Dependency Analysis...")
         try:
-            workbench.assert_process_can_start("DEPENDENCY_ANALYSIS", scan_code)
+            workbench.assert_process_can_start(
+            "DEPENDENCY_ANALYSIS",
+            scan_code,
+            params.scan_number_of_tries,
+            params.scan_wait_time
+            )
             workbench.start_dependency_analysis(scan_code, import_only=False)
             workbench.wait_for_scan_to_finish(
                 "DEPENDENCY_ANALYSIS", scan_code, params.scan_number_of_tries, params.scan_wait_time,
@@ -845,10 +961,19 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
         scan_code: Scan code to fetch results for
     """
     # 1. Fetch the results
+    # Check which results were requested *before* fetching
+    any_results_requested = (
+        getattr(params, 'show_licenses', False) or
+        getattr(params, 'show_components', False) or
+        getattr(params, 'show_dependencies', False) or
+        getattr(params, 'show_scan_metrics', False) or
+        getattr(params, 'show_policy_warnings', False) or
+        getattr(params, 'show_vulnerabilities', False)
+    )
     collected_results = _fetch_results(workbench, params, scan_code)
     
     # 2. Display the results
-    if collected_results:
+    if any_results_requested:
         _display_results(collected_results, params)
     
     # 3. Save the results if requested

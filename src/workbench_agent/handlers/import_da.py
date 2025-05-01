@@ -31,7 +31,7 @@ def handle_import_da(workbench: Workbench, params: argparse.Namespace):
     """
     Handler for the 'import-da' command. Uploads DA results, runs import, shows/saves results.
     """
-    print(f"\n--- Running Command: {params.command} ---")
+    print(f"\n--- Running {params.command.upper()} Command ---")
     try:
         if not params.path:
             raise ValidationError("Path to DA results file is required for import-da command")

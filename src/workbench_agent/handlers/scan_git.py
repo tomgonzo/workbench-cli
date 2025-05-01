@@ -9,7 +9,8 @@ from ..utils import (
     _resolve_project,
     _resolve_scan,
     _execute_standard_scan_flow,
-    _fetch_display_save_results
+    _fetch_display_save_results,
+    _assert_scan_is_idle
 )
 from ..exceptions import (
     WorkbenchAgentError,
@@ -30,7 +31,7 @@ def handle_scan_git(workbench: Workbench, params: argparse.Namespace):
     """
     Handler for the 'scan-git' command. Clones repo, runs KB scan, optional DA, shows/saves results.
     """
-    print(f"\n--- Running {params.command} Command ---")
+    print(f"\n--- Running {params.command.upper()} Command ---")
     try:
         if not params.git_url:
             raise ValidationError("Git URL is required for scan-git command")
@@ -45,8 +46,12 @@ def handle_scan_git(workbench: Workbench, params: argparse.Namespace):
             params=params
         )
 
+        # Assert scan is idle before initiating Git clone
+        print("\nAsserting scan is idle before initiating Git clone...")
+        _assert_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS", "GIT_CLONE"])
+
         ref_display = f"branch: {params.git_branch}" if params.git_branch else f"tag: {params.git_tag}"
-        print(f"\nCloning from Git: {params.git_url} ({ref_display})")
+        print(f"\nInitiating clone from Git: {params.git_url} ({ref_display})")
 
         try:
             workbench.download_content_from_git(scan_code)

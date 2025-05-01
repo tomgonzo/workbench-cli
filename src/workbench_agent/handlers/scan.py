@@ -11,7 +11,8 @@ from ..utils import (
     _resolve_project,
     _resolve_scan,
     _execute_standard_scan_flow,
-    _fetch_display_save_results
+    _fetch_display_save_results,
+    _assert_scan_is_idle
 )
 from ..exceptions import (
     WorkbenchAgentError,
@@ -34,7 +35,7 @@ def handle_scan(workbench: Workbench, params: argparse.Namespace):
     """
     Handler for the 'scan' command. Uploads code, runs KB scan, optional DA, shows/saves results.
     """
-    print(f"\n--- Running {params.command} Command ---")
+    print(f"\n--- Running {params.command.upper()} Command ---")
     try:
         # Validate scan parameters
         if not params.path:
@@ -52,6 +53,10 @@ def handle_scan(workbench: Workbench, params: argparse.Namespace):
             create_if_missing=True,
             params=params
         )
+
+        # Assert scan is idle before uploading code
+        print("\nAsserting scan is idle before uploading code...")
+        _assert_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS"])
 
         print("\nUploading Code to Workbench...")
         try:

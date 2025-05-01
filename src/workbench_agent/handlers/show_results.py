@@ -28,7 +28,7 @@ def handle_show_results(workbench: Workbench, params: argparse.Namespace):
     """
     Handler for the 'show-results' command. Fetches, displays, and saves results for an existing scan.
     """
-    print(f"\n--- Running Command: {params.command} ---")
+    print(f"\n--- Running {params.command.upper()} Command ---")
     try:
         project_code = _resolve_project(workbench, params.project_name, create_if_missing=False)
         scan_code, scan_id = _resolve_scan(

@@ -939,13 +939,39 @@ class Workbench:
             raise ApiError(f"Error during archive extraction: {str(e)}", details={"scan_code": scan_code})
 
 # Scan Ops
-    def assert_process_can_start(self, process_type: str, scan_code: str):
+    def _standard_scan_status_accessor(self, data: Dict[str, Any]) -> str:
+        """Standard status accessor for SCAN, DEPENDENCY_ANALYSIS, EXTRACT_ARCHIVES."""
+        try:
+            # Check if 'is_finished' flag indicates completion
+            is_finished_flag = data.get("is_finished")
+            is_finished = str(is_finished_flag) == "1" or is_finished_flag is True
+
+            # If finished, return "FINISHED" (using the hardcoded success value)
+            if is_finished:
+                return "FINISHED"
+
+            # Otherwise, return the value of the 'status' key (or UNKNOWN)
+            return data.get("status", "UNKNOWN")
+        except (ValueError, TypeError, AttributeError):
+            logger.warning(f"Error accessing status keys in data: {data}", exc_info=True)
+            return "ACCESS_ERROR" # Use the ACCESS_ERROR state
+
+    def assert_process_can_start(
+        self,
+        process_type: str,
+        scan_code: str,
+        wait_max_tries: int,
+        wait_interval: int
+    ):
         """
         Checks if a SCAN or DEPENDENCY_ANALYSIS can be started.
+        If the process is currently QUEUED or RUNNING, it waits for it to finish.
 
         Args:
             process_type: Type of process to check (SCAN or DEPENDENCY_ANALYSIS)
             scan_code: Code of the scan to check
+            wait_max_tries: Max attempts to wait if process is running/queued.
+            wait_interval: Seconds between wait attempts.
 
         Raises:
             CompatibilityError: If the process cannot be started due to incompatible state
@@ -961,13 +987,29 @@ class Workbench:
         try:
             scan_status = self.get_scan_status(process_type, scan_code)
             current_status = scan_status.get("status", "UNKNOWN").upper()
+
+            # If queued or running, wait for it to finish first
+            if current_status in ["QUEUED", "RUNNING"]: 
+                print() # Newline before waiting message
+                print(f"Existing {process_type} for '{scan_code}' is {current_status}. Waiting for it to complete...")
+                logger.info(f"Existing {process_type} for '{scan_code}' is {current_status}. Waiting...")
+                try:
+                    self.wait_for_scan_to_finish(process_type, scan_code, wait_max_tries, wait_interval)
+                    print(f"Previous {process_type} for '{scan_code}' finished. Proceeding...")
+                    logger.info(f"Previous {process_type} for '{scan_code}' finished.")
+                    # No need to re-check status, wait_for_scan handles terminal states
+                    return # Allow proceeding
+                except (ProcessTimeoutError, ProcessError) as wait_err:
+                    # If waiting failed, we cannot start the new process
+                    raise ProcessError(f"Could not start {process_type} for '{scan_code}' because waiting for the existing process failed: {wait_err}", details=getattr(wait_err, 'details', None)) from wait_err
+
             # Allow starting if NEW, FINISHED, FAILED, or CANCELLED
             allowed_statuses = ["NEW", "FINISHED", "FAILED", "CANCELLED"]
             if current_status not in allowed_statuses:
                 raise CompatibilityError(
                     f"Cannot start {process_type.lower()} for '{scan_code}'. Current status is {current_status} (Must be one of {allowed_statuses})."
                 )
-            logger.debug(f"The {process_type.capitalize()} for '{scan_code}' can start (Current status: {current_status}).")
+            logger.debug(f"The {process_type} for '{scan_code}' can start (Current status: {current_status}).")
         except (ApiError, NetworkError, ScanNotFoundError):
             raise
         except Exception as e:
@@ -1139,30 +1181,12 @@ class Workbench:
             ApiError: If there are API issues
             NetworkError: If there are network issues
         """
-        def status_accessor(data):
-            try:
-                # Check if 'is_finished' flag indicates completion
-                is_finished_flag = data.get("is_finished")
-                is_finished = str(is_finished_flag) == "1" or is_finished_flag is True
-
-                # If finished, return "FINISHED" (using the hardcoded success value)
-                if is_finished:
-                    return "FINISHED"
-
-                # Otherwise, return the value of the 'status' key (or UNKNOWN)
-                return data.get("status", "UNKNOWN")
-
-            except (ValueError, TypeError, AttributeError):
-                # Handle errors accessing keys or converting types
-                logger.warning(f"Error accessing status keys in data: {data}", exc_info=True)
-                return "ACCESS_ERROR" # Use the ACCESS_ERROR state
-
         try:
             return self._wait_for_process(
                 f"Operation: {scan_type}",
                 self.get_scan_status,
                 {"scan_type": scan_type, "scan_code": scan_code},
-                status_accessor,
+                self._standard_scan_status_accessor,
                 {"FINISHED"},
                 {"FAILED", "CANCELLED", "ACCESS_ERROR"},
                 scan_number_of_tries,
