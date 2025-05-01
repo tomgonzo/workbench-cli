@@ -39,7 +39,7 @@ jobs:
             --autoid-file-copyrights \
             --id-reuse \
             --id-reuse-type project \
-            --id-reuse-source $GITHUB_REPOSITORY
+            --id-reuse-source $GITHUB_REPOSITORY \
             --show-scan-metrics
 
       - name: Show Results with Workbench Agent
