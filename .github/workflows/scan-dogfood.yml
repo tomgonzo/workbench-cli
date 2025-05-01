@@ -36,7 +36,6 @@ jobs:
           '.git/*' '.github/*'
 
       - name: Scan by Uploading a Zip
-        env:
         run: |
           workbench-agent scan-git \
             --project-name $GITHUB_REPOSITORY \
@@ -51,7 +50,6 @@ jobs:
             --show-scan-metrics
 
       - name: Show Scan Results
-        env:
         run: |
           workbench-agent show-results \
             --project-name $GITHUB_REPOSITORY \
