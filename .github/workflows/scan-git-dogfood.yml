@@ -18,7 +18,7 @@ jobs:
           path: fossid-tools
 
       - name: Prepare Workbench Agent
-        run: pip install fossid-tools
+        run: pip install ./fossid-tools
 
 # In this example, we use Built-In Env Vars to map Projects and Scans in Workbench to Repos and Branches.
       - name: Scan with Workbench Agent
