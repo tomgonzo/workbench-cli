@@ -47,7 +47,7 @@ def handle_scan_git(workbench: Workbench, params: argparse.Namespace):
         )
 
         # Assert scan is idle before initiating Git clone
-        print("\nAsserting scan is idle before initiating Git clone...")
+        print("\nEnsuring the scan is idle before initiating Git clone...")
         _assert_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS", "GIT_CLONE"])
 
         ref_display = f"branch: {params.git_branch}" if params.git_branch else f"tag: {params.git_tag}"

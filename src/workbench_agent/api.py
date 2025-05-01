@@ -507,7 +507,7 @@ class Workbench:
             NetworkError: If there's a network issue.
             ScanExistsError: If a scan with this code already exists.
         """
-        logger.info(f"Creating new scan '{scan_name}' in project '{project_code}'")
+        logger.debug(f"Creating new scan '{scan_name}' in project '{project_code}'")
         
         payload_data = {
             "scan_name": scan_name,
@@ -561,7 +561,7 @@ class Workbench:
         try:
             response = self._send_request(payload)
             if response.get("status") == "1":
-                logger.info(f"Successfully created scan '{scan_name}'")
+                logger.debug(f"Successfully created scan '{scan_name}'")
                 return True
             else:
                 logger.warning(f"Unexpected response when creating scan: {response}")
@@ -571,7 +571,7 @@ class Workbench:
                 raise ApiError(f"Failed to create scan: {error_msg}", details=response)
         except ApiError as e:
             if "Scan code already exists" in str(e) or "Legacy.controller.scans.code_already_exists" in str(e):
-                logger.info(f"Scan '{scan_name}' already exists.")
+                logger.debug(f"Scan '{scan_name}' already exists.")
                 raise ScanExistsError(f"Scan '{scan_name}' already exists", details=getattr(e, 'details', None))
             raise
         
@@ -1057,12 +1057,16 @@ class Workbench:
                 api_reuse_type_value = "specific_project"
             elif id_reuse_type == "scan":
                 api_reuse_type_value = "specific_scan"
+            elif id_reuse_type == "only_me":
+                api_reuse_type_value = "only_me"
+            else:
+                api_reuse_type_value = "any" # Default to "any"
 
             data["identification_reuse_type"] = api_reuse_type_value
 
             if api_reuse_type_value in ['specific_project', 'specific_scan']:
                 if not id_reuse_source:
-                    raise ValueError(f"--id-reuse-source is required when --id-reuse-type is '{id_reuse_type}' (translated to '{api_reuse_type_value}').")
+                    raise ValueError(f"--id-reuse-source is required when --id-reuse-type is '{id_reuse_type}'.")
                 data["specific_code"] = id_reuse_source
 
         # --- Send Request ---

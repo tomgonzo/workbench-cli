@@ -109,7 +109,7 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
     search_context = ""
 
     if project_name:
-        search_context = f"in project '{project_name}'"
+        search_context = f"in the '{project_name} project'"
         logger.debug(f"Looking for a scan called '{scan_name}' in the '{project_name}' project. (Create if missing: {create_if_missing})...")
         project_code = _resolve_project(workbench, project_name, create_if_missing=create_if_missing)
         try:
@@ -156,7 +156,7 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
         )
     else:
         if create_if_missing:
-            print(f"Scan '{scan_name}' not found {search_context}. Creating it...")
+            print(f"A Scan called '{scan_name}' was not found {search_context}. Creating it...")
             if not project_code:
                  raise ConfigurationError("Internal Error: project_code not resolved before scan creation attempt.")
             try:
@@ -173,7 +173,7 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
                     git_tag=create_git_tag,
                     git_depth=create_git_depth
                 )
-                print(f"Scan '{scan_name}' creation request sent successfully.")
+                print(f"A new scan called '{scan_name}' was created successfully.")
                 time.sleep(2)
 
                 scan_list = workbench.get_project_scans(project_code)
@@ -188,7 +188,7 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
 
                 try:
                     scan_id = int(scan_id_str)
-                    print(f"Successfully retrieved details for new scan '{scan_name}': Code '{scan_code}', ID {scan_id_str} (Project: {project_code}).")
+                    logger.debug(f"Successfully retrieved details for new scan '{scan_name}': Code '{scan_code}', ID {scan_id_str} (Project: {project_code}).")
                     return scan_code, scan_id
                 except (ValueError, TypeError):
                     raise ValidationError(f"Newly created scan '{scan_name}' has invalid ID '{scan_id_str}'")
@@ -292,7 +292,6 @@ def _assert_scan_is_idle(
         NetworkError: If network issues occur.
     """
     logger.debug(f"Asserting idle status for processes {process_types_to_check} on scan '{scan_code}'...")
-    print(f"\nChecking status of scan '{scan_code}' before proceeding...")
 
     while True: # Loop until all processes are confirmed idle in one pass
         all_processes_idle_this_pass = True
@@ -324,7 +323,7 @@ def _assert_scan_is_idle(
                     continue # Skip unknown types in this pass
 
                 logger.debug(f"Status check response for {process_type_upper}: {status_data}")
-                logger.info(f"Current status for {process_type_upper}: {current_status}")
+                logger.debug(f"Current status for {process_type_upper}: {current_status}")
 
             except ScanNotFoundError:
                 # If the scan doesn't exist, it's implicitly idle for this process.
@@ -339,7 +338,6 @@ def _assert_scan_is_idle(
                 raise ProcessError(f"Cannot proceed: Unexpected error checking status for {process_type_upper}: {e}") from e
 
             # --- Wait if Running or Queued ---
-            # Added "NOT FINISHED" as a potential non-idle state from some API versions/calls
             if current_status in ["RUNNING", "QUEUED", "NOT FINISHED"]:
                 all_processes_idle_this_pass = False # Mark that we found a running process
                 print(f"  - {process_type_upper}: Status is {current_status}. Waiting for completion...")
@@ -371,7 +369,7 @@ def _assert_scan_is_idle(
             break # Exit the 'while True' loop
 
     # If all checks passed
-    print("Scan status checks passed. Proceeding with operation...")
+    print("All Scan status checks passed! Proceeding...")
     logger.debug(f"All required processes {process_types_to_check} for scan '{scan_code}' are idle.")
 
 def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespace, project_code: str, scan_code: str, scan_id: int) -> Tuple[bool, bool]:

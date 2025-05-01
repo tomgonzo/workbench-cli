@@ -55,7 +55,7 @@ def handle_scan(workbench: Workbench, params: argparse.Namespace):
         )
 
         # Assert scan is idle before uploading code
-        print("\nAsserting scan is idle before uploading code...")
+        print("\nEnsuring the Scan is idle before uploading code...")
         _assert_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS"])
 
         print("\nUploading Code to Workbench...")
