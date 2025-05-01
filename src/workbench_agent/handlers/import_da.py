@@ -81,7 +81,7 @@ def handle_import_da(workbench: Workbench, params: argparse.Namespace):
                                     details={"error": str(e), "scan_code": scan_code})
 
         # --- Print Summary ---
-        _print_operation_summary(params, da_completed, project_code, scan_code)
+        _print_operation_summary(params, da_completed, project_code, scan_code, {"dependency_analysis": 0.0})
 
         # --- Fetch, Display, and Save Results using the utility function ---
         _fetch_display_save_results(workbench, params, scan_code)

@@ -34,8 +34,8 @@ def test_handle_scan_git_success_branch(mock_exec_flow, mock_resolve_scan, mock_
     # Mock the new git download and wait methods
     mock_workbench.download_content_from_git.return_value = True
     
-    # Mock the execute_standard_scan_flow to return success (both flags True)
-    mock_exec_flow.return_value = (True, False)
+    # Mock the execute_standard_scan_flow to return success (both flags True) with durations
+    mock_exec_flow.return_value = (True, False, {"kb_scan": 120.5, "dependency_analysis": 0})
 
     # Call the handler
     handlers.handle_scan_git(mock_workbench, mock_params)
@@ -64,8 +64,8 @@ def test_handle_scan_git_success_tag(mock_exec_flow, mock_resolve_scan, mock_res
     # Mock the new git download and wait methods
     mock_workbench.download_content_from_git.return_value = True
     
-    # Mock the execute_standard_scan_flow to return success (both flags True)
-    mock_exec_flow.return_value = (True, False)
+    # Mock the execute_standard_scan_flow to return success (both flags True) with durations
+    mock_exec_flow.return_value = (True, False, {"kb_scan": 130.0, "dependency_analysis": 0})
 
     handlers.handle_scan_git(mock_workbench, mock_params)
 

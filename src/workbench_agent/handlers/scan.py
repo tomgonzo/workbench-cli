@@ -101,7 +101,7 @@ def handle_scan(workbench: Workbench, params: argparse.Namespace):
 
         # Execute the main scan flow (KB Scan -> Wait -> Optional DA -> Wait -> Summary)
         print("\nStarting the Scan Process...")
-        scan_completed, da_completed = _execute_standard_scan_flow(workbench, params, project_code, scan_code, scan_id)
+        scan_completed, da_completed, _ = _execute_standard_scan_flow(workbench, params, project_code, scan_code, scan_id)
         
         # Fetch and display results if scan completed successfully
         if scan_completed or da_completed:

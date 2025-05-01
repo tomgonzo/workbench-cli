@@ -242,16 +242,16 @@ def test_execute_standard_scan_flow_success(mock_workbench, mock_params):
     # Assume start_scan and wait_for_scan_to_finish succeed via mock_workbench
     mock_params.project_name = "TEST_PROJECT_NAME" # Need project name for reuse lookup logic
 
-    # Function should now return scan_completed and da_completed flags
-    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
+    # Function should now return scan_completed, da_completed flags, and durations
+    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
 
     # Verify the function calls
-    mock_workbench.assert_process_can_start.assert_called_once_with("SCAN", "TEST_SCAN")
+    mock_workbench.assert_process_can_start.assert_called_once_with("SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time)
     mock_workbench.run_scan.assert_called_once_with(
         "TEST_SCAN",
-        params.limit, params.sensitivity, params.autoid_file_licenses,
-        params.autoid_file_copyrights, params.autoid_pending_ids, params.delta_scan,
-        params.id_reuse, None, None # api_reuse_type, resolved_code_for_reuse
+        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
+        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
+        mock_params.id_reuse, None, None # api_reuse_type, resolved_code_for_reuse
     )
     mock_workbench.wait_for_scan_to_finish.assert_called_once_with(
         "SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
@@ -260,6 +260,9 @@ def test_execute_standard_scan_flow_success(mock_workbench, mock_params):
     # Check return values
     assert scan_completed is True
     assert da_completed is False  # DA is not requested by default in test params
+    assert isinstance(durations, dict)
+    assert "kb_scan" in durations
+    assert "dependency_analysis" in durations
 
 # Test ID Reuse Logic within _execute_standard_scan_flow
 @patch("workbench_agent.utils._resolve_project") # Mock project lookup for reuse
@@ -270,16 +273,17 @@ def test_execute_standard_scan_flow_id_reuse_project(mock_resolve_proj_reuse, mo
     mock_params.project_name = "CurrentProject" # Needed for context
     mock_resolve_proj_reuse.return_value = "REUSE_PROJ_CODE"
 
-    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
+    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
 
     mock_resolve_proj_reuse.assert_called_once_with(mock_workbench, "ReuseSourceProject", create_if_missing=False)
     mock_workbench.run_scan.assert_called_once_with(
         "CURRENT_SCAN_CODE",
-        params.limit, params.sensitivity, params.autoid_file_licenses,
-        params.autoid_file_copyrights, params.autoid_pending_ids, params.delta_scan,
+        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
+        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
         True, "specific_project", "REUSE_PROJ_CODE" # Check reuse args
     )
     assert scan_completed is True
+    assert isinstance(durations, dict)
 
 @patch("workbench_agent.utils._resolve_scan") # Mock scan lookup for reuse
 def test_execute_standard_scan_flow_id_reuse_scan_local(mock_resolve_scan_reuse, mock_workbench, mock_params):
@@ -290,7 +294,7 @@ def test_execute_standard_scan_flow_id_reuse_scan_local(mock_resolve_scan_reuse,
     # Simulate finding the reuse scan in the *current* project
     mock_resolve_scan_reuse.return_value = ("REUSE_SCAN_CODE", 456)
 
-    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
+    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
 
     # Check that _resolve_scan was called for reuse lookup within the current project
     mock_resolve_scan_reuse.assert_called_once_with(
@@ -298,11 +302,12 @@ def test_execute_standard_scan_flow_id_reuse_scan_local(mock_resolve_scan_reuse,
     )
     mock_workbench.run_scan.assert_called_once_with(
         "CURRENT_SCAN_CODE",
-        params.limit, params.sensitivity, params.autoid_file_licenses,
-        params.autoid_file_copyrights, params.autoid_pending_ids, params.delta_scan,
+        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
+        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
         True, "specific_scan", "REUSE_SCAN_CODE" # Check reuse args
     )
     assert scan_completed is True
+    assert isinstance(durations, dict)
 
 @patch("workbench_agent.utils._resolve_scan") # Mock scan lookup for reuse
 def test_execute_standard_scan_flow_id_reuse_scan_global(mock_resolve_scan_reuse, mock_workbench, mock_params):
@@ -316,7 +321,7 @@ def test_execute_standard_scan_flow_id_reuse_scan_global(mock_resolve_scan_reuse
         ("REUSE_SCAN_CODE_GLOBAL", 789)      # Second call (global) succeeds
     ]
 
-    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
+    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
 
     # Check that _resolve_scan was called twice (local then global)
     assert mock_resolve_scan_reuse.call_count == 2
@@ -328,11 +333,12 @@ def test_execute_standard_scan_flow_id_reuse_scan_global(mock_resolve_scan_reuse
     )
     mock_workbench.run_scan.assert_called_once_with(
         "CURRENT_SCAN_CODE",
-        params.limit, params.sensitivity, params.autoid_file_licenses,
-        params.autoid_file_copyrights, params.autoid_pending_ids, params.delta_scan,
+        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
+        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
         True, "specific_scan", "REUSE_SCAN_CODE_GLOBAL" # Check reuse args
     )
     assert scan_completed is True
+    assert isinstance(durations, dict)
 
 @patch("workbench_agent.utils._resolve_scan", side_effect=ValidationError("Global lookup failed")) # Mock scan lookup for reuse
 def test_execute_standard_scan_flow_id_reuse_scan_fails(mock_resolve_scan_reuse, mock_workbench, mock_params):
@@ -352,14 +358,14 @@ def test_execute_standard_scan_flow_with_da(mock_workbench, mock_params):
     mock_params.project_name = "TEST_PROJECT_NAME"
     mock_params.run_dependency_analysis = True
 
-    scan_completed, da_completed = _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
+    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
 
     # Verify both scan and DA were started and completed
-    mock_workbench.assert_process_can_start.assert_any_call("SCAN", "TEST_SCAN")
+    mock_workbench.assert_process_can_start.assert_any_call("SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time)
     mock_workbench.wait_for_scan_to_finish.assert_any_call(
         "SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
     )
-    mock_workbench.assert_process_can_start.assert_any_call("DEPENDENCY_ANALYSIS", "TEST_SCAN")
+    mock_workbench.assert_process_can_start.assert_any_call("DEPENDENCY_ANALYSIS", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time)
     mock_workbench.start_dependency_analysis.assert_called_once_with("TEST_SCAN", import_only=False)
     mock_workbench.wait_for_scan_to_finish.assert_any_call(
         "DEPENDENCY_ANALYSIS", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
@@ -368,6 +374,9 @@ def test_execute_standard_scan_flow_with_da(mock_workbench, mock_params):
     # Check that both flags are True
     assert scan_completed is True
     assert da_completed is True
+    assert isinstance(durations, dict)
+    assert "kb_scan" in durations
+    assert "dependency_analysis" in durations
 
 # Other error tests for _execute_standard_scan_flow remain largely the same, just ensure mock_params has project_name if needed
 def test_execute_standard_scan_flow_start_api_error(mock_workbench, mock_params):

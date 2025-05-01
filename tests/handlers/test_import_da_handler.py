@@ -39,7 +39,7 @@ def test_handle_import_da_success(mock_fetch, mock_print_summary, mock_wait, moc
     mock_upload.assert_called_once_with("DA_SCAN_C", "/path/to/results.json", is_da_import=True)
     mock_start_da.assert_called_once_with("DA_SCAN_C", import_only=True) # Check DA start call
     mock_wait.assert_called_once_with("DEPENDENCY_ANALYSIS", "DA_SCAN_C", mock_params.scan_number_of_tries, mock_params.scan_wait_time) # Check wait args
-    mock_print_summary.assert_called_once_with(mock_params, True, "DA_PROJ_C", "DA_SCAN_C") # Check summary call
+    mock_print_summary.assert_called_once_with(mock_params, True, "DA_PROJ_C", "DA_SCAN_C", {"dependency_analysis": 0.0}) # Check summary call
     mock_fetch.assert_called_once_with(mock_workbench, mock_params, "DA_SCAN_C") # Check fetch call (only needs scan_code)
 
 @patch('workbench_agent.handlers._resolve_project')

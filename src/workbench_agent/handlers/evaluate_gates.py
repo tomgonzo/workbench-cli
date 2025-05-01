@@ -35,11 +35,10 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
     print(f"\n--- Running {params.command.upper()} Command ---")
     # Initialize check results
     found_pending = False
-    found_policy_violations = False
+    found_policy_warnings = False
     found_vulnerabilities = False
     vulnerability_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
     pending_files_details = {}
-    policy_violations_details = []
     api_check_error = False # Flag if checks couldn't be performed
 
     try:

@@ -32,6 +32,8 @@ def test_handle_scan_success(mock_exec_flow, mock_wait_extract, mock_is_supporte
     mock_resolve_proj.return_value = "PC"
     mock_resolve_scan.return_value = ("SC", 1)
     mock_extract.return_value = True # Simulate extraction triggered
+    # Return updated tuple format with durations
+    mock_exec_flow.return_value = (True, False, {"kb_scan": 120.5, "dependency_analysis": 0})
 
     handlers.handle_scan(mock_workbench, mock_params)
 
@@ -57,6 +59,8 @@ def test_handle_scan_success_no_extract_wait(mock_sleep, mock_exec_flow, mock_wa
     mock_resolve_proj.return_value = "PC"
     mock_resolve_scan.return_value = ("SC", 1)
     mock_extract.return_value = True
+    # Return updated tuple format with durations
+    mock_exec_flow.return_value = (True, False, {"kb_scan": 120.5, "dependency_analysis": 0})
 
     handlers.handle_scan(mock_workbench, mock_params)
 
@@ -66,7 +70,7 @@ def test_handle_scan_success_no_extract_wait(mock_sleep, mock_exec_flow, mock_wa
     mock_extract.assert_called_once()
     mock_is_supported.assert_called_once_with("SC", "EXTRACT_ARCHIVES")
     mock_wait_extract.assert_not_called() # Wait should NOT be called
-    mock_sleep.assert_called_once_with(10) # Sleep should be called
+    mock_sleep.assert_called_once_with(5) # Sleep should be called
     mock_exec_flow.assert_called_once()
 
 @patch('workbench_agent.handlers._resolve_project')

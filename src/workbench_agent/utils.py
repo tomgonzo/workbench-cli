@@ -204,7 +204,6 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
         else:
             raise ScanNotFoundError(f"Scan '{scan_name}' not found {search_context}")
 
-# --- Scan Compatibility Checking ---
 def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: Dict[str, Any], scan_code: str):
     """Checks if the existing scan configuration is compatible with the current command."""
     if not existing_scan_info: return
@@ -372,16 +371,22 @@ def _assert_scan_is_idle(
     print("All Scan status checks passed! Proceeding...")
     logger.debug(f"All required processes {process_types_to_check} for scan '{scan_code}' are idle.")
 
-def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespace, project_code: str, scan_code: str, scan_id: int) -> Tuple[bool, bool]:
+def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespace, project_code: str, scan_code: str, scan_id: int) -> Tuple[bool, bool, Dict[str, float]]:
     """
     Executes the standard workflow after initial scan setup:
     Run KB Scan -> Wait -> Optional DA -> Wait -> Summary.
     
     Returns:
-        Tuple[bool, bool]: A tuple of (scan_completed, da_completed)
+        Tuple[bool, bool, Dict[str, float]]: A tuple of (scan_completed, da_completed, durations)
     """
     da_completed = False
     scan_completed = False
+    
+    # Initialize timing dictionary
+    durations = {
+        "kb_scan": 0.0,
+        "dependency_analysis": 0.0
+    }
 
     resolved_specific_code_for_reuse = None
     api_reuse_type = None
@@ -456,6 +461,10 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
             params.scan_number_of_tries,
             params.scan_wait_time
         )
+        
+        # Start timing KB scan
+        kb_scan_start_time = time.time()
+        
         workbench.run_scan(
             scan_code,
             params.limit,
@@ -480,6 +489,10 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
             "SCAN", scan_code, params.scan_number_of_tries, params.scan_wait_time
         )
         scan_completed = True
+        
+        # Record KB scan duration
+        durations["kb_scan"] = time.time() - kb_scan_start_time
+        
         print("Scan process complete!")
     except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
         raise
@@ -496,11 +509,19 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
             params.scan_number_of_tries,
             params.scan_wait_time
             )
+            
+            # Start timing Dependency Analysis
+            da_start_time = time.time()
+            
             workbench.start_dependency_analysis(scan_code, import_only=False)
             workbench.wait_for_scan_to_finish(
                 "DEPENDENCY_ANALYSIS", scan_code, params.scan_number_of_tries, params.scan_wait_time,
             )
             da_completed = True
+            
+            # Record DA duration
+            durations["dependency_analysis"] = time.time() - da_start_time
+            
             print("Dependency Analysis complete.")
         except CompatibilityError as e:
              logger.warning(f"Could not start Dependency Analysis for scan '{scan_code}': {e.message}")
@@ -513,7 +534,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
 
     # --- Print Summary ---
     if scan_completed:
-        _print_operation_summary(params, da_completed, project_code, scan_code)
+        _print_operation_summary(params, da_completed, project_code, scan_code, durations)
 
         # Check for pending files (informational)
         try:
@@ -532,8 +553,8 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
     elif not scan_completed:
         print("\nScan process did not complete successfully. Skipping results display.")
         
-    # Return the completion status
-    return scan_completed, da_completed
+    # Return the completion status and durations
+    return scan_completed, da_completed, durations
 
 # --- Scan Flow and Result Processing ---
 def format_duration(duration_seconds: Optional[Union[int, float]]) -> str:
@@ -557,7 +578,7 @@ def format_duration(duration_seconds: Optional[Union[int, float]]) -> str:
     else:
         return f"{seconds} seconds" # Plural seconds or zero
 
-def _print_operation_summary(params: argparse.Namespace, da_completed: bool, project_code: str, scan_code: str):
+def _print_operation_summary(params: argparse.Namespace, da_completed: bool, project_code: str, scan_code: str, durations: Dict[str, float] = None):
     """Prints a standardized summary of the scan operations performed and settings used."""
     print(f"\n--- Operation Summary ---")
 
@@ -598,12 +619,25 @@ def _print_operation_summary(params: argparse.Namespace, da_completed: bool, pro
 
     print("\nAnalysis Performed:")
     kb_scan_performed = params.command in ['scan', 'scan-git']
-    print(f"  - Signature Scan: {'Yes' if kb_scan_performed else 'No'}")
-    print(f"  - Dependency Analysis: {'Yes' if da_completed else ('Imported' if params.command == 'import-da' else 'No')}")
+    
+    # Add durations to output
+    if kb_scan_performed:
+        kb_duration_str = format_duration(durations.get("kb_scan")) if durations else "N/A"
+        print(f"  - Signature Scan: Yes (Duration: {kb_duration_str})")
+    else:
+        print(f"  - Signature Scan: No")
+    
+    if da_completed:
+        da_duration_str = format_duration(durations.get("dependency_analysis")) if durations else "N/A"
+        print(f"  - Dependency Analysis: Yes (Duration: {da_duration_str})")
+    elif params.command == 'import-da':
+        print(f"  - Dependency Analysis: Imported")
+    else:
+        print(f"  - Dependency Analysis: No")
 
     print("------------------------------------")
 
-# --- Fetching and Displaying Results ---
+# --- Fetching, Displaying, and Saving Results ---
 def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code: str) -> Dict[str, Any]:
     """
     Fetches requested scan results based on --show-* flags.
@@ -948,6 +982,22 @@ def _display_results(collected_results: Dict[str, Any], params: argparse.Namespa
     
     return displayed_something
 
+def _save_results_to_file(filepath: str, results: Dict, scan_code: str):
+    """Helper to save collected results dictionary to a JSON file."""
+    output_dir = os.path.dirname(filepath) or "."
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        print(f"Saved results to: {filepath}")
+        logger.info(f"Saved results for scan '{scan_code}' to {filepath}")
+    except (IOError, OSError) as e:
+         logger.warning(f"Failed to save results to {filepath}: {e}")
+         print(f"\nWarning: Failed to save results to {filepath}: {e}")
+    except Exception as e:
+         logger.warning(f"Unexpected error saving results to {filepath}: {e}", exc_info=True)
+         print(f"\nWarning: Unexpected error saving results: {e}")
+
 def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespace, scan_code: str):
     """
     Fetches requested scan results, displays them, and optionally saves them to a file.
@@ -982,23 +1032,6 @@ def _fetch_display_save_results(workbench: 'Workbench', params: argparse.Namespa
             _save_results_to_file(save_path, collected_results, scan_code)
         else:
             print("\nNo results were successfully collected, skipping save.")
-
-# --- Scan Result Saving ---
-def _save_results_to_file(filepath: str, results: Dict, scan_code: str):
-    """Helper to save collected results dictionary to a JSON file."""
-    output_dir = os.path.dirname(filepath) or "."
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
-        print(f"Saved results to: {filepath}")
-        logger.info(f"Saved results for scan '{scan_code}' to {filepath}")
-    except (IOError, OSError) as e:
-         logger.warning(f"Failed to save results to {filepath}: {e}")
-         print(f"\nWarning: Failed to save results to {filepath}: {e}")
-    except Exception as e:
-         logger.warning(f"Unexpected error saving results to {filepath}: {e}", exc_info=True)
-         print(f"\nWarning: Unexpected error saving results: {e}")
 
 # --- Report Saving ---
 def _save_report_content(
