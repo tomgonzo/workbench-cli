@@ -37,7 +37,7 @@ jobs:
 
       - name: Scan by Uploading a Zip
         run: |
-          workbench-agent scan-git \
+          workbench-agent scan \
             --project-name $GITHUB_REPOSITORY \
             --scan-name ZipScan-$GITHUB_REF \
             --path $GITHUB_WORKSPACE/code.zip \
