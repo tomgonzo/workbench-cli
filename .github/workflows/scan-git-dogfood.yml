@@ -1,0 +1,59 @@
+## This workflow runs any time code is pushed to a branch.
+## By doing so, Branches always have up-to-date results in Workbench.
+name: Update Branch Scan using Git Clone
+on: push
+      
+jobs:
+  fossid_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+# Since we're running with Python, we check out the Repo then install its dependencies.
+      - name: Checkout FossID Workbench Agent Repo
+        uses: actions/checkout@v4
+        with: 
+          repository: tomgonzo/workbench-agent
+          path: fossid-tools
+
+      - name: Prepare Workbench Agent
+        run: pip install fossid-tools
+
+# In this example, we use Built-In Env Vars to map Projects and Scans in Workbench to Repos and Branches.
+      - name: Scan with Workbench Agent
+        env:
+          WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
+          WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
+          WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
+
+        run: |
+          workbench-agent scan-git \
+            --project-name $GITHUB_REPOSITORY \
+            --scan-name $GITHUB_REF \
+            --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
+            --git-branch $GITHUB_REF_NAME \
+            --git-depth 1 \
+            --run-dependency-analysis \
+            --autoid-file-licenses \
+            --autoid-file-copyrights \
+            --id-reuse \
+            --id-reuse-type project \
+            --id-reuse-source $GITHUB_REPOSITORY
+            --show-scan-metrics
+
+      - name: Show Results with Workbench Agent
+        env:
+          WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
+          WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
+          WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
+
+        run: |
+          workbench-agent show-results \
+            --project-name $GITHUB_REPOSITORY \
+            --scan-name $GITHUB_REF \
+            --show-components \
+            --show-dependencies \
+            --show-licenses \
+            --show-policy-warnings \
+            --show-vulnerabilities
