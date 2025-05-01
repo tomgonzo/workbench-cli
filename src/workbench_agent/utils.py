@@ -789,8 +789,8 @@ def _display_results(collected_results: Dict[str, Any], params: argparse.Namespa
 
             if severity_counts['UNKNOWN'] > 0: print(f"  - Unknown:  {severity_counts['UNKNOWN']}")
 
-        print("\n=== Top Vulnerable Components ===")
         if vulnerabilities_data:
+            print("\n=== Top Vulnerable Components ===")
             components_vulns = {}
             # Group vulnerabilities by component:version
             for vuln in vulnerabilities_data:
@@ -825,7 +825,7 @@ def _display_results(collected_results: Dict[str, Any], params: argparse.Namespa
                 if len(sorted_vulns_list) > 5:
                     print(f"  ... and {len(sorted_vulns_list) - 5} more.")
         else:
-            print("Vulnerability data could not be fetched or was empty.")
+            print("No vulnerabilities found.")
         print("-" * 25)
 
     if not displayed_something:

@@ -55,7 +55,7 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
 
         print(f"\nEvaluating gates for scan '{scan_code}' (Project: '{project_code}')...")
 
-        # --- 1. Check Scan Completion Status ---
+        # --- 1. Check Scan and DA Completion Status ---
         print("\nEnsuring the Scan finished...")
         try:
              kb_status_data = workbench.get_scan_status("SCAN", scan_code)
@@ -94,7 +94,7 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
              if kb_status not in {"FINISHED", "FAILED", "CANCELLED"}:
                  print("Dependency Analysis has not finished. Waiting...")
                  workbench.wait_for_scan_to_finish(
-                     "SCAN", scan_code, params.scan_number_of_tries, params.scan_wait_time
+                     "DEPENDENCY_ANALYSIS", scan_code, params.scan_number_of_tries, params.scan_wait_time
                  )
                  print("Dependency Analysis finished.")
                  # Re-check status after waiting
@@ -102,7 +102,7 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
                  da_status = da_status_data.get("status", "UNKNOWN").upper()
 
              if da_status in {"FAILED", "CANCELLED"}:
-                  print(f"Error: Dependency Analysis {kb_status}. Cannot evaluate gates.")
+                  print(f"Error: Dependency Analysis {da_status}. Cannot evaluate gates.")
                   # If scan itself failed, the gates implicitly fail regardless of --fail-on
                   return False
 
