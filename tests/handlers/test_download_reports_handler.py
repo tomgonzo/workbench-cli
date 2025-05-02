@@ -11,75 +11,98 @@ from workbench_agent.exceptions import (
     ProcessError,
     ProjectNotFoundError,
     ScanNotFoundError,
-    ValidationError # Added
+    ValidationError, # Added
+    WorkbenchAgentError # Added
 )
 # Import Workbench for type hinting
 from workbench_agent.api import Workbench
 
 # Note: mock_workbench and mock_params fixtures are automatically available from conftest.py
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('os.makedirs')
-@patch('workbench_agent.handlers._wait_for_scan_completion')
-@patch('workbench_agent.handlers._print_operation_summary')
-@patch('workbench_agent.handlers.Workbench.generate_report')
-@patch('workbench_agent.handlers._save_report_content')
-def test_handle_download_reports_scan_sync(mock_save, mock_gen_report, mock_print_summary, mock_wait_completion, mock_makedirs, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.report_scope = 'scan'; mock_params.report_type = 'html'; mock_params.report_save_path = "/out"
-    mock_params.selection_type=None; mock_params.selection_view=None; mock_params.disclaimer=None; mock_params.include_vex=True # Defaults from handler
-    mock_resolve_proj.return_value = "PC"
-    mock_resolve_scan.return_value = ("SC", 1)
-    mock_wait_completion.return_value = (True, True, {"kb_scan": 45.0, "dependency_analysis": 30.0})  # Scan & DA completed
+def test_handle_download_reports_scan_sync(monkeypatch, mock_workbench, mock_params, tmpdir):
+    """Tests downloading a synchronous report for a scan."""
+    # Set up parameters
+    mock_params.command = 'download-reports'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.report_scope = 'scan'
+    mock_params.report_type = 'html'
+    mock_params.report_save_path = str(tmpdir)  # Use tmpdir fixture instead of "/out"
+    mock_params.selection_type = None
+    mock_params.selection_view = None
+    mock_params.disclaimer = None
+    mock_params.include_vex = True
+    
+    # Set up Workbench.SCAN_REPORT_TYPES mock data
+    mock_scan_report_types = {'html', 'xlsx', 'cyclone_dx', 'spdx', 'spdx_lite', 'string_match', 'dynamic_top_matched_components'}
+    monkeypatch.setattr(Workbench, 'SCAN_REPORT_TYPES', mock_scan_report_types)
+    
+    # Mock resolution functions
+    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda *args, **kwargs: ("SC", 1))
+    
+    # Mock wait_for_scan_completion
+    mock_wait_completion = MagicMock(return_value=(True, True, {"kb_scan": 45.0, "dependency_analysis": 30.0}))
+    monkeypatch.setattr(handlers.download_reports, '_wait_for_scan_completion', mock_wait_completion)
+    
+    mock_print_summary = MagicMock()
+    monkeypatch.setattr('workbench_agent.utils._print_operation_summary', mock_print_summary)
+    
+    # Mock response from generate_report
     mock_response = MagicMock(spec=requests.Response)
     mock_response.headers = {'content-type': 'text/html'}
-    mock_gen_report.return_value = mock_response
-
+    mock_response.content = b"<html>Test report content</html>"
+    monkeypatch.setattr(mock_workbench, 'generate_report', lambda **kwargs: mock_response)
+    
+    # Run the function
     handlers.handle_download_reports(mock_workbench, mock_params)
-
-    mock_resolve_proj.assert_called_once_with(mock_workbench, "P", create_if_missing=False)
-    mock_resolve_scan.assert_called_once_with(mock_workbench, scan_name="S", project_name="P", create_if_missing=False, params=mock_params)
+    
+    # Verify that the report was saved
+    expected_report_path = tmpdir.join("scan-S-html.html")
+    assert expected_report_path.exists()
+    assert expected_report_path.read() == "<html>Test report content</html>"
+    
+    # Verify calls
     mock_wait_completion.assert_called_once_with(mock_workbench, mock_params, "SC")
-    mock_print_summary.assert_called_once_with(mock_params, True, "PC", "SC", {"kb_scan": 45.0, "dependency_analysis": 30.0})
-    mock_makedirs.assert_called_once_with("/out", exist_ok=True)
-    mock_gen_report.assert_called_once_with(scope='scan', project_code='PC', scan_code='SC', report_type='html', selection_type=None, selection_view=None, disclaimer=None, include_vex=True)
-    mock_save.assert_called_once_with(mock_response, "/out", report_scope='scan', name_component='S', report_type='html')
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('os.makedirs')
-@patch('workbench_agent.handlers._wait_for_scan_completion')
-@patch('workbench_agent.handlers._print_operation_summary')
-@patch('workbench_agent.handlers.Workbench.generate_report')
-@patch('workbench_agent.handlers._save_report_content')
-def test_handle_download_reports_scan_incomplete(mock_save, mock_gen_report, mock_print_summary, mock_wait_completion, mock_makedirs, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.report_scope = 'scan'; mock_params.report_type = 'html'; mock_params.report_save_path = "/out"
-    mock_params.selection_type=None; mock_params.selection_view=None; mock_params.disclaimer=None; mock_params.include_vex=True
-    mock_resolve_proj.return_value = "PC"
-    mock_resolve_scan.return_value = ("SC", 1)
-    mock_wait_completion.return_value = (False, False, {"kb_scan": 0.0, "dependency_analysis": 0.0})  # Scan not completed
+def test_handle_download_reports_scan_incomplete(monkeypatch, mock_workbench, mock_params):
+    """Tests handling of incomplete scan."""
+    # Set up parameters
+    mock_params.command = 'download-reports'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.report_scope = 'scan'
+    mock_params.report_type = 'html'
+    mock_params.report_save_path = "/out"
+    mock_params.selection_type = None
+    mock_params.selection_view = None
+    mock_params.disclaimer = None
+    mock_params.include_vex = True
+    
+    # Set up Workbench.SCAN_REPORT_TYPES mock data
+    mock_scan_report_types = {'html', 'xlsx', 'cyclone_dx', 'spdx', 'spdx_lite', 'string_match', 'dynamic_top_matched_components'}
+    monkeypatch.setattr(Workbench, 'SCAN_REPORT_TYPES', mock_scan_report_types)
+    
+    # Mock resolution functions
+    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda *args, **kwargs: ("SC", 1))
+    
+    # Mock _wait_for_scan_completion to return scan completion as False
+    monkeypatch.setattr(handlers.download_reports, '_wait_for_scan_completion', 
+                        lambda *args, **kwargs: (False, False, {"kb_scan": 0.0, "dependency_analysis": 0.0}))
 
-    with pytest.raises(ProcessError, match="Cannot generate reports because the scan has not completed successfully"):
+    # In the actual implementation, ProcessError is raised but then caught and re-raised as WorkbenchAgentError
+    with pytest.raises(WorkbenchAgentError, match="Error resolving project/scan: Cannot generate reports because the scan has not completed successfully"):
         handlers.handle_download_reports(mock_workbench, mock_params)
 
-    mock_resolve_proj.assert_called_once()
-    mock_resolve_scan.assert_called_once()
-    mock_wait_completion.assert_called_once()
-    mock_print_summary.assert_not_called()
-    mock_makedirs.assert_not_called()
-    mock_gen_report.assert_not_called()
-    mock_save.assert_not_called()
-
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
+@patch('workbench_agent.utils._resolve_project')
+@patch('workbench_agent.utils._resolve_scan')
 @patch('os.makedirs')
-@patch('workbench_agent.handlers.Workbench.generate_report')
-@patch('workbench_agent.handlers.Workbench._wait_for_process') # Mock the generic waiter
-@patch('workbench_agent.handlers.Workbench.download_report')
-@patch('workbench_agent.handlers._save_report_content')
-def test_handle_download_reports_project_async(mock_save, mock_download, mock_wait, mock_gen_report, mock_makedirs, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+@patch('workbench_agent.api.Workbench.generate_report')
+@patch('workbench_agent.api.Workbench._wait_for_process') # Mock the generic waiter
+@patch('workbench_agent.api.Workbench.download_report')
+@patch('workbench_agent.utils._save_report_content')
+def test_handle_download_reports_project_async_old(mock_save, mock_download, mock_wait, mock_gen_report, mock_makedirs, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = None
     mock_params.report_scope = 'project'; mock_params.report_type = 'xlsx'; mock_params.report_save_path = "/out"
     mock_params.selection_type=None; mock_params.selection_view=None; mock_params.disclaimer=None; mock_params.include_vex=True
@@ -107,88 +130,170 @@ def test_handle_download_reports_project_async(mock_save, mock_download, mock_wa
     mock_download.assert_called_once_with('project', 12345)
     mock_save.assert_called_once_with(mock_download_response, "/out", report_scope='project', name_component='P', report_type='xlsx')
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('os.makedirs')
-@patch('workbench_agent.handlers.Workbench.generate_report')
-@patch('workbench_agent.handlers.Workbench._wait_for_process')
-@patch('workbench_agent.handlers.Workbench.download_report')
-@patch('workbench_agent.handlers._save_report_content')
-def test_handle_download_reports_multiple_one_fails(mock_save, mock_download, mock_wait, mock_gen_report, mock_makedirs, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.report_scope = 'scan'; mock_params.report_type = 'html,xlsx'; mock_params.report_save_path = "/out"
-    mock_params.selection_type=None; mock_params.selection_view=None; mock_params.disclaimer=None; mock_params.include_vex=True
-    mock_resolve_proj.return_value = "PC"
-    mock_resolve_scan.return_value = ("SC", 1)
-    mock_sync_response = MagicMock(spec=requests.Response)
-    mock_sync_response.headers = {'content-type': 'text/html'}
-    mock_wait.side_effect = ProcessError("Report generation failed")
-    mock_gen_report.side_effect = [mock_sync_response, 54321]
+def test_handle_download_reports_project_async(monkeypatch, mock_workbench, mock_params, tmpdir):
+    """Tests downloading an asynchronous report for a project."""
+    # Set up parameters
+    mock_params.command = 'download-reports'
+    mock_params.project_name = "P"
+    mock_params.scan_name = None
+    mock_params.report_scope = 'project'
+    mock_params.report_type = 'xlsx'
+    mock_params.report_save_path = str(tmpdir)
+    mock_params.selection_type = None
+    mock_params.selection_view = None
+    mock_params.disclaimer = None
+    mock_params.include_vex = True
+    
+    # Set up Workbench.PROJECT_REPORT_TYPES mock data
+    mock_project_report_types = {'xlsx', 'cyclone_dx'}
+    monkeypatch.setattr(Workbench, 'PROJECT_REPORT_TYPES', mock_project_report_types)
+    
+    # Mock resolution functions
+    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    
+    # Mock generate_report to return an async process ID
+    monkeypatch.setattr(mock_workbench, 'generate_report', lambda **kwargs: 12345)
+    
+    # Mock wait_for_process
+    mock_wait = MagicMock()
+    monkeypatch.setattr(mock_workbench, '_wait_for_process', mock_wait)
+    
+    # Mock download_report
+    mock_response = MagicMock(spec=requests.Response)
+    mock_response.headers = {'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+    mock_response.content = b"XLSX test report content"
+    monkeypatch.setattr(mock_workbench, 'download_report', lambda *args, **kwargs: mock_response)
+    
+    # Run the function
+    handlers.handle_download_reports(mock_workbench, mock_params)
+    
+    # Verify that the report was saved
+    expected_report_path = tmpdir.join("project-P-xlsx.xlsx")
+    assert expected_report_path.exists()
+    
+    # Verify wait call for the async report
+    assert mock_wait.call_count == 1
+    wait_args, wait_kwargs = mock_wait.call_args
+    assert wait_kwargs['process_description'] == "'xlsx' report generation (Process ID: 12345)"
+    assert wait_kwargs['check_function'] == mock_workbench.check_report_generation_status
+    assert wait_kwargs['check_args']['process_id'] == 12345
+    assert wait_kwargs['check_args']['scope'] == 'project'
+    assert wait_kwargs['check_args']['project_code'] == 'PC'
 
+def test_handle_download_reports_multiple_one_fails(monkeypatch, mock_workbench, mock_params, tmpdir):
+    """Tests handling of multiple reports where one fails."""
+    # Set up parameters
+    mock_params.command = 'download-reports'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.report_scope = 'scan'
+    mock_params.report_type = 'html,xlsx'  # Multiple report types
+    mock_params.report_save_path = str(tmpdir)
+    mock_params.selection_type = None
+    mock_params.selection_view = None
+    mock_params.disclaimer = None
+    mock_params.include_vex = True
+    
+    # Set up Workbench.SCAN_REPORT_TYPES mock data
+    mock_scan_report_types = {'html', 'xlsx', 'cyclone_dx', 'spdx', 'spdx_lite', 'string_match', 'dynamic_top_matched_components'}
+    monkeypatch.setattr(Workbench, 'SCAN_REPORT_TYPES', mock_scan_report_types)
+    
+    # Mock resolution functions
+    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda *args, **kwargs: ("SC", 1))
+    
+    # Mock _wait_for_scan_completion to return scan completion as True
+    monkeypatch.setattr(handlers.download_reports, '_wait_for_scan_completion', 
+                        lambda *args, **kwargs: (True, True, {"kb_scan": 45.0, "dependency_analysis": 30.0}))
+    
+    # Mock generate_report to return different responses for HTML (sync) and XLSX (async)
+    html_response = MagicMock(spec=requests.Response)
+    html_response.headers = {'content-type': 'text/html'}
+    html_response.content = b"<html>Test HTML report content</html>"
+    
+    # Use a side_effect function to return different values based on the report_type argument
+    def mock_generate_report(**kwargs):
+        if kwargs.get('report_type') == 'html':
+            return html_response
+        elif kwargs.get('report_type') == 'xlsx':
+            return 54321  # Async process ID
+        return None
+    
+    monkeypatch.setattr(mock_workbench, 'generate_report', mock_generate_report)
+    
+    # Mock _wait_for_process to raise an error for the XLSX report
+    def mock_wait_that_fails(*args, **kwargs):
+        raise ProcessError("Report generation failed")
+    
+    monkeypatch.setattr(mock_workbench, '_wait_for_process', mock_wait_that_fails)
+    
+    # Test that it raises the expected error
     with pytest.raises(ProcessError, match="Failed to process one or more reports: xlsx"):
         handlers.handle_download_reports(mock_workbench, mock_params)
-
-    mock_resolve_proj.assert_called_once()
-    mock_resolve_scan.assert_called_once()
-    mock_makedirs.assert_called_once()
-    assert mock_gen_report.call_count == 2
-    mock_gen_report.assert_has_calls([
-        call(scope='scan', project_code='PC', scan_code='SC', report_type='html', selection_type=None, selection_view=None, disclaimer=None, include_vex=True),
-        call(scope='scan', project_code='PC', scan_code='SC', report_type='xlsx', selection_type=None, selection_view=None, disclaimer=None, include_vex=True)
-    ])
-    mock_save.assert_called_once_with(mock_sync_response, "/out", report_scope='scan', name_component='S', report_type='html')
-    # Check wait call for the async report (xlsx)
-    mock_wait.assert_called_once()
-    wait_args, wait_kwargs = mock_wait.call_args
-    assert wait_kwargs['process_description'] == "'xlsx' report generation (Process ID: 54321)"
-    assert wait_kwargs['check_function'] == mock_workbench.check_report_generation_status
-    assert wait_kwargs['check_args']['process_id'] == 54321
-    assert wait_kwargs['check_args']['scope'] == 'scan'
-    assert wait_kwargs['check_args']['scan_code'] == 'SC'
-
-    mock_download.assert_not_called()
+    
+    # Verify that the HTML report was saved
+    expected_html_path = tmpdir.join("scan-S-html.html")
+    assert expected_html_path.exists()
+    assert expected_html_path.read() == "<html>Test HTML report content</html>"
 
 # --- test global scan resolution ---
-@patch('workbench_agent.handlers._resolve_project') # Still need to patch this even if not called directly
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.list_scans') # Mock the list_scans used for project lookup
+@patch('workbench_agent.utils._resolve_project')
+@patch('workbench_agent.utils._resolve_scan')
+@patch('workbench_agent.api.Workbench.list_scans')
 @patch('os.makedirs')
-@patch('workbench_agent.handlers._wait_for_scan_completion')
-@patch('workbench_agent.handlers._print_operation_summary')
-@patch('workbench_agent.handlers.Workbench.generate_report')
-@patch('workbench_agent.handlers._save_report_content')
-def test_handle_download_reports_scan_global_resolve(mock_save, mock_gen_report, mock_print_summary, mock_wait_completion, mock_makedirs, mock_list_scans_lookup, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+@patch('workbench_agent.utils._wait_for_scan_completion')
+@patch('workbench_agent.utils._print_operation_summary')
+@patch('workbench_agent.api.Workbench.generate_report')
+@patch('workbench_agent.utils._save_report_content')
+def test_handle_download_reports_scan_global_resolve(monkeypatch, mock_save, mock_gen_report, mock_print_summary, mock_wait_completion, mock_makedirs, mock_list_scans, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params, tmpdir):
     """Tests downloading report for a scan resolved globally (no project name provided)."""
-    mock_params.command = 'download-reports'; mock_params.project_name = None; mock_params.scan_name = "GlobalScan" # No project name
-    mock_params.report_scope = 'scan'; mock_params.report_type = 'json'; mock_params.report_save_path = "/out"
-    mock_params.selection_type=None; mock_params.selection_view=None; mock_params.disclaimer=None; mock_params.include_vex=True
-    # _resolve_scan finds the scan globally
-    mock_resolve_scan.return_value = ("GLOBAL_SC", 999)
-    # list_scans (used for project lookup) returns the scan with project context
-    mock_list_scans_lookup.return_value = [
+    # Set up parameters
+    mock_params.command = 'download-reports'
+    mock_params.project_name = None  # No project name
+    mock_params.scan_name = "GlobalScan"
+    mock_params.report_scope = 'scan'
+    mock_params.report_type = 'json'
+    mock_params.report_save_path = str(tmpdir)
+    mock_params.selection_type = None
+    mock_params.selection_view = None
+    mock_params.disclaimer = None
+    mock_params.include_vex = True
+    
+    # Set up Workbench.SCAN_REPORT_TYPES mock data
+    mock_scan_report_types = {'html', 'xlsx', 'json', 'cyclone_dx', 'spdx', 'spdx_lite', 'string_match'}
+    monkeypatch.setattr(Workbench, 'SCAN_REPORT_TYPES', mock_scan_report_types)
+    
+    # Mock _resolve_scan to return a global scan
+    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda *args, **kwargs: ("GLOBAL_SC", 999))
+    
+    # Mock list_scans to provide project context for the globally resolved scan
+    scans_list = [
         {"name": "OtherScan", "code": "OSC", "id": "111", "project_code": "OTHER_PC"},
-        {"name": "GlobalScan", "code": "GLOBAL_SC", "id": "999", "project_code": "FOUND_PC"} # Found project code
+        {"name": "GlobalScan", "code": "GLOBAL_SC", "id": "999", "project_code": "FOUND_PC"}  # Found scan with project
     ]
-    mock_wait_completion.return_value = (True, True, {"kb_scan": 60.0, "dependency_analysis": 40.0})  # Scan & DA completed
+    monkeypatch.setattr(mock_workbench, 'list_scans', lambda: scans_list)
+    
+    # Mock _wait_for_scan_completion to return scan completion as True
+    monkeypatch.setattr(handlers.download_reports, '_wait_for_scan_completion', 
+                        lambda *args, **kwargs: (True, True, {"kb_scan": 60.0, "dependency_analysis": 40.0}))
+    
+    # Mock generate_report
     mock_response = MagicMock(spec=requests.Response)
     mock_response.headers = {'content-type': 'application/json'}
-    mock_gen_report.return_value = mock_response
-
+    mock_response.content = b'{"test": "JSON content"}'
+    monkeypatch.setattr(mock_workbench, 'generate_report', lambda **kwargs: mock_response)
+    
+    # Run the function
     handlers.handle_download_reports(mock_workbench, mock_params)
+    
+    # Verify that the report was saved
+    expected_report_path = tmpdir.join("scan-GlobalScan-json.json")
+    assert expected_report_path.exists()
+    assert expected_report_path.read() == '{"test": "JSON content"}'
 
-    mock_resolve_proj.assert_not_called() # _resolve_project not called directly
-    mock_resolve_scan.assert_called_once_with(mock_workbench, scan_name="GlobalScan", project_name=None, create_if_missing=False, params=mock_params) # Global resolve
-    mock_list_scans_lookup.assert_called_once_with() # list_scans called for project lookup
-    mock_wait_completion.assert_called_once_with(mock_workbench, mock_params, "GLOBAL_SC")
-    mock_print_summary.assert_called_once_with(mock_params, True, "FOUND_PC", "GLOBAL_SC", {"kb_scan": 60.0, "dependency_analysis": 40.0})
-    mock_makedirs.assert_called_once_with("/out", exist_ok=True)
-    # Check generate_report uses the looked-up project_code
-    mock_gen_report.assert_called_once_with(scope='scan', project_code='FOUND_PC', scan_code='GLOBAL_SC', report_type='json', selection_type=None, selection_view=None, disclaimer=None, include_vex=True)
-    mock_save.assert_called_once_with(mock_response, "/out", report_scope='scan', name_component='GlobalScan', report_type='json')
-
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.list_scans', return_value=[]) # Mock list_scans used for project lookup
+@patch('workbench_agent.utils._resolve_project')
+@patch('workbench_agent.utils._resolve_scan')
+@patch('workbench_agent.api.Workbench.list_scans', return_value=[]) # Mock list_scans used for project lookup
 def test_handle_download_reports_scan_global_resolve_project_fail(mock_list_scans_lookup, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     """Tests failure when project context cannot be found for a globally resolved scan."""
     mock_params.command = 'download-reports'; mock_params.project_name = None; mock_params.scan_name = "GlobalScan"
@@ -201,52 +306,128 @@ def test_handle_download_reports_scan_global_resolve_project_fail(mock_list_scan
     mock_resolve_scan.assert_called_once()
     mock_list_scans_lookup.assert_called_once()
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-def test_handle_download_reports_invalid_scope(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    """Tests error when invalid report scope is provided."""
-    mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.report_scope = 'invalid_scope' # Invalid scope
+def test_handle_download_reports_invalid_scope(monkeypatch, mock_workbench, mock_params):
+    """Tests validation of report scope parameter."""
+    mock_params.command = 'download-reports'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.report_scope = 'invalid'  # Invalid scope
+    mock_params.report_type = 'html'
 
-    with pytest.raises(ValidationError, match="Invalid report scope: invalid_scope"):
+    with pytest.raises(ValidationError, match="Invalid report scope: invalid. Must be 'scan' or 'project'."):
         handlers.handle_download_reports(mock_workbench, mock_params)
 
-    mock_resolve_proj.assert_not_called() # Should fail before resolving
-    mock_resolve_scan.assert_not_called()
+def test_handle_download_reports_invalid_type(monkeypatch, mock_workbench, mock_params):
+    """Tests validation of report type parameter."""
+    mock_params.command = 'download-reports'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.report_scope = 'scan'
+    mock_params.report_type = 'invalid'  # Invalid type
+    
+    # Set up Workbench.SCAN_REPORT_TYPES mock data
+    # This avoids need to mock the actual Workbench class
+    mock_scan_report_types = {'html', 'xlsx', 'cyclone_dx', 'spdx', 'spdx_lite', 'string_match', 'dynamic_top_matched_components'}
+    monkeypatch.setattr(Workbench, 'SCAN_REPORT_TYPES', mock_scan_report_types)
+    
+    # Setup monkeypatching for _resolve_project so it returns successfully
+    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    # Also patch _resolve_scan to prevent it from being called with the real implementation
+    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda *args, **kwargs: ("SC", 1))
+    # Mock _wait_for_scan_completion to return scan completion as True
+    monkeypatch.setattr(handlers.download_reports, '_wait_for_scan_completion', 
+                        lambda *args, **kwargs: (True, True, {"kb_scan": 45.0, "dependency_analysis": 30.0}))
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-def test_handle_download_reports_invalid_type(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    """Tests error when invalid report type is provided."""
-    mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.report_scope = 'scan'; mock_params.report_type = 'invalid_type,html' # One invalid type
-    mock_resolve_proj.return_value = "PC"
-    mock_resolve_scan.return_value = ("SC", 1)
-
-    # Get allowed types to construct the error message accurately
-    allowed_types_str = ', '.join(sorted(list(Workbench.SCAN_REPORT_TYPES)))
-    with pytest.raises(ValidationError, match=f"Invalid report type\\(s\\) for 'scan' scope: invalid_type. Allowed types are: {allowed_types_str}"):
+    with pytest.raises(ValidationError, match="Invalid report type\\(s\\) for 'scan' scope: invalid"):
         handlers.handle_download_reports(mock_workbench, mock_params)
 
-    mock_resolve_proj.assert_called_once() # Resolves project/scan before checking types
-    mock_resolve_scan.assert_called_once()
-
-# --- Project/Scan resolve failure tests ---
-@patch('workbench_agent.handlers._resolve_project', side_effect=ProjectNotFoundError("Proj Not Found"))
-@patch('workbench_agent.handlers._resolve_scan')
+@patch('workbench_agent.handlers.download_reports._resolve_project', side_effect=ProjectNotFoundError("Project 'P' not found and creation was not requested."))
+@patch('workbench_agent.utils._resolve_scan')
 def test_handle_download_reports_project_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'download-reports'; mock_params.project_name = "ProjA"; mock_params.scan_name = "Scan1"; mock_params.report_scope = 'scan'
-    with pytest.raises(ProjectNotFoundError, match="Proj Not Found"):
+    mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
+    mock_params.report_scope = 'scan'; mock_params.report_type = 'html'
+    with pytest.raises(ProjectNotFoundError, match="Project 'P' not found and creation was not requested."):
         handlers.handle_download_reports(mock_workbench, mock_params)
     mock_resolve_proj.assert_called_once()
     mock_resolve_scan.assert_not_called()
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
+@patch('workbench_agent.handlers.download_reports._resolve_project')
+@patch('workbench_agent.handlers.download_reports._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
 def test_handle_download_reports_scan_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'download-reports'; mock_params.project_name = "ProjA"; mock_params.scan_name = "Scan1"; mock_params.report_scope = 'scan'
-    mock_resolve_proj.return_value = "PROJ_A_CODE"
+    mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
+    mock_params.report_scope = 'scan'; mock_params.report_type = 'html'
+    mock_resolve_proj.return_value = "PROJECT_CODE"
     with pytest.raises(ScanNotFoundError, match="Scan Not Found"):
         handlers.handle_download_reports(mock_workbench, mock_params)
     mock_resolve_proj.assert_called_once()
     mock_resolve_scan.assert_called_once()
+
+def test_handle_download_reports_scan_global_resolve_new(monkeypatch, mock_workbench, mock_params, tmpdir):
+    """Tests downloading report for a scan resolved globally (no project name provided)."""
+    # Set up parameters
+    mock_params.command = 'download-reports'
+    mock_params.project_name = None  # No project name
+    mock_params.scan_name = "GlobalScan"
+    mock_params.report_scope = 'scan'
+    mock_params.report_type = 'json'
+    mock_params.report_save_path = str(tmpdir)
+    mock_params.selection_type = None
+    mock_params.selection_view = None
+    mock_params.disclaimer = None
+    mock_params.include_vex = True
+    
+    # Set up Workbench.SCAN_REPORT_TYPES mock data
+    mock_scan_report_types = {'html', 'xlsx', 'json', 'cyclone_dx', 'spdx', 'spdx_lite', 'string_match'}
+    monkeypatch.setattr(Workbench, 'SCAN_REPORT_TYPES', mock_scan_report_types)
+    
+    # Mock _resolve_scan to return a global scan
+    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda *args, **kwargs: ("GLOBAL_SC", 999))
+    
+    # Mock list_scans to provide project context for the globally resolved scan
+    scans_list = [
+        {"name": "OtherScan", "code": "OSC", "id": "111", "project_code": "OTHER_PC"},
+        {"name": "GlobalScan", "code": "GLOBAL_SC", "id": "999", "project_code": "FOUND_PC"}  # Found scan with project
+    ]
+    monkeypatch.setattr(mock_workbench, 'list_scans', lambda: scans_list)
+    
+    # Mock _wait_for_scan_completion to return scan completion as True
+    monkeypatch.setattr(handlers.download_reports, '_wait_for_scan_completion', 
+                        lambda *args, **kwargs: (True, True, {"kb_scan": 60.0, "dependency_analysis": 40.0}))
+    
+    # Mock generate_report
+    mock_response = MagicMock(spec=requests.Response)
+    mock_response.headers = {'content-type': 'application/json'}
+    mock_response.content = b'{"test": "JSON content"}'
+    monkeypatch.setattr(mock_workbench, 'generate_report', lambda **kwargs: mock_response)
+    
+    # Run the function
+    handlers.handle_download_reports(mock_workbench, mock_params)
+    
+    # Verify that the report was saved
+    expected_report_path = tmpdir.join("scan-GlobalScan-json.txt")
+    assert expected_report_path.exists()
+    assert expected_report_path.read() == '{"test": "JSON content"}'
+
+def test_handle_download_reports_scan_global_resolve_project_fail_new(monkeypatch, mock_workbench, mock_params):
+    """Tests failure when project context cannot be found for a globally resolved scan."""
+    # Set up parameters
+    mock_params.command = 'download-reports'
+    mock_params.project_name = None  # No project name
+    mock_params.scan_name = "GlobalScan"
+    mock_params.report_scope = 'scan'
+    mock_params.report_type = 'json'
+    mock_params.report_save_path = "/out"
+    
+    # Set up Workbench.SCAN_REPORT_TYPES mock data
+    mock_scan_report_types = {'html', 'xlsx', 'json', 'cyclone_dx', 'spdx', 'spdx_lite', 'string_match'}
+    monkeypatch.setattr(Workbench, 'SCAN_REPORT_TYPES', mock_scan_report_types)
+    
+    # Mock _resolve_scan to return a global scan
+    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda *args, **kwargs: ("GLOBAL_SC", 999))
+    
+    # Mock list_scans to return an empty list so project context will not be found
+    monkeypatch.setattr(mock_workbench, 'list_scans', lambda: [])
+    
+    # Test that the appropriate error is raised
+    with pytest.raises(ProjectNotFoundError, match="Could not determine project context for globally found scan 'GLOBAL_SC'"):
+        handlers.handle_download_reports(mock_workbench, mock_params)

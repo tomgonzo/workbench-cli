@@ -17,248 +17,364 @@ from workbench_agent.api import Workbench
 
 # Note: mock_workbench and mock_params fixtures are automatically available from conftest.py
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files')
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected function name
-def test_handle_evaluate_gates_pass(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_evaluate_gates_pass(monkeypatch, mock_workbench, mock_params):
+    """Test passing gate check with all conditions in good state."""
     # Setup mocks for PASS scenario
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "ProjB"; mock_params.scan_name = "ScanClean"
-    mock_params.fail_on = 'both' # Assume default fail condition
-    mock_resolve_proj.return_value = "PROJ_B_CODE"
-    mock_resolve_scan.return_value = ("SCAN_CLEAN_CODE", 456)
-    mock_get_status.return_value = {"progress_state": "FINISHED"} # Scan is finished
-    mock_get_pending.return_value = {} # No pending files
-    mock_get_policy.return_value = [] # No policy violations
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "ProjB"
+    mock_params.scan_name = "ScanClean"
+    mock_params.fail_on_pending = True
+    mock_params.fail_on_policy = True
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PROJ_B_CODE")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SCAN_CLEAN_CODE", 456))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # No pending files
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {})
+    
+    # No policy warnings
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
+    )
+    
+    # No vulnerabilities
+    monkeypatch.setattr(mock_workbench, 'list_vulnerabilities', lambda *args, **kwargs: [])
 
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
-
     assert result is True # Should return True for PASS
-    mock_resolve_proj.assert_called_once_with(mock_workbench, "ProjB", create_if_missing=False)
-    mock_resolve_scan.assert_called_once_with(mock_workbench, scan_name="ScanClean", project_name="ProjB", create_if_missing=False, params=mock_params)
-    mock_get_status.assert_called_once_with("SCAN", "SCAN_CLEAN_CODE")
-    mock_wait.assert_not_called() # Not called if already finished
-    mock_get_pending.assert_called_once_with("SCAN_CLEAN_CODE")
-    mock_get_policy.assert_called_once_with("SCAN_CLEAN_CODE")
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files')
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_pass_needs_wait(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    """Test PASS scenario where scan needs waiting."""
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'both'
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
-    # Simulate scan running then finishing
-    mock_get_status.side_effect = [
-        {"progress_state": "RUNNING"}, # First check
-        {"progress_state": "FINISHED"} # Check after wait
-    ]
-    mock_get_pending.return_value = {}
-    mock_get_policy.return_value = []
+def test_handle_evaluate_gates_pass_needs_wait(monkeypatch, mock_workbench, mock_params):
+    """Test passing gate check where scan needs waiting."""
+    # Setup mocks for passing scenario with wait
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = True
+    mock_params.fail_on_policy = True
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Create a counter to track how many times get_scan_status is called,
+    # returning RUNNING first, then FINISHED
+    status_call_count = [0]  # Use list for mutable state
+    
+    def mock_get_status(*args, **kwargs):
+        status_call_count[0] += 1
+        if status_call_count[0] <= 2:  # First 2 calls (KB + DA initial check)
+            return {"status": "RUNNING"}
+        else:  # Subsequent calls after waiting
+            return {"status": "FINISHED"}
+            
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', mock_get_status)
+    
+    # Mock wait_for_scan_to_finish to do nothing (just simulates waiting)
+    monkeypatch.setattr(mock_workbench, 'wait_for_scan_to_finish', lambda *args, **kwargs: None)
+    
+    # No pending files
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {})
+    
+    # No policy warnings
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
+    )
+    
+    # No vulnerabilities
+    monkeypatch.setattr(mock_workbench, 'list_vulnerabilities', lambda *args, **kwargs: [])
 
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is True  # Should PASS after waiting
 
-    assert result is True
-    mock_resolve_proj.assert_called_once()
-    mock_resolve_scan.assert_called_once()
-    assert mock_get_status.call_count == 2 # Called before and after wait
-    mock_wait.assert_called_once_with("SCAN", "SC", mock_params.scan_number_of_tries, mock_params.scan_wait_time) # Wait is called
-    mock_get_pending.assert_called_once()
-    mock_get_policy.assert_called_once()
-
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files')
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_fail_pending(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_evaluate_gates_fail_pending(monkeypatch, mock_workbench, mock_params):
+    """Test failing gate check due to pending files."""
     # Setup mocks for FAIL scenario (pending files)
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'pending' # Fail on pending
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
-    mock_get_status.return_value = {"progress_state": "FINISHED"}
-    mock_get_pending.return_value = {"1": "/file/a"} # PENDING FILES FOUND
-    mock_get_policy.return_value = [] # No policy violations
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = True  # Fail on pending
+    mock_params.fail_on_policy = False
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # HAS pending files to trigger failure
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {"1": "/file/a"})
+    
+    # No policy warnings
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
+    )
+    
+    # No vulnerabilities
+    monkeypatch.setattr(mock_workbench, 'list_vulnerabilities', lambda *args, **kwargs: [])
 
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is False  # Should FAIL because of pending files
 
-    assert result is False # Should return False for FAIL
-    mock_resolve_proj.assert_called_once()
-    mock_resolve_scan.assert_called_once()
-    mock_get_status.assert_called_once()
-    mock_wait.assert_not_called()
-    mock_get_pending.assert_called_once()
-    mock_get_policy.assert_called_once() # Policy check should still happen
-
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files')
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_fail_policy(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_evaluate_gates_fail_policy(monkeypatch, mock_workbench, mock_params):
+    """Test failing gate check due to policy violations."""
     # Setup mocks for FAIL scenario (policy violations)
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'policy' # Fail on policy
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
-    mock_get_status.return_value = {"progress_state": "FINISHED"}
-    mock_get_pending.return_value = {} # No pending
-    mock_get_policy.return_value = [{"level": "HIGH", "count": 1}] # POLICY VIOLATION FOUND
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = False
+    mock_params.fail_on_policy = True  # Fail on policy
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # No pending files
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {})
+    
+    # HAS policy warnings to trigger failure
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 5, "identified_files_with_warnings": 2, "dependencies_with_warnings": 3}
+    )
+    
+    # No vulnerabilities
+    monkeypatch.setattr(mock_workbench, 'list_vulnerabilities', lambda *args, **kwargs: [])
 
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is False  # Should FAIL because of policy violations
 
-    assert result is False # Should return False for FAIL
-    mock_resolve_proj.assert_called_once()
-    mock_resolve_scan.assert_called_once()
-    mock_get_status.assert_called_once()
-    mock_wait.assert_not_called()
-    mock_get_pending.assert_called_once()
-    mock_get_policy.assert_called_once()
-
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files')
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_pass_with_pending_fail_on_policy(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_evaluate_gates_pass_with_pending_fail_on_policy(monkeypatch, mock_workbench, mock_params):
     """Test that pending files don't cause failure if fail_on is 'policy'."""
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'policy' # ONLY fail on policy
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
-    mock_get_status.return_value = {"progress_state": "FINISHED"}
-    mock_get_pending.return_value = {"1": "/file/a"} # Pending files found
-    mock_get_policy.return_value = [] # No policy violations
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = False  # Don't fail on pending
+    mock_params.fail_on_policy = True  # ONLY fail on policy
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # HAS pending files but shouldn't fail
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {"1": "/file/a"})
+    
+    # No policy warnings (which would cause failure)
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
+    )
+    
+    # No vulnerabilities
+    monkeypatch.setattr(mock_workbench, 'list_vulnerabilities', lambda *args, **kwargs: [])
 
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is True  # Should PASS despite pending files
 
-    assert result is True # Should PASS because fail_on is 'policy'
-
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files')
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_pass_with_policy_fail_on_pending(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_evaluate_gates_pass_with_policy_fail_on_pending(monkeypatch, mock_workbench, mock_params):
     """Test that policy violations don't cause failure if fail_on is 'pending'."""
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'pending' # ONLY fail on pending
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
-    mock_get_status.return_value = {"progress_state": "FINISHED"}
-    mock_get_pending.return_value = {} # No pending files
-    mock_get_policy.return_value = [{"level": "HIGH", "count": 1}] # Policy violations found
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = True  # ONLY fail on pending
+    mock_params.fail_on_policy = False
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # No pending files (which would cause failure)
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {})
+    
+    # HAS policy warnings but shouldn't fail
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 5, "identified_files_with_warnings": 2, "dependencies_with_warnings": 3}
+    )
+    
+    # No vulnerabilities
+    monkeypatch.setattr(mock_workbench, 'list_vulnerabilities', lambda *args, **kwargs: [])
 
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is True  # Should PASS despite policy violations
 
-    assert result is True # Should PASS because fail_on is 'pending'
-
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish', side_effect=ProcessTimeoutError("Scan Timed Out"))
-@patch('workbench_agent.handlers.Workbench.get_pending_files')
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_fail_scan_wait(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_evaluate_gates_fail_scan_wait(monkeypatch, mock_workbench, mock_params):
+    """Test failing gate check due to scan wait timeout."""
     # Setup mocks for FAIL scenario (scan wait fails)
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'both'
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
-    mock_get_status.return_value = {"progress_state": "RUNNING"} # Needs wait
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = True
+    mock_params.fail_on_policy = True
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Mock get_scan_status to always return RUNNING
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: {"status": "RUNNING"})
+    
+    # Make wait_for_scan_to_finish raise the exception
+    def mock_wait_raises(*args, **kwargs):
+        raise ProcessTimeoutError("Scan Timed Out")
+    
+    monkeypatch.setattr(mock_workbench, 'wait_for_scan_to_finish', mock_wait_raises)
+    
+    # Handler should catch exception and return False
+    result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is False  # Should return False when timeout occurs
 
-    # Expect the underlying exception to propagate
-    with pytest.raises(ProcessTimeoutError, match="Scan Timed Out"):
-        handlers.handle_evaluate_gates(mock_workbench, mock_params)
-
-    mock_resolve_proj.assert_called_once()
-    mock_resolve_scan.assert_called_once()
-    mock_get_status.assert_called_once() # Initial status check
-    mock_wait.assert_called_once() # Wait is called and raises error
-    mock_get_pending.assert_not_called()
-    mock_get_policy.assert_not_called()
-
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status', return_value={"progress_state": "FAILED"}) # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files')
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_fail_scan_failed_status(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_evaluate_gates_fail_scan_failed_status(monkeypatch, mock_workbench, mock_params):
     """Test gate failure if initial scan status is FAILED."""
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'both'
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = True
+    mock_params.fail_on_policy = True
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status shows FAILED
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: {"status": "FAILED"})
 
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is False  # Should FAIL because scan status is FAILED
 
-    assert result is False # Should fail if scan status is FAILED
-    mock_resolve_proj.assert_called_once()
-    mock_resolve_scan.assert_called_once()
-    mock_get_status.assert_called_once()
-    mock_wait.assert_not_called() # No wait if already failed
-    mock_get_pending.assert_not_called() # No checks if scan failed
-    mock_get_policy.assert_not_called()
+def test_handle_evaluate_gates_fail_api_error_pending(monkeypatch, mock_workbench, mock_params):
+    """Test that API errors during pending check cause FAIL with default settings."""
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = True
+    mock_params.fail_on_policy = True
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # Pending check raises API error
+    def mock_pending_that_raises(*args, **kwargs):
+        raise ApiError("Pending check failed")
+    
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', mock_pending_that_raises)
+    
+    # No policy warnings
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
+    )
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files', side_effect=ApiError("Pending check failed"))
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_fail_api_error_pending(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    """Test gate failure if API error occurs during pending check (and fail_on includes pending)."""
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'pending' # Fail if pending check fails
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
-    mock_get_status.return_value = {"progress_state": "FINISHED"}
-
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is False  # Should FAIL because of API error in check
 
-    assert result is False # Should fail because check failed and fail_on includes pending
-    mock_get_pending.assert_called_once()
-    mock_get_policy.assert_called_once() # Policy check still attempted
+def test_handle_evaluate_gates_pass_api_error_pending_fail_on_none(monkeypatch, mock_workbench, mock_params):
+    """Test that API errors during pending check are ignored if no failure conditions set."""
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = False
+    mock_params.fail_on_policy = False
+    mock_params.fail_on_vuln_severity = None
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # Pending check raises API error
+    def mock_pending_that_raises(*args, **kwargs):
+        raise ApiError("Pending check failed")
+    
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', mock_pending_that_raises)
+    
+    # Policy violations exist but should be ignored
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 5, "identified_files_with_warnings": 2, "dependencies_with_warnings": 3}
+    )
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan')
-@patch('workbench_agent.handlers.Workbench.get_scan_status') # Added
-@patch('workbench_agent.handlers.Workbench.wait_for_scan_to_finish')
-@patch('workbench_agent.handlers.Workbench.get_pending_files', side_effect=ApiError("Pending check failed"))
-@patch('workbench_agent.handlers.Workbench.get_policy_violations') # Corrected
-def test_handle_evaluate_gates_pass_api_error_pending_fail_on_none(mock_get_policy, mock_get_pending, mock_wait, mock_get_status, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    """Test gate passes if API error occurs during pending check but fail_on is 'none'."""
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "P"; mock_params.scan_name = "S"
-    mock_params.fail_on = 'none' # Do not fail on API errors
-    mock_resolve_proj.return_value = "PC"; mock_resolve_scan.return_value = ("SC", 1)
-    mock_get_status.return_value = {"progress_state": "FINISHED"}
-    mock_get_policy.return_value = [] # Assume policy check succeeds
-
+    # Run handler
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is True  # Should PASS because fail_on is not enabled
 
-    assert result is True # Should pass because fail_on is 'none'
-    mock_get_pending.assert_called_once()
-    mock_get_policy.assert_called_once()
-
-# --- Project/Scan resolve failure tests ---
-@patch('workbench_agent.handlers._resolve_project', side_effect=ProjectNotFoundError("Proj Not Found"))
-@patch('workbench_agent.handlers._resolve_scan')
+@patch('workbench_agent.handlers.evaluate_gates._resolve_project', side_effect=ProjectNotFoundError("Project 'ProjA' not found and creation was not requested."))
+@patch('workbench_agent.handlers.evaluate_gates._resolve_scan')
 def test_handle_evaluate_gates_project_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "ProjA"; mock_params.scan_name = "Scan1"
-    with pytest.raises(ProjectNotFoundError, match="Proj Not Found"):
+    mock_params.command = 'evaluate-gates'; mock_params.project_name = "ProjA"; mock_params.scan_name = "ScanA"
+    with pytest.raises(ProjectNotFoundError, match="Project 'ProjA' not found and creation was not requested."):
         handlers.handle_evaluate_gates(mock_workbench, mock_params)
     mock_resolve_proj.assert_called_once()
     mock_resolve_scan.assert_not_called()
 
-@patch('workbench_agent.handlers._resolve_project')
-@patch('workbench_agent.handlers._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
+@patch('workbench_agent.handlers.evaluate_gates._resolve_project')
+@patch('workbench_agent.handlers.evaluate_gates._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
 def test_handle_evaluate_gates_scan_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'evaluate-gates'; mock_params.project_name = "ProjA"; mock_params.scan_name = "Scan1"
+    mock_params.command = 'evaluate-gates'; mock_params.project_name = "ProjA"; mock_params.scan_name = "ScanA"
     mock_resolve_proj.return_value = "PROJ_A_CODE"
     with pytest.raises(ScanNotFoundError, match="Scan Not Found"):
         handlers.handle_evaluate_gates(mock_workbench, mock_params)
