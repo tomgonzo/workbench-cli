@@ -9,52 +9,123 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  run_tests:
-    # Run on Ubuntu latest
+  handler_tests:
+    name: Handler Tests
     runs-on: ubuntu-latest
     strategy:
-      # Run tests on multiple Python versions for compatibility checks
       matrix:
-        python-version: ['3.9', '3.10', '3.11'] # Match versions in pyproject.toml classifiers
-
+        python-version: ['3.9', '3.10', '3.11']
     steps:
-      # 1. Check out the repository code
       - name: Checkout code
-        uses: actions/checkout@v4 # Use a recent version
-
-      # 2. Set up the specific Python version for this job matrix entry
+        uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      # 3. Install dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install . pytest pytest-xdist
-
-      # 4. Run tests by category for more granular reporting
       - name: Run handler tests
         run: pytest tests/handlers/ -v
-        continue-on-error: true
 
+  utils_tests:
+    name: Utils Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pytest pytest-xdist
       - name: Run utils tests
         run: pytest tests/test_utils.py -v
-        continue-on-error: true
 
+  api_tests:
+    name: API Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pytest pytest-xdist
       - name: Run API tests
         run: pytest tests/test_workbench.py -v
-        continue-on-error: true
 
+  cli_tests:
+    name: CLI Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pytest pytest-xdist
       - name: Run CLI tests
         run: pytest tests/test_cli.py -v
-        continue-on-error: true
 
+  integration_tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pytest pytest-xdist
       - name: Run integration tests
         run: pytest tests/integration/ -v
-        continue-on-error: true
 
-      # 5. Run all tests to get overall status
+  all_tests:
+    name: All Tests
+    runs-on: ubuntu-latest
+    needs: [handler_tests, utils_tests, api_tests, cli_tests, integration_tests]
+    strategy:
+      matrix:
+        python-version: ['3.9']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pytest pytest-xdist
       - name: Run all tests
         run: pytest -v
