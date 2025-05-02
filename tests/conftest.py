@@ -1,9 +1,47 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch, Mock, call
 import argparse
 
 # Import dependencies needed for fixtures
 from workbench_agent.api import Workbench
+
+# Add a fallback mocker fixture for environments where pytest-mock is not installed
+try:
+    import pytest_mock
+except ImportError:
+    @pytest.fixture
+    def mocker():
+        """Provides a simple mock factory when pytest-mock is not available."""
+        class SimpleMocker:
+            def MagicMock(self, *args, **kwargs):
+                return MagicMock(*args, **kwargs)
+            
+            def Mock(self, *args, **kwargs):
+                return Mock(*args, **kwargs)
+                
+            def patch(self, *args, **kwargs):
+                return patch(*args, **kwargs)
+                
+            def spy(self, obj, name):
+                original = getattr(obj, name)
+                mock = MagicMock(wraps=original)
+                setattr(obj, name, mock)
+                return mock
+                
+            def patch_object(self, target, attribute, *args, **kwargs):
+                return patch.object(target, attribute, *args, **kwargs)
+                
+            def patch_multiple(self, target, **kwargs):
+                return patch.multiple(target, **kwargs)
+                
+            def call(self, *args, **kwargs):
+                return call(*args, **kwargs)
+                
+            def ANY(self):
+                from unittest.mock import ANY
+                return ANY
+        
+        return SimpleMocker()
 
 # Fixture for mock Workbench instance
 @pytest.fixture
