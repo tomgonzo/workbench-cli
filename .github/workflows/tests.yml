@@ -32,9 +32,29 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install . pytest
+          pip install . pytest pytest-xdist
 
-      # 4. Run tests using pytest
-      - name: Run tests with pytest
-        run: |
-          pytest -v
+      # 4. Run tests by category for more granular reporting
+      - name: Run handler tests
+        run: pytest tests/handlers/ -v
+        continue-on-error: true
+
+      - name: Run utils tests
+        run: pytest tests/test_utils.py -v
+        continue-on-error: true
+
+      - name: Run API tests
+        run: pytest tests/test_workbench.py -v
+        continue-on-error: true
+
+      - name: Run CLI tests
+        run: pytest tests/test_cli.py -v
+        continue-on-error: true
+
+      - name: Run integration tests
+        run: pytest tests/integration/ -v
+        continue-on-error: true
+
+      # 5. Run all tests to get overall status
+      - name: Run all tests
+        run: pytest -v
