@@ -375,3 +375,137 @@ def test_main_evaluate_gates_fail_returns_1(mock_parse, mock_wb, mock_handle_gat
     result = main()
     assert result == 1
 
+# Test ID reuse parameters
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'project', '--id-reuse-source', 'ReusePrj'])
+@patch('os.path.exists', return_value=True)
+def test_parse_id_reuse_project(mock_exists):
+    args = parse_cmdline_args()
+    assert args.id_reuse is True
+    assert args.id_reuse_type == 'project'
+    assert args.id_reuse_source == 'ReusePrj'
+
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'scan', '--id-reuse-source', 'ReuseScan'])
+@patch('os.path.exists', return_value=True)
+def test_parse_id_reuse_scan(mock_exists):
+    args = parse_cmdline_args()
+    assert args.id_reuse is True
+    assert args.id_reuse_type == 'scan'
+    assert args.id_reuse_source == 'ReuseScan'
+
+# Test behavior when id-reuse-source is provided with id-reuse-type that doesn't need it
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'any', '--id-reuse-source', 'UnneededSource'])
+@patch('os.path.exists', return_value=True)
+def test_parse_id_reuse_source_ignored(mock_exists):
+    # The warning is logged directly in parse_cmdline_args, not through the logger mock
+    # We can only check the result of the parsing
+    args = parse_cmdline_args()
+    assert args.id_reuse is True
+    assert args.id_reuse_type == 'any' 
+    assert args.id_reuse_source is None  # Source should be ignored for 'any' type
+
+# Test help text formatting 
+@patch('sys.argv', ['workbench-agent', '--help'])
+@patch('argparse.ArgumentParser.print_help')
+@patch('sys.exit')
+def test_help_text_formatting(mock_exit, mock_print_help):
+    import argparse
+    from workbench_agent.cli import add_common_scan_options
+    
+    # Create a parser to test the help text formatting
+    parser = argparse.ArgumentParser()
+    subparser = parser.add_subparsers()
+    test_parser = subparser.add_parser('test')
+    
+    # Apply our add_common_scan_options to it
+    add_common_scan_options(test_parser)
+    
+    # Get help text for id-reuse-type
+    for action in test_parser._action_groups:
+        for act in action._actions:
+            if act.dest == 'id_reuse_type':
+                help_text = act.help
+                assert "use any existing identification" in help_text
+                assert "reuse identifications from" in help_text
+    
+    # Force the original parse call to exit to not interfere with test
+    mock_exit.side_effect = SystemExit
+    with pytest.raises(SystemExit):
+        parse_cmdline_args()
+
+# --- Test Handler Return Types ---
+@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"])
+@patch("workbench_agent.handlers.handle_scan", return_value=True)  # Return True for success
+@patch("workbench_agent.api.Workbench")
+@patch("workbench_agent.main.parse_cmdline_args")
+def test_main_with_scan_handler_return_true(mock_parse, mock_wb, mock_handle_scan):
+    mock_args = MagicMock(command="scan", log="INFO")
+    mock_parse.return_value = mock_args
+    
+    # Run main
+    result = main()
+    assert result == 0  # Should return 0 (success) when handler returns True
+    mock_handle_scan.assert_called_once()
+
+@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"])
+@patch("workbench_agent.handlers.handle_scan", return_value=False)  # Return False for failure
+@patch("workbench_agent.api.Workbench")
+@patch("workbench_agent.main.parse_cmdline_args")
+def test_main_with_scan_handler_return_false(mock_parse, mock_wb, mock_handle_scan):
+    mock_args = MagicMock(command="scan", log="INFO")
+    mock_parse.return_value = mock_args
+    
+    # Run main
+    result = main()
+    # For non-evaluate-gates commands, the boolean return value isn't used for exit code
+    # It should still be 0 since no exception occurred
+    assert result == 0
+    mock_handle_scan.assert_called_once()
+
+@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "show-results"])
+@patch("workbench_agent.handlers.handle_show_results", return_value=True)
+@patch("workbench_agent.api.Workbench")
+@patch("workbench_agent.main.parse_cmdline_args")
+def test_main_with_show_results_handler_return_true(mock_parse, mock_wb, mock_handle):
+    mock_args = MagicMock(command="show-results", log="INFO")
+    mock_parse.return_value = mock_args
+    
+    result = main()
+    assert result == 0
+    mock_handle.assert_called_once()
+
+@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "import-da"])
+@patch("workbench_agent.handlers.handle_import_da", return_value=True)
+@patch("workbench_agent.api.Workbench")
+@patch("workbench_agent.main.parse_cmdline_args")
+def test_main_with_import_da_handler_return_true(mock_parse, mock_wb, mock_handle):
+    mock_args = MagicMock(command="import-da", log="INFO")
+    mock_parse.return_value = mock_args
+    
+    result = main()
+    assert result == 0
+    mock_handle.assert_called_once()
+
+@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "download-reports"])
+@patch("workbench_agent.handlers.handle_download_reports", return_value=True)
+@patch("workbench_agent.api.Workbench")
+@patch("workbench_agent.main.parse_cmdline_args")
+def test_main_with_download_reports_handler_return_true(mock_parse, mock_wb, mock_handle):
+    mock_args = MagicMock(command="download-reports", log="INFO")
+    mock_parse.return_value = mock_args
+    
+    result = main()
+    assert result == 0
+    mock_handle.assert_called_once()
+
+@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan-git"])
+@patch("workbench_agent.handlers.handle_scan_git", return_value=True)
+@patch("workbench_agent.api.Workbench")
+@patch("workbench_agent.main.parse_cmdline_args")
+def test_main_with_scan_git_handler_return_true(mock_parse, mock_wb, mock_handle):
+    mock_args = MagicMock(command="scan-git", log="INFO")
+    mock_parse.return_value = mock_args
+    
+    result = main()
+    assert result == 0
+    mock_handle.assert_called_once()
+

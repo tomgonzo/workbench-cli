@@ -523,40 +523,40 @@ class Workbench:
         if git_tag:
             git_ref_value = git_tag
             git_ref_type = "tag"
-            logger.info(f"  Including Git Tag: {git_tag}")
+            logger.debug(f"  Including Git Tag: {git_tag}")
         elif git_branch:
             git_ref_value = git_branch
             git_ref_type = "branch"
-            logger.info(f"  Including Git Branch: {git_branch}")
+            logger.debug(f"  Including Git Branch: {git_branch}")
         elif git_commit:
             git_ref_value = git_commit
             git_ref_type = "commit"
-            logger.info(f"  Including Git Commit: {git_commit}")
+            logger.debug(f"  Including Git Commit: {git_commit}")
         # If neither branch, tag, or commit are provided but git_url is, API might default,
         # but our argparse setup requires one of the three for scan-git.
         
         if git_url:
             # Include Git parameters only if a Git URL is provided
             payload_data["git_repo_url"] = git_url
-            logger.info(f"  Including Git URL: {git_url}")
+            logger.debug(f"  Including Git URL: {git_url}")
             if git_ref_value:
                 # API uses 'git_branch' field for BOTH branch and tag values
                 payload_data["git_branch"] = git_ref_value
                 if git_ref_type:
                     # Explicit ref_type helps Workbench know if it's a branch or tag
                     payload_data["git_ref_type"] = git_ref_type
-                    logger.info(f"  Setting Git Ref Type to: {git_ref_type}")
+                    logger.debug(f"  Setting Git Ref Type to: {git_ref_type}")
                 if git_depth is not None:
                     # Only include depth if a positive number is provided
                     payload_data["git_depth"] = str(git_depth)
-                    logger.info(f"  Setting Git Clone Depth to: {git_depth}")
+                    logger.debug(f"  Setting Git Clone Depth to: {git_depth}")
             elif git_depth is not None:
                 # If depth is provided but no ref type, we need to set a default
                 if not git_ref_type:
                     logger.warning("Git depth specified, but no branch or tag provided. Setting ref type to 'branch' as a default.")
                     payload_data["git_ref_type"] = "branch"
                 payload_data["git_depth"] = str(git_depth)
-                logger.info(f"  Setting Git Clone Depth to: {git_depth}")
+                logger.debug(f"  Setting Git Clone Depth to: {git_depth}")
         
         payload = {
             "group": "scans",
@@ -1435,6 +1435,7 @@ class Workbench:
     def list_vulnerabilities(self, scan_code: str) -> List[Dict[str, Any]]:
         """
         Retrieves the list of vulnerabilities associated with a scan.
+        Handles pagination automatically to fetch all vulnerabilities.
 
         Args:
             scan_code: Code of the scan to get vulnerabilities for.
@@ -1448,31 +1449,76 @@ class Workbench:
             NetworkError: If there are network issues.
         """
         logger.debug(f"Fetching vulnerabilities for scan '{scan_code}'...")
-        payload = {
+        
+        # Step 1: Get the total count of vulnerabilities
+        count_payload = {
             "group": "vulnerabilities",
             "action": "list_vulnerabilities",
-            "data": {"scan_code": scan_code}
+            "data": {
+                "scan_code": scan_code,
+                "count_results": 1
+            }
         }
-        response = self._send_request(payload)
-
-        if response.get("status") == "1":
-            data = response.get("data")
-            # Case 1: Expected structure with vulnerabilities
+        count_response = self._send_request(count_payload)
+        
+        if count_response.get("status") != "1":
+            error_msg = count_response.get("error", f"Unexpected response format or status: {count_response}")
+            raise ApiError(f"Failed to get vulnerability count for scan '{scan_code}': {error_msg}", details=count_response)
+        
+        # Get the total count from the response
+        total_count = 0
+        if (isinstance(count_response.get("data"), dict) and 
+            "count_results" in count_response["data"]):
+            total_count = int(count_response["data"]["count_results"])
+            
+        logger.debug(f"Found {total_count} total vulnerabilities for scan '{scan_code}'")
+        
+        # If no vulnerabilities, return an empty list
+        if total_count == 0:
+            return []
+            
+        # Step 2: Calculate number of pages needed (default records_per_page is 100)
+        records_per_page = 100
+        total_pages = (total_count + records_per_page - 1) // records_per_page  # Ceiling division
+        
+        # Step 3: Fetch all pages and combine results
+        all_vulnerabilities = []
+        
+        for page in range(1, total_pages + 1):
+            logger.debug(f"Fetching vulnerabilities page {page}/{total_pages} for scan '{scan_code}'")
+            
+            page_payload = {
+                "group": "vulnerabilities",
+                "action": "list_vulnerabilities",
+                "data": {
+                    "scan_code": scan_code,
+                    "page": page
+                }
+            }
+            page_response = self._send_request(page_payload)
+            
+            if page_response.get("status") != "1":
+                error_msg = page_response.get("error", f"Unexpected response format or status: {page_response}")
+                raise ApiError(f"Failed to fetch vulnerabilities page {page} for scan '{scan_code}': {error_msg}", 
+                              details=page_response)
+            
+            data = page_response.get("data")
+            # Process the page results
             if isinstance(data, dict) and "list" in data:
                 vuln_list = data["list"]
                 if isinstance(vuln_list, list):
-                    logger.debug(f"Successfully fetched {len(vuln_list)} vulnerabilities for scan '{scan_code}'.")
-                    return vuln_list
-            # Case 2: API indicates success but no vulnerabilities found (e.g., data is empty list or dict without 'list')
-            elif response.get("message") == "No vulnerabilities found." or data == []:
-                 logger.info(f"No vulnerabilities found for scan '{scan_code}' (API message or empty data).")
-                 return []
-            # Case 3: Status 1 but unexpected data format
-            logger.warning(f"Vulnerabilities API returned status 1 but unexpected data format for scan '{scan_code}': {data}")
-            raise ApiError(f"Unexpected data format received for vulnerabilities: {data}", details=response)
-        else:
-            error_msg = response.get("error", f"Unexpected response format or status: {response}")
-            raise ApiError(f"Failed to list vulnerabilities for scan '{scan_code}': {error_msg}", details=response)
+                    all_vulnerabilities.extend(vuln_list)
+                    logger.debug(f"Added {len(vuln_list)} vulnerabilities from page {page}")
+                else:
+                    logger.warning(f"Unexpected vulnerability list format on page {page}: {vuln_list}")
+            elif not data or (isinstance(data, dict) and not data):
+                # Empty page - this is unexpected but we'll continue
+                logger.warning(f"Empty data received for vulnerabilities page {page}")
+            else:
+                logger.warning(f"Unexpected data format for vulnerabilities page {page}: {data}")
+        
+        logger.debug(f"Successfully fetched all {len(all_vulnerabilities)} vulnerabilities for scan '{scan_code}'")
+        return all_vulnerabilities
 
 # Reporting
     def generate_report(

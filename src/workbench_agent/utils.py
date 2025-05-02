@@ -8,7 +8,8 @@ import argparse
 import re
 import requests
 import typing 
-from typing import Generator, Optional, Dict, Any, List, Union, Tuple
+import functools
+from typing import Generator, Optional, Dict, Any, List, Union, Tuple, Callable
 
 # Import Workbench class for type hinting and accessing constants/methods if needed
 # Use relative import within the package
@@ -36,6 +37,56 @@ from .exceptions import (
 
 # Assume logger is configured in main.py and get it
 logger = logging.getLogger("log")
+
+# --- Handler Error Wrapper ---
+def handler_error_wrapper(handler_func: Callable) -> Callable:
+    """
+    A decorator that wraps handler functions with standardized error handling.
+    
+    This wrapper ensures consistent error handling across all handlers, reducing
+    code duplication and ensuring all exceptions are properly logged and handled.
+    
+    Args:
+        handler_func: The handler function to wrap
+        
+    Returns:
+        The wrapped handler function with error handling
+    
+    Example:
+        @handler_error_wrapper
+        def handle_scan(workbench, params):
+            # Implementation without try/except blocks
+            ...
+    """
+    @functools.wraps(handler_func)
+    def wrapper(workbench, params):
+        try:
+            # Get the handler name for better error messages
+            handler_name = handler_func.__name__
+            command_name = params.command if hasattr(params, 'command') else 'unknown'
+            logger.debug(f"Starting {handler_name} for command '{command_name}'")
+            
+            # Call the actual handler function
+            return handler_func(workbench, params)
+            
+        except (ProjectNotFoundError, ScanNotFoundError, FileSystemError, 
+                ApiError, NetworkError, ProcessError, ProcessTimeoutError, 
+                ValidationError, CompatibilityError, ConfigurationError, 
+                AuthenticationError) as e:
+            # These exceptions are expected and properly formatted already
+            # They will be caught and handled by the main.py error handler
+            logger.debug(f"Expected error in {handler_func.__name__}: {type(e).__name__}: {getattr(e, 'message', str(e))}")
+            raise
+            
+        except Exception as e:
+            # Unexpected errors get wrapped in a WorkbenchAgentError
+            logger.error(f"Unexpected error in {handler_func.__name__}: {e}", exc_info=True)
+            raise WorkbenchAgentError(
+                f"Failed to execute {params.command if hasattr(params, 'command') else 'command'}: {str(e)}",
+                details={"error": str(e), "handler": handler_func.__name__}
+            )
+            
+    return wrapper
 
 # --- Project and Scan Resolution ---
 def _resolve_project(workbench: 'Workbench', project_name: str, create_if_missing: bool = False) -> str:
@@ -109,7 +160,7 @@ def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional
     search_context = ""
 
     if project_name:
-        search_context = f"in the '{project_name} project'"
+        search_context = f"in the '{project_name}' project"
         logger.debug(f"Looking for a scan called '{scan_name}' in the '{project_name}' project. (Create if missing: {create_if_missing})...")
         project_code = _resolve_project(workbench, project_name, create_if_missing=create_if_missing)
         try:
@@ -305,6 +356,103 @@ def _ensure_scan_compatibility(params: argparse.Namespace, existing_scan_info: D
         elif current_command == 'import-da':
              logger.debug(f"Reusing existing scan '{scan_code}' for DA import.")
 
+def _validate_reuse_source(workbench: 'Workbench', params: argparse.Namespace) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Validates ID reuse source (project or scan) before uploading code or 
+    starting a scan to prevent unnecessary work if the source doesn't exist.
+    
+    Args:
+        workbench: The Workbench API client
+        params: Command line parameters with id_reuse settings
+        
+    Returns:
+        Tuple[Optional[str], Optional[str]]: (api_reuse_type, resolved_specific_code_for_reuse)
+        
+    Raises:
+        ValidationError: If the reuse source specified does not exist
+        ConfigurationError: If required parameters are missing
+    """
+    # Return immediately if ID reuse is not enabled
+    if not getattr(params, 'id_reuse', False):
+        return None, None
+        
+    api_reuse_type = None
+    resolved_specific_code_for_reuse = None
+    
+    user_provided_name_for_reuse = params.id_reuse_source
+    user_reuse_type = params.id_reuse_type
+    
+    if user_reuse_type == "project":
+        if not user_provided_name_for_reuse:
+            raise ConfigurationError("Missing project name in --id-reuse-source for ID reuse type 'project'.")
+        
+        logger.debug(f"Validating project for ID reuse: '{user_provided_name_for_reuse}'...")
+        logger.debug(f"Resolving project code for ID reuse source project: '{user_provided_name_for_reuse}'...")
+        try:
+            resolved_specific_code_for_reuse = _resolve_project(workbench, user_provided_name_for_reuse, create_if_missing=False)
+            logger.debug(f"Found project code for reuse: '{resolved_specific_code_for_reuse}'")
+            api_reuse_type = "specific_project"
+            print(f"Successfully validated ID reuse project '{user_provided_name_for_reuse}'")
+        except ProjectNotFoundError:
+            logger.error(f"Project not found for ID reuse: '{user_provided_name_for_reuse}'")
+            raise ValidationError(f"The project specified as an identification reuse source '{user_provided_name_for_reuse}' does not exist in Workbench. "
+                                 f"Please verify the project name is correct and try again.")
+        except (ApiError, NetworkError) as e:
+            raise ApiError(f"Error looking up project code for reuse: {e}") from e
+        except Exception as e:
+            logger.error(f"Unexpected error looking up project code for reuse: {e}", exc_info=True)
+            raise WorkbenchAgentError(f"Unexpected error looking up project code for reuse: {e}", details={"error": str(e)}) from e
+            
+    elif user_reuse_type == "scan":
+        if not user_provided_name_for_reuse:
+            raise ConfigurationError("Missing scan name in --id-reuse-source for ID reuse type 'scan'.")
+        
+        logger.debug(f"Validating scan for ID reuse: '{user_provided_name_for_reuse}'...")
+        try:
+            # Step 1: Try to find the reuse source scan within the CURRENT project first
+            logger.debug(f"Searching for the reuse source scan '{user_provided_name_for_reuse}' within the current project '{params.project_name}'...")
+            resolved_specific_code_for_reuse, _ = _resolve_scan(
+                workbench,
+                user_provided_name_for_reuse,
+                project_name=params.project_name, # Use current project name
+                create_if_missing=False,
+                params=params # Pass params for logging context if needed
+            )
+            logger.debug(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' within the current project.")
+            api_reuse_type = "specific_scan" # API expects this value
+            logger.debug(f"Successfully validated ID reuse scan '{user_provided_name_for_reuse}' in project '{params.project_name}'")
+            
+        except (ScanNotFoundError, ValidationError) as e: # Catch if not found in current project
+            # Step 2: If not found in the current project, try a global search.
+            logger.warning(f"The reuse source scan '{user_provided_name_for_reuse}' cannot be found in the '{params.project_name}' project. Attempting global search...")
+            try:
+                resolved_specific_code_for_reuse, _ = _resolve_scan(
+                    workbench,
+                    user_provided_name_for_reuse,
+                    project_name=None, # Perform global search; no project name provided.
+                    create_if_missing=False,
+                    params=params
+                )
+                logger.debug(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' globally.")
+                api_reuse_type = "specific_scan" # API expects this value
+                print(f"Successfully validated ID reuse scan '{user_provided_name_for_reuse}' globally")
+            except (ScanNotFoundError, ValidationError, ApiError) as global_e:
+                # If global search also fails (not found or ambiguous globally), raise an error.
+                err_msg = (f"The scan specified as an identification reuse source '{user_provided_name_for_reuse}' does not exist in Workbench. "
+                          f"Please verify the scan name is correct and try again.")
+                logger.error(f"Error looking up scan code '{user_provided_name_for_reuse}' for reuse: "
+                           f"Not found in project '{params.project_name}' and global search failed: {global_e}")
+                # Raise ValidationError as it's an input/setup issue
+                raise ValidationError(err_msg) from global_e
+        except (ApiError, NetworkError) as e:
+            # Catch other potential errors during the initial local lookup
+            raise ApiError(f"Error looking up scan code for reuse within project: {e}") from e
+        except Exception as e:
+            logger.error(f"Unexpected error looking up scan code for reuse: {e}", exc_info=True)
+            raise WorkbenchAgentError(f"Unexpected error looking up scan code for reuse: {e}", details={"error": str(e)}) from e
+    
+    return api_reuse_type, resolved_specific_code_for_reuse
+
 # --- Standard Scan Flow ---
 def _assert_scan_is_idle(
     workbench: 'Workbench',
@@ -408,107 +556,6 @@ def _assert_scan_is_idle(
     print("All Scan status checks passed! Proceeding...")
     logger.debug(f"All required processes {process_types_to_check} for scan '{scan_code}' are idle.")
 
-def _wait_for_scan_completion(workbench: 'Workbench', params: argparse.Namespace, scan_code: str) -> Tuple[bool, bool, Dict[str, float]]:
-    """
-    Wait for KB Scan and optionally Dependency Analysis to complete.
-    This is a generalized version of the waiting pattern used in several handlers.
-    
-    Args:
-        workbench: The Workbench API client instance
-        params: Command-line parameters with scan_number_of_tries and scan_wait_time
-        scan_code: The scan code to check status for
-        
-    Returns:
-        Tuple[bool, bool, Dict[str, float]]: A tuple of (scan_completed, da_completed, durations)
-    """
-    scan_completed = False
-    da_completed = False
-    
-    # Initialize timing dictionary
-    durations = {
-        "kb_scan": 0.0,
-        "dependency_analysis": 0.0
-    }
-    
-    # --- Check KB Scan Status and Wait if Needed ---
-    print("\nEnsuring the Scan finished...")
-    try:
-        kb_status_data = workbench.get_scan_status("SCAN", scan_code)
-        kb_status = kb_status_data.get("status", "UNKNOWN").upper()
-        logger.debug(f"Current Scan status: {kb_status}")
-        
-        if kb_status not in {"FINISHED", "FAILED", "CANCELLED"}:
-            print("KB Scan is not finished. Waiting...")
-            kb_scan_start_time = time.time()
-            
-            workbench.wait_for_scan_to_finish(
-                "SCAN", scan_code, params.scan_number_of_tries, params.scan_wait_time
-            )
-            
-            # Record KB scan duration from waiting
-            durations["kb_scan"] = time.time() - kb_scan_start_time
-            print("KB Scan finished.")
-            
-            # Re-check status after waiting
-            kb_status_data = workbench.get_scan_status("SCAN", scan_code)
-            kb_status = kb_status_data.get("status", "UNKNOWN").upper()
-        
-        # Check final status
-        scan_completed = kb_status == "FINISHED"
-        if not scan_completed:
-            print(f"KB Scan status is {kb_status}, not FINISHED.")
-            return scan_completed, da_completed, durations
-
-    except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
-        print(f"\nError checking/waiting for KB Scan completion: {e}")
-        logger.error(f"Error checking/waiting for KB scan '{scan_code}': {e}", exc_info=True)
-        return False, False, durations
-    except Exception as e:
-        print(f"\nUnexpected error checking KB Scan status: {e}")
-        logger.error(f"Unexpected error checking KB scan '{scan_code}' status: {e}", exc_info=True)
-        return False, False, durations
-    
-    # --- Check Dependency Analysis Status and Wait if Needed ---
-    print("\nEnsuring Dependency Analysis finished...")
-    try:
-        da_status_data = workbench.get_scan_status("DEPENDENCY_ANALYSIS", scan_code)
-        da_status = da_status_data.get("status", "UNKNOWN").upper()
-        logger.debug(f"Current Dependency Analysis status: {da_status}")
-        
-        if da_status not in {"FINISHED", "FAILED", "CANCELLED", "NEW"}:
-            print("Dependency Analysis is in progress. Waiting...")
-            da_start_time = time.time()
-            
-            workbench.wait_for_scan_to_finish(
-                "DEPENDENCY_ANALYSIS", scan_code, params.scan_number_of_tries, params.scan_wait_time
-            )
-            
-            # Record DA duration from waiting
-            durations["dependency_analysis"] = time.time() - da_start_time
-            print("Dependency Analysis finished.")
-            
-            # Re-check status after waiting
-            da_status_data = workbench.get_scan_status("DEPENDENCY_ANALYSIS", scan_code)
-            da_status = da_status_data.get("status", "UNKNOWN").upper()
-        
-        # Check final status - consider both FINISHED and NEW (not run) as valid for our purposes
-        da_completed = da_status == "FINISHED"
-        if da_status == "NEW":
-            print("Dependency Analysis has not been run for this scan.")
-        elif not da_completed:
-            print(f"Dependency Analysis status is {da_status}, not FINISHED.")
-
-    except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
-        print(f"\nError checking/waiting for Dependency Analysis completion: {e}")
-        logger.warning(f"Error checking/waiting for Dependency Analysis for scan '{scan_code}': {e}", exc_info=True)
-        # We continue anyway if DA fails but KB scan succeeded
-    except Exception as e:
-        print(f"\nUnexpected error checking Dependency Analysis status: {e}")
-        logger.warning(f"Unexpected error checking Dependency Analysis status for scan '{scan_code}': {e}", exc_info=True)
-        # We continue anyway if DA fails but KB scan succeeded
-    
-    return scan_completed, da_completed, durations
-
 def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespace, project_code: str, scan_code: str, scan_id: int) -> Tuple[bool, bool, Dict[str, float]]:
     """
     Executes the standard workflow after initial scan setup:
@@ -523,10 +570,18 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
         "dependency_analysis": 0.0
     }
 
-    resolved_specific_code_for_reuse = None
     api_reuse_type = None
+    resolved_specific_code_for_reuse = None
 
-    if params.id_reuse:
+    # Check if reuse source was already validated earlier
+    if hasattr(params, 'api_reuse_type') and hasattr(params, 'resolved_specific_code_for_reuse'):
+        # Use the pre-validated values
+        api_reuse_type = params.api_reuse_type
+        resolved_specific_code_for_reuse = params.resolved_specific_code_for_reuse
+        logger.debug("Using pre-validated ID reuse source")
+    elif params.id_reuse:
+        # For backward compatibility, validate the reuse source here if not done earlier
+        logger.debug("ID reuse requested but no pre-validation found. Validating now...")
         user_provided_name_for_reuse = params.id_reuse_source
         user_reuse_type = params.id_reuse_type
 
@@ -539,7 +594,9 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
                 logger.debug(f"Found project code for reuse: '{resolved_specific_code_for_reuse}'")
                 api_reuse_type = "specific_project"
             except ProjectNotFoundError:
-                 raise ValidationError(f"The project specified in --id-reuse-source ('{user_provided_name_for_reuse}') was not found.")
+                 logger.error(f"Project not found for ID reuse: '{user_provided_name_for_reuse}'")
+                 raise ValidationError(f"The project specified as an identification reuse source '{user_provided_name_for_reuse}' does not exist in Workbench. "
+                                      f"Please verify the project name is correct and try again.")
             except (ApiError, NetworkError) as e:
                 raise ApiError(f"Error looking up project code for reuse: {e}") from e
             except Exception as e:
@@ -561,6 +618,7 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
                 )
                 logger.debug(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' within the current project.")
                 api_reuse_type = "specific_scan" # API expects this value
+                print(f"Successfully validated ID reuse scan '{user_provided_name_for_reuse}' in project '{params.project_name}'")
 
             except (ScanNotFoundError, ValidationError) as e: # Catch if not found in current project
                 # Step 2: If not found in the current project, try a global search.
@@ -575,11 +633,13 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
                     )
                     logger.debug(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' globally.")
                     api_reuse_type = "specific_scan" # API expects this value
+                    print(f"Successfully validated ID reuse scan '{user_provided_name_for_reuse}' globally")
                 except (ScanNotFoundError, ValidationError, ApiError) as global_e:
                     # If global search also fails (not found or ambiguous globally), raise an error.
-                    err_msg = (f"Error looking up scan code '{user_provided_name_for_reuse}' for reuse: "
+                    err_msg = (f"The scan specified as an identification reuse source '{user_provided_name_for_reuse}' does not exist in Workbench. "
+                              f"Please verify the scan name is correct and try again.")
+                    logger.error(f"Error looking up scan code '{user_provided_name_for_reuse}' for reuse: "
                                f"Not found in project '{params.project_name}' and global search failed: {global_e}")
-                    logger.error(err_msg)
                     # Raise ValidationError as it's an input/setup issue
                     raise ValidationError(err_msg) from global_e
             except (ApiError, NetworkError) as e:
@@ -695,6 +755,107 @@ def _execute_standard_scan_flow(workbench: 'Workbench', params: argparse.Namespa
     # Return the completion status and durations
     return scan_completed, da_completed, durations
 
+def _wait_for_scan_completion(workbench: 'Workbench', params: argparse.Namespace, scan_code: str) -> Tuple[bool, bool, Dict[str, float]]:
+    """
+    Wait for KB Scan and optionally Dependency Analysis to complete.
+    This is a generalized version of the waiting pattern used in several handlers.
+    
+    Args:
+        workbench: The Workbench API client instance
+        params: Command-line parameters with scan_number_of_tries and scan_wait_time
+        scan_code: The scan code to check status for
+        
+    Returns:
+        Tuple[bool, bool, Dict[str, float]]: A tuple of (scan_completed, da_completed, durations)
+    """
+    scan_completed = False
+    da_completed = False
+    
+    # Initialize timing dictionary
+    durations = {
+        "kb_scan": 0.0,
+        "dependency_analysis": 0.0
+    }
+    
+    # --- Check KB Scan Status and Wait if Needed ---
+    print("\nEnsuring the Scan finished...")
+    try:
+        kb_status_data = workbench.get_scan_status("SCAN", scan_code)
+        kb_status = kb_status_data.get("status", "UNKNOWN").upper()
+        logger.debug(f"Current Scan status: {kb_status}")
+        
+        if kb_status not in {"FINISHED", "FAILED", "CANCELLED"}:
+            print("KB Scan is not finished. Waiting...")
+            kb_scan_start_time = time.time()
+            
+            workbench.wait_for_scan_to_finish(
+                "SCAN", scan_code, params.scan_number_of_tries, params.scan_wait_time
+            )
+            
+            # Record KB scan duration from waiting
+            durations["kb_scan"] = time.time() - kb_scan_start_time
+            print("KB Scan finished.")
+            
+            # Re-check status after waiting
+            kb_status_data = workbench.get_scan_status("SCAN", scan_code)
+            kb_status = kb_status_data.get("status", "UNKNOWN").upper()
+        
+        # Check final status
+        scan_completed = kb_status == "FINISHED"
+        if not scan_completed:
+            print(f"KB Scan status is {kb_status}, not FINISHED.")
+            return scan_completed, da_completed, durations
+
+    except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
+        print(f"\nError checking/waiting for KB Scan completion: {e}")
+        logger.error(f"Error checking/waiting for KB scan '{scan_code}': {e}", exc_info=True)
+        return False, False, durations
+    except Exception as e:
+        print(f"\nUnexpected error checking KB Scan status: {e}")
+        logger.error(f"Unexpected error checking KB scan '{scan_code}' status: {e}", exc_info=True)
+        return False, False, durations
+    
+    # --- Check Dependency Analysis Status and Wait if Needed ---
+    print("\nEnsuring Dependency Analysis finished...")
+    try:
+        da_status_data = workbench.get_scan_status("DEPENDENCY_ANALYSIS", scan_code)
+        da_status = da_status_data.get("status", "UNKNOWN").upper()
+        logger.debug(f"Current Dependency Analysis status: {da_status}")
+        
+        if da_status not in {"FINISHED", "FAILED", "CANCELLED", "NEW"}:
+            print("Dependency Analysis is in progress. Waiting...")
+            da_start_time = time.time()
+            
+            workbench.wait_for_scan_to_finish(
+                "DEPENDENCY_ANALYSIS", scan_code, params.scan_number_of_tries, params.scan_wait_time
+            )
+            
+            # Record DA duration from waiting
+            durations["dependency_analysis"] = time.time() - da_start_time
+            print("Dependency Analysis finished.")
+            
+            # Re-check status after waiting
+            da_status_data = workbench.get_scan_status("DEPENDENCY_ANALYSIS", scan_code)
+            da_status = da_status_data.get("status", "UNKNOWN").upper()
+        
+        # Check final status - consider both FINISHED and NEW (not run) as valid for our purposes
+        da_completed = da_status == "FINISHED"
+        if da_status == "NEW":
+            print("Dependency Analysis has not been run for this scan.")
+        elif not da_completed:
+            print(f"Dependency Analysis status is {da_status}, not FINISHED.")
+
+    except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
+        print(f"\nError checking/waiting for Dependency Analysis completion: {e}")
+        logger.warning(f"Error checking/waiting for Dependency Analysis for scan '{scan_code}': {e}", exc_info=True)
+        # We continue anyway if DA fails but KB scan succeeded
+    except Exception as e:
+        print(f"\nUnexpected error checking Dependency Analysis status: {e}")
+        logger.warning(f"Unexpected error checking Dependency Analysis status for scan '{scan_code}': {e}", exc_info=True)
+        # We continue anyway if DA fails but KB scan succeeded
+    
+    return scan_completed, da_completed, durations
+
 # --- Scan Flow and Result Processing ---
 def format_duration(duration_seconds: Optional[Union[int, float]]) -> str:
     """Formats a duration in seconds into a 'X minutes, Y seconds' string."""
@@ -734,8 +895,10 @@ def _print_operation_summary(params: argparse.Namespace, da_completed: bool, pro
             print(f"  - Git Tag: {params.git_tag}")
         elif getattr(params, 'git_branch', None):
             print(f"  - Git Branch: {params.git_branch}")
+        elif getattr(params, 'git_commit', None):
+            print(f"  - Git Commit: {params.git_commit}")
         else:
-             print(f"  - Git Branch/Tag: Not Specified")
+             print(f"  - Git Branch/Tag/Commit: Not Specified")
         if getattr(params, 'git_depth', None) is not None:
              print(f"  - Git Clone Depth: {params.git_depth}")
     elif params.command == 'import-da':
@@ -1041,9 +1204,9 @@ def _display_results(collected_results: Dict[str, Any], params: argparse.Namespa
             deps_with_warnings = int(policy_warnings_data.get("dependencies_with_warnings", 0))
             
             if total_warnings > 0:
-                print(f"There are {total_warnings} policy warnings. "
-                      f"Warnings in Identified Files: {files_with_warnings}. "
-                      f"Warnings in Dependencies: {deps_with_warnings}.")
+                print(f"There are {total_warnings} policy warnings: "
+                      f"{files_with_warnings} in Identified Files, and "
+                      f"{deps_with_warnings} in Dependencies.")
             else:
                 print("No policy warnings found.")
         else:

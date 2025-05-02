@@ -1,16 +1,17 @@
 # workbench_agent/handlers/download_reports.py
 
 import os
+import time
 import logging
 import argparse
-import requests
+from typing import Dict, List, Optional, Union, Any, Set
 
 from ..api import Workbench
 from ..utils import (
     _resolve_project,
     _resolve_scan,
     _save_report_content,
-    _wait_for_scan_completion
+    handler_error_wrapper
 )
 from ..exceptions import (
     WorkbenchAgentError,
@@ -18,6 +19,7 @@ from ..exceptions import (
     NetworkError,
     FileSystemError,
     ValidationError,
+    CompatibilityError,
     ProjectNotFoundError,
     ScanNotFoundError,
     ProcessError,
@@ -27,222 +29,207 @@ from ..exceptions import (
 # Get logger
 logger = logging.getLogger("log")
 
+@handler_error_wrapper
 def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
     """
-    Handler for the 'download-reports' command. Generates and downloads reports.
+    Handler for the 'download-reports' command. 
+    Downloads reports for a scan or project.
+    
+    Args:
+        workbench: The Workbench API client
+        params: Command line parameters
+        
+    Returns:
+        True if the operation was successful
+        
+    Raises:
+        Various exceptions based on errors that occur during the process
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
-
-    # Ensure required parameters have default values
-    if not hasattr(params, 'scan_number_of_tries'):
-        params.scan_number_of_tries = 60  # Default value
-    if not hasattr(params, 'scan_wait_time'):
-        params.scan_wait_time = 5  # Default value in seconds
-
-    report_scope = params.report_scope.lower()
+    
+    # Process report_types (comma-separated list or ALL)
+    report_types = set()
+    if params.report_type.upper() == "ALL":
+        if params.report_scope == "scan":
+            report_types = workbench.SCAN_REPORT_TYPES
+        else:  # project
+            report_types = workbench.PROJECT_REPORT_TYPES
+    else:
+        # Split comma-separated list
+        for rt in params.report_type.split(","):
+            rt = rt.strip().lower()
+            # Validate report type
+            if params.report_scope == "scan" and rt not in workbench.SCAN_REPORT_TYPES:
+                raise ValidationError(f"Report type '{rt}' is not supported for scan scope reports. "
+                                   f"Supported types: {', '.join(sorted(list(workbench.SCAN_REPORT_TYPES)))}")
+            elif params.report_scope == "project" and rt not in workbench.PROJECT_REPORT_TYPES:
+                raise ValidationError(f"Report type '{rt}' is not supported for project scope reports. "
+                                   f"Supported types: {', '.join(sorted(list(workbench.PROJECT_REPORT_TYPES)))}")
+            report_types.add(rt)
+    
+    logger.debug(f"Resolved report types to download: {report_types}")
+    
+    # Create output directory if it doesn't exist
+    output_dir = params.report_save_path
+    if not os.path.exists(output_dir):
+        print(f"Creating output directory: {output_dir}")
+        os.makedirs(output_dir, exist_ok=True)
+    
+    # Resolve project, scan
+    print(f"\nResolving {'scan' if params.report_scope == 'scan' else 'project'} '{params.scan_name if params.report_scope == 'scan' else params.project_name}'...")
+    
     project_code = None
     scan_code = None
-    scan_id = None
-    entity_name_log = ""
-    name_for_file = ""
-    da_completed = False
-    durations = None
-
-    try:
-        if report_scope == "project":
-            if not params.project_name:
-                raise ValidationError("--project-name is required when --report-scope is 'project'.")
-            project_name = params.project_name
-            print(f"Resolving project '{project_name}' for report generation...")
-            project_code = _resolve_project(workbench, project_name, create_if_missing=False)
-            entity_name_log = f"Project '{project_code}'"
-            name_for_file = project_name
-
-        elif report_scope == "scan":
-            if not params.scan_name:
-                 raise ValidationError("--scan-name is required when --report-scope is 'scan'.")
-            scan_name = params.scan_name
-            if params.project_name:
-                print(f"Resolving scan '{scan_name}' within project '{params.project_name}'...")
-                project_code = _resolve_project(workbench, params.project_name, create_if_missing=False)
-                scan_code, scan_id = _resolve_scan(
-                    workbench, scan_name, params.project_name, create_if_missing=False, params=params
+    
+    if params.project_name:
+        project_code = _resolve_project(workbench, params.project_name, create_if_missing=False)
+    
+    if params.report_scope == "scan":
+        # If scan scope, we need a scan code
+        if params.scan_name:
+            # Try to resolve using project context first if provided
+            if project_code and params.project_name:
+                scan_code, _ = _resolve_scan(
+                    workbench,
+                    scan_name=params.scan_name,
+                    project_name=params.project_name,
+                    create_if_missing=False,
+                    params=params
                 )
-                entity_name_log = f"Scan '{scan_code}' (ID: {scan_id}) in Project '{project_code}'"
             else:
-                print(f"Resolving scan '{scan_name}' globally...")
-                scan_code, scan_id = _resolve_scan(
-                    workbench, scan_name, project_name=None, create_if_missing=False, params=params
+                # Try to resolve globally if project not provided
+                scan_code, _ = _resolve_scan(
+                    workbench,
+                    scan_name=params.scan_name,
+                    project_name=None,
+                    create_if_missing=False,
+                    params=params
                 )
-                try:
-                    all_scans = workbench.list_scans()
-                    scan_info = next((s for s in all_scans if s.get('code') == scan_code), None)
-                    if scan_info and scan_info.get('project_code'):
-                        project_code = scan_info['project_code']
-                        logger.debug(f"Resolved project_code '{project_code}' for globally found scan '{scan_code}'.")
-                        entity_name_log = f"Scan '{scan_code}' (ID: {scan_id}) in Project '{project_code}'"
-                    else:
-                        raise ProjectNotFoundError(f"Could not determine project context for globally found scan '{scan_code}'. Scan Info: {scan_info}")
-                except Exception as proj_lookup_err:
-                     raise ProjectNotFoundError(f"Failed to find project context for globally resolved scan '{scan_code}': {proj_lookup_err}")
-
-            name_for_file = scan_name
-            
-            # For scan reports, wait for scan and dependency analysis to complete
-            print(f"\n--- Waiting for scan processes to complete ---")
-            scan_completed, da_completed, durations = _wait_for_scan_completion(workbench, params, scan_code)
-            
-            if not scan_completed:
-                raise ProcessError("Cannot generate reports because the scan has not completed successfully.")
-
         else:
-            raise ValidationError(f"Invalid report scope: {report_scope}. Must be 'scan' or 'project'.")
-
-    except (ProjectNotFoundError, ScanNotFoundError, ValidationError) as e:
-        raise
-    except Exception as e:
-        logger.error(f"Error resolving project/scan for report download: {e}", exc_info=True)
-        raise WorkbenchAgentError(f"Error resolving project/scan: {str(e)}",
-                                details={"error": str(e)})
-
-    print(f"\n--- Generating and Downloading Reports for {entity_name_log} ---")
-
-    report_types_to_download = []
-    requested_type_input = params.report_type
-
-    allowed_types = Workbench.PROJECT_REPORT_TYPES if report_scope == "project" else Workbench.SCAN_REPORT_TYPES
-    allowed_types_list = sorted(list(allowed_types))
-
-    if requested_type_input.upper() == "ALL":
-        report_types_to_download = allowed_types_list
-        print(f"Report Scope is '{report_scope}'. All available reports will be downloaded: {', '.join(report_types_to_download)}")
-    else:
-        requested_types_list = [t.strip().lower() for t in requested_type_input.split(',') if t.strip()]
-        if not requested_types_list:
-             raise ValidationError("No valid report types provided in --report-type (or input was empty after splitting).")
-
-        print(f"Requested report types: {', '.join(requested_types_list)}")
-        invalid_types = [req_type for req_type in requested_types_list if req_type not in allowed_types]
-
-        if invalid_types:
-            raise ValidationError(
-                f"Invalid report type(s) for '{report_scope}' scope: {', '.join(invalid_types)}. "
-                f"Allowed types are: {', '.join(allowed_types_list)}"
-            )
-
-        report_types_to_download = sorted(list(set(requested_types_list)))
-        print(f"Processing validated report types: {', '.join(report_types_to_download)}")
-
-    output_directory = params.report_save_path
-    try:
-        os.makedirs(output_directory, exist_ok=True)
-        print(f"Reports will be saved to directory: {os.path.abspath(output_directory)}")
-    except OSError as e:
-        raise FileSystemError(f"Could not create output directory '{output_directory}': {e}") from e
-
-    successful_reports = []
-    failed_reports = []
-
-    for report_type in report_types_to_download:
-        print(f"\nProcessing '{report_type}' report...")
-        process_id = None
+            raise ValidationError("Scan name is required for scan scope reports")
+    elif not project_code:
+        # If project scope but no project_code, that's an error
+        raise ValidationError("Project name is required for project scope reports")
+    
+    # Generate and download reports based on scope
+    print(f"\nGenerating and downloading {len(report_types)} {'project' if params.report_scope == 'project' else 'scan'} report(s)...")
+    
+    # Print the actual report types being downloaded
+    for rt in sorted(report_types):
+        print(f"- {rt}")
+    
+    # Track results for summary
+    success_count = 0
+    error_count = 0
+    error_types = []
+    
+    # Process each report type sequentially
+    for report_type in sorted(report_types):
+        print(f"\nProcessing {report_type} report...")
+        
         try:
-            print(f"Requesting generation of '{report_type}' report...")
-            generation_result = workbench.generate_report(
-                scope=report_scope,
-                project_code=project_code,
-                scan_code=scan_code,
-                report_type=report_type,
-                selection_type=params.selection_type,
-                selection_view=params.selection_view,
-                disclaimer=params.disclaimer,
-                include_vex=params.include_vex
-            )
-            logger.debug(f"generate_report result type: {type(generation_result)}, value: {generation_result}")
-
-            if isinstance(generation_result, requests.Response):
-                print(f"Synchronous report '{report_type}' generated directly.")
-                _save_report_content(
-                    generation_result,
-                    output_directory,
-                    report_scope=report_scope,
-                    name_component=name_for_file,
-                    report_type=report_type
-                )
-                successful_reports.append(report_type)
-                continue
-
-            elif isinstance(generation_result, int) and generation_result > 0:
-                process_id = generation_result
-                print(f"Asynchronous report generation started (Process ID: {process_id}). Waiting for completion...")
-
+            # Generate the report
+            print(f"Generating {report_type} report...")
+            
+            # Get the right name component for file naming
+            name_component = params.project_name if params.report_scope == "project" else params.scan_name
+            
+            # Common parameters for report generation
+            common_params = {
+                "scope": params.report_scope,
+                "project_code": project_code,
+                "scan_code": scan_code,
+                "report_type": report_type,
+            }
+            
+            # Add optional parameters if they were provided
+            if params.selection_type is not None:
+                common_params["selection_type"] = params.selection_type
+            
+            if params.selection_view is not None:
+                common_params["selection_view"] = params.selection_view
+            
+            if params.disclaimer is not None:
+                common_params["disclaimer"] = params.disclaimer
+            
+            # Include VEX data if requested (default is True)
+            common_params["include_vex"] = params.include_vex
+            
+            # Check if this report type is synchronous or asynchronous
+            is_async = (report_type in workbench.ASYNC_REPORT_TYPES)
+            
+            # Start report generation
+            if is_async:
+                # Asynchronous report generation
+                print(f"Starting asynchronous generation of {report_type} report...")
+                process_id = workbench.generate_report(**common_params)
+                
+                # Wait for report generation to complete using workbench._wait_for_process
                 try:
+                    print(f"Waiting for {report_type} report generation to complete...")
                     workbench._wait_for_process(
                         process_description=f"'{report_type}' report generation (Process ID: {process_id})",
                         check_function=workbench.check_report_generation_status,
                         check_args={
-                            "scope": report_scope,
+                            "scope": params.report_scope,
                             "process_id": process_id,
                             "scan_code": scan_code,
                             "project_code": project_code
                         },
                         status_accessor=lambda data: data.get("progress_state", "UNKNOWN"),
                         success_values={"FINISHED"},
-                        failure_values={"FAILED", "CANCELLED"},
-                        max_tries=params.scan_number_of_tries,
-                        wait_interval=params.scan_wait_time,
+                        failure_values={"FAILED", "CANCELLED", "ERROR"},
+                        max_tries=getattr(params, 'scan_number_of_tries', 60),
+                        # Use a shorter interval for report generation since it typically finishes faster than scans
+                        wait_interval=2,  # 2-second interval instead of using scan_wait_time (default: 30)
                         progress_indicator=True
                     )
-                    print(f"Report generation complete (Process ID: {process_id}).")
-                except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
-                    raise ProcessError(f"Failed waiting for '{report_type}' report (Process ID: {process_id}): {e}", details=getattr(e, 'details', None)) from e
-                except Exception as e:
-                    logger.error(f"Unexpected error waiting for report '{report_type}' (Process ID: {process_id}): {e}", exc_info=True)
-                    raise WorkbenchAgentError(f"Unexpected error waiting for report '{report_type}': {e}",
-                                            details={"error": str(e), "process_id": process_id}) from e
-
-                print(f"Downloading report '{report_type}' (Process ID: {process_id})...")
-                try:
-                    download_response = workbench.download_report(report_scope, process_id)
-                    _save_report_content(
-                        download_response,
-                        output_directory,
-                        report_scope=report_scope,
-                        name_component=name_for_file,
-                        report_type=report_type
-                    )
-                    successful_reports.append(report_type)
+                    print(f"Report generation complete!")
+                except (ProcessTimeoutError, ProcessError) as e:
+                    logger.error(f"Failed waiting for '{report_type}' report (Process ID: {process_id}): {e}")
+                    error_count += 1
+                    error_types.append(report_type)
+                    continue
                 except (ApiError, NetworkError) as e:
-                    raise ApiError(f"Failed to download report '{report_type}' (Process ID: {process_id}): {e}", details=getattr(e, 'details', None)) from e
+                    logger.error(f"API error during '{report_type}' report generation (Process ID: {process_id}): {e}")
+                    error_count += 1
+                    error_types.append(report_type)
+                    continue
                 except Exception as e:
-                    logger.error(f"Unexpected error downloading report '{report_type}' (Process ID: {process_id}): {e}", exc_info=True)
-                    raise WorkbenchAgentError(f"Unexpected error downloading report '{report_type}': {e}",
-                                            details={"error": str(e), "process_id": process_id}) from e
-
+                    logger.error(f"Unexpected error during '{report_type}' report generation (Process ID: {process_id}): {e}", exc_info=True)
+                    error_count += 1
+                    error_types.append(report_type)
+                    continue
+                
+                # Download the generated report
+                print(f"Downloading {report_type} report...")
+                response = workbench.download_report(scope=params.report_scope, process_id=process_id)
+            
             else:
-                raise ProcessError(f"Unexpected result received from generate_report for '{report_type}': {generation_result}",
-                                 details={"result": generation_result})
-
-        except (ApiError, NetworkError, ProcessError, ProcessTimeoutError, FileSystemError, ValidationError) as e:
-            print(f"Error processing '{report_type}' report: {e}")
-            logger.warning(f"Failed to generate/download '{report_type}' report for {entity_name_log}. Error: {e}", exc_info=False)
-            failed_reports.append(report_type)
-        except Exception as e:
-            print(f"Unexpected error processing '{report_type}' report: {e}")
-            logger.error(f"Unexpected error processing '{report_type}' report for {entity_name_log}.", exc_info=True)
-            failed_reports.append(report_type)
-
-    print("\n--- Report Download Summary ---")
-    if successful_reports:
-        print(f"Successfully processed {len(successful_reports)} report(s): {', '.join(successful_reports)}")
-    else:
-        print("No reports were successfully processed.")
-    if failed_reports:
-        print(f"Failed to process {len(failed_reports)} report(s): {', '.join(failed_reports)}")
-    else:
-        print("No reports failed to process.")
-    print("-----------------------------")
-
-    if failed_reports:
-        raise ProcessError(f"Failed to process one or more reports: {', '.join(failed_reports)}",
-                         details={"failed_reports": failed_reports, "successful_reports": successful_reports})
+                # Synchronous report generation (returns response directly)
+                print(f"Directly downloading {report_type} report...")
+                response = workbench.generate_report(**common_params)
+            
+            # Save the report content
+            _save_report_content(response, output_dir, params.report_scope, name_component, report_type)
+            print(f"Successfully saved {report_type} report.")
+            success_count += 1
+            
+        except (ApiError, NetworkError, FileSystemError, ValidationError) as e:
+            print(f"Error processing {report_type} report: {getattr(e, 'message', str(e))}")
+            logger.error(f"Failed to generate/download {report_type} report: {e}", exc_info=True)
+            error_count += 1
+            error_types.append(report_type)
+    
+    # Print summary
+    print("\n" + "="*50)
+    print(f"Report Download Summary")
+    print("="*50)
+    print(f"Total reports requested: {len(report_types)}")
+    print(f"Successfully downloaded: {success_count}")
+    if error_count > 0:
+        print(f"Failed to download: {error_count} ({', '.join(error_types)})")
+    print("="*50)
+    
+    # Return True if at least one report was successfully downloaded
+    return success_count > 0

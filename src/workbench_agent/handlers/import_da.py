@@ -1,14 +1,17 @@
 # workbench_agent/handlers/import_da.py
 
 import os
+import time
 import logging
 import argparse
+from typing import Dict, List, Optional, Union, Any, Tuple
 
 from ..api import Workbench
 from ..utils import (
     _resolve_project,
     _resolve_scan,
-    _fetch_display_save_results
+    _fetch_display_save_results,
+    handler_error_wrapper
 )
 from ..exceptions import (
     WorkbenchAgentError,
@@ -26,66 +29,63 @@ from ..exceptions import (
 # Get logger
 logger = logging.getLogger("log")
 
-def handle_import_da(workbench: Workbench, params: argparse.Namespace):
+
+@handler_error_wrapper
+def handle_import_da(workbench: Workbench, params: argparse.Namespace) -> bool:
     """
-    Handler for the 'import-da' command. Uploads DA results, runs import, shows/saves results.
+    Handler for the 'import-da' command. Imports Dependency Analysis results from a file.
+    
+    Args:
+        workbench: The Workbench API client instance
+        params: Command line parameters
+        
+    Returns:
+        bool: True if the operation completed successfully
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
-    try:
-        if not params.path:
-            raise ValidationError("Path to DA results file is required for import-da command")
-        if not os.path.isfile(params.path):
-            raise FileSystemError(f"DA results path is not a valid file: {params.path}")
+    
+    # Validate scan parameters
+    if not params.path:
+        raise ValidationError("A path must be provided for the import-da command.")
+    if not os.path.exists(params.path):
+        raise FileSystemError(f"The provided path does not exist: {params.path}")
+    if not os.path.isfile(params.path):
+        raise ValidationError(f"The provided path must be a file: {params.path}")
 
-        project_code = _resolve_project(workbench, params.project_name, create_if_missing=True)
-        scan_code, scan_id = _resolve_scan(
-            workbench,
-            scan_name=params.scan_name,
-            project_name=params.project_name,
-            create_if_missing=True,
-            params=params
-        )
+    # Resolve project and scan (find or create)
+    print("\nChecking if the Project and Scan exist or need to be created...")
+    project_code = _resolve_project(workbench, params.project_name, create_if_missing=True)
+    scan_code, scan_id = _resolve_scan(
+        workbench,
+        scan_name=params.scan_name,
+        project_name=params.project_name,
+        create_if_missing=True,
+        params=params
+    )
 
-        print(f"\nUploading DA Results File: {params.path} for scan '{scan_code}'...")
-        try:
-            workbench.upload_files(scan_code, params.path, is_da_import=True)
-            print("DA results file upload initiated.")
-        except FileSystemError as e:
-            raise FileSystemError(f"Failed to upload DA results file '{params.path}': {e}", details=getattr(e, 'details', None))
-        except (ApiError, NetworkError) as e:
-            raise WorkbenchAgentError(f"Error during DA results file upload from '{params.path}': {e}", details=getattr(e, 'details', None))
-        except Exception as e:
-            logger.error(f"Unexpected error during DA results upload from '{params.path}' for scan '{scan_code}': {e}", exc_info=True)
-            raise WorkbenchAgentError(f"Unexpected error during DA results file upload: {e}",
-                                    details={"error": str(e), "path": params.path, "scan_code": scan_code})
+    # Assert scan is idle before uploading code to a file that will be marked as DA file
+    print("\nUploading DA Results to Workbench...")
+    workbench.upload_files(scan_code, params.path, is_da_import=True)
+    print(f"Successfully uploaded {params.path} to Workbench.")
 
-        print("\nStarting DA Import process...")
-        da_completed = False # Initialize here
-        try:
-            workbench.start_dependency_analysis(scan_code, import_only=True)
-            workbench.wait_for_scan_to_finish(
-                "DEPENDENCY_ANALYSIS",
-                scan_code,
-                params.scan_number_of_tries,
-                params.scan_wait_time
-            )
-            print("DA Import process complete.")
-            da_completed = True
-
-        except (ProcessTimeoutError, ProcessError, ApiError, NetworkError, ScanNotFoundError) as e:
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error during DA import for scan '{scan_code}': {e}", exc_info=True)
-            raise WorkbenchAgentError(f"Unexpected error during DA import: {e}",
-                                    details={"error": str(e), "scan_code": scan_code})
-
-        # --- Fetch, Display, and Save Results using the utility function ---
-        _fetch_display_save_results(workbench, params, scan_code)
-
-    except (ProjectNotFoundError, ScanNotFoundError, FileSystemError, ApiError,
-            NetworkError, ProcessError, ProcessTimeoutError, ValidationError, CompatibilityError) as e:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to execute '{params.command}' command: {e}", exc_info=True)
-        raise WorkbenchAgentError(f"Failed to execute {params.command} command: {str(e)}",
-                                details={"error": str(e)})
+    # Import DA results
+    print("\nImporting Dependency Analysis Results...")
+    workbench.start_dependency_analysis(scan_code, import_only=True)
+    print("Import started. Waiting for import to complete...")
+    
+    # Wait for DA to finish
+    workbench.wait_for_scan_to_finish(
+        "DEPENDENCY_ANALYSIS", 
+        scan_code, 
+        params.scan_number_of_tries, 
+        # Use a shorter interval for dependency analysis import since it typically
+        # finishes much faster than regular scans (2s instead of default 30s)
+        2
+    )
+    print("Dependency Analysis import has completed.")
+    
+    # Fetch and display results
+    print("\nFetching and displaying results...")
+    _fetch_display_save_results(workbench, params, scan_code)
+    
+    return True

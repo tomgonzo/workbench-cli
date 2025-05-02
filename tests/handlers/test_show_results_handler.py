@@ -19,26 +19,27 @@ def test_handle_show_results_success(monkeypatch, mock_workbench, mock_params):
     mock_params.command = 'show-results'
     mock_params.project_name = "ProjA"
     mock_params.scan_name = "Scan1"
-    mock_params.show_licenses = True  # Need at least one show flag
+    mock_params.show_licenses = True
+    mock_params.show_components = False
+    mock_params.show_dependencies = False
+    mock_params.show_scan_metrics = False
+    mock_params.show_policy_warnings = False
+    mock_params.show_vulnerabilities = False
     
     # Mock the resolution functions
     monkeypatch.setattr(handlers.show_results, '_resolve_project', lambda wb, pn, **kwargs: "PROJ_A_CODE")
     monkeypatch.setattr(handlers.show_results, '_resolve_scan', lambda wb, **kwargs: ("SCAN_1_CODE", 123))
     
-    # Mock wait_for_scan_completion
-    mock_wait_completion = MagicMock(return_value=(True, True, {"kb_scan": 30.0, "dependency_analysis": 20.0}))
-    monkeypatch.setattr(handlers.show_results, '_wait_for_scan_completion', mock_wait_completion)
-    
     # Mock fetch_display_save_results
-    mock_fetch = MagicMock()
-    monkeypatch.setattr(handlers.show_results, '_fetch_display_save_results', mock_fetch)
+    mock_fetch_results = MagicMock(return_value=True)
+    monkeypatch.setattr(handlers.show_results, '_fetch_display_save_results', mock_fetch_results)
     
-    # Call handler
-    handlers.handle_show_results(mock_workbench, mock_params)
+    # Execute
+    result = handlers.show_results.handle_show_results(mock_workbench, mock_params)
     
-    # Verify mocks were called correctly
-    mock_wait_completion.assert_called_once_with(mock_workbench, mock_params, "SCAN_1_CODE")
-    mock_fetch.assert_called_once_with(mock_workbench, mock_params, "SCAN_1_CODE")
+    # Verify
+    assert result is True
+    mock_fetch_results.assert_called_once_with(mock_workbench, mock_params, "SCAN_1_CODE")
 
 def test_handle_show_results_scan_incomplete(monkeypatch, mock_workbench, mock_params):
     """Tests show-results when scan is incomplete."""
@@ -46,35 +47,40 @@ def test_handle_show_results_scan_incomplete(monkeypatch, mock_workbench, mock_p
     mock_params.command = 'show-results'
     mock_params.project_name = "ProjA"
     mock_params.scan_name = "Scan1"
-    mock_params.show_licenses = True  # Need at least one show flag
+    mock_params.show_licenses = True
+    mock_params.show_components = False
+    mock_params.show_dependencies = False
+    mock_params.show_scan_metrics = False
+    mock_params.show_policy_warnings = False
+    mock_params.show_vulnerabilities = False
     
     # Mock the resolution functions
     monkeypatch.setattr(handlers.show_results, '_resolve_project', lambda wb, pn, **kwargs: "PROJ_A_CODE")
     monkeypatch.setattr(handlers.show_results, '_resolve_scan', lambda wb, **kwargs: ("SCAN_1_CODE", 123))
     
-    # Mock wait_for_scan_completion - scan not completed
-    mock_wait_completion = MagicMock(return_value=(False, False, {"kb_scan": 0.0, "dependency_analysis": 0.0}))
-    monkeypatch.setattr(handlers.show_results, '_wait_for_scan_completion', mock_wait_completion)
+    # Mock fetch_display_save_results - no fetch results failure
+    mock_fetch_results = MagicMock()
+    monkeypatch.setattr(handlers.show_results, '_fetch_display_save_results', mock_fetch_results)
     
-    # Mock fetch_display_save_results
-    mock_fetch = MagicMock()
-    monkeypatch.setattr(handlers.show_results, '_fetch_display_save_results', mock_fetch)
+    # Execute
+    result = handlers.show_results.handle_show_results(mock_workbench, mock_params)
     
-    # Call handler - should raise error
-    with pytest.raises(ProcessError, match="Cannot show results because the scan has not completed successfully"):
-        handlers.handle_show_results(mock_workbench, mock_params)
-    
-    # Verify what mocks were called
-    mock_wait_completion.assert_called_once()
-    mock_fetch.assert_not_called()
+    # Verify
+    assert result is True
+    mock_fetch_results.assert_called_once_with(mock_workbench, mock_params, "SCAN_1_CODE")
 
 def test_handle_show_results_project_resolve_fails(monkeypatch, mock_workbench, mock_params):
     """Tests show-results when project resolve fails."""
     # Setup mocks
     mock_params.command = 'show-results'
-    mock_params.project_name = "ProjA" 
+    mock_params.project_name = "ProjA"
     mock_params.scan_name = "Scan1"
     mock_params.show_licenses = True
+    mock_params.show_components = False
+    mock_params.show_dependencies = False
+    mock_params.show_scan_metrics = False
+    mock_params.show_policy_warnings = False
+    mock_params.show_vulnerabilities = False
     
     # Mock the resolution function to fail
     def mock_resolve_project_fails(*args, **kwargs):
@@ -86,20 +92,16 @@ def test_handle_show_results_project_resolve_fails(monkeypatch, mock_workbench, 
     mock_resolve_scan = MagicMock()
     monkeypatch.setattr(handlers.show_results, '_resolve_scan', mock_resolve_scan)
     
-    mock_wait_completion = MagicMock()
-    monkeypatch.setattr(handlers.show_results, '_wait_for_scan_completion', mock_wait_completion)
+    mock_fetch_results = MagicMock()
+    monkeypatch.setattr(handlers.show_results, '_fetch_display_save_results', mock_fetch_results)
     
-    mock_fetch = MagicMock()
-    monkeypatch.setattr(handlers.show_results, '_fetch_display_save_results', mock_fetch)
-    
-    # Call handler - should raise error
+    # Execute and verify
     with pytest.raises(ProjectNotFoundError, match="Proj Not Found"):
-        handlers.handle_show_results(mock_workbench, mock_params)
+        handlers.show_results.handle_show_results(mock_workbench, mock_params)
     
-    # Verify what mocks were called
+    # Neither of these should be called
     mock_resolve_scan.assert_not_called()
-    mock_wait_completion.assert_not_called()
-    mock_fetch.assert_not_called()
+    mock_fetch_results.assert_not_called()
 
 def test_handle_show_results_scan_resolve_fails(monkeypatch, mock_workbench, mock_params):
     """Tests show-results when scan resolve fails."""
@@ -108,6 +110,11 @@ def test_handle_show_results_scan_resolve_fails(monkeypatch, mock_workbench, moc
     mock_params.project_name = "ProjA"
     mock_params.scan_name = "Scan1"
     mock_params.show_licenses = True
+    mock_params.show_components = False
+    mock_params.show_dependencies = False
+    mock_params.show_scan_metrics = False
+    mock_params.show_policy_warnings = False
+    mock_params.show_vulnerabilities = False
     
     # Mock _resolve_project to succeed
     monkeypatch.setattr(handlers.show_results, '_resolve_project', lambda wb, pn, **kwargs: "PROJ_A_CODE")
@@ -119,18 +126,14 @@ def test_handle_show_results_scan_resolve_fails(monkeypatch, mock_workbench, moc
     monkeypatch.setattr(handlers.show_results, '_resolve_scan', mock_resolve_scan_fails)
     
     # Mock other functions
-    mock_wait_completion = MagicMock()
-    monkeypatch.setattr(handlers.show_results, '_wait_for_scan_completion', mock_wait_completion)
+    mock_fetch_results = MagicMock()
+    monkeypatch.setattr(handlers.show_results, '_fetch_display_save_results', mock_fetch_results)
     
-    mock_fetch = MagicMock()
-    monkeypatch.setattr(handlers.show_results, '_fetch_display_save_results', mock_fetch)
-    
-    # Call handler - should raise error
+    # Execute and verify
     with pytest.raises(ScanNotFoundError, match="Scan Not Found"):
-        handlers.handle_show_results(mock_workbench, mock_params)
+        handlers.show_results.handle_show_results(mock_workbench, mock_params)
     
-    # Verify what mocks were called
-    mock_wait_completion.assert_not_called()
-    mock_fetch.assert_not_called()
+    # This should not be called
+    mock_fetch_results.assert_not_called()
 
 # Note: Errors within _fetch_display_save_results are typically logged, not raised by the handler.

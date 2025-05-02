@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
+from io import StringIO
 
 # Import handler and dependencies
 from workbench_agent import handlers
@@ -69,14 +70,15 @@ def test_handle_evaluate_gates_pass_needs_wait(monkeypatch, mock_workbench, mock
     monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
     
     # Create a counter to track how many times get_scan_status is called,
-    # returning RUNNING first, then FINISHED
+    # returning RUNNING only the first time, then FINISHED
     status_call_count = [0]  # Use list for mutable state
     
-    def mock_get_status(*args, **kwargs):
+    def mock_get_status(scan_type, scan_code):
         status_call_count[0] += 1
-        if status_call_count[0] <= 2:  # First 2 calls (KB + DA initial check)
+        # Only return RUNNING for the first call
+        if status_call_count[0] == 1:
             return {"status": "RUNNING"}
-        else:  # Subsequent calls after waiting
+        else:
             return {"status": "FINISHED"}
             
     monkeypatch.setattr(mock_workbench, 'get_scan_status', mock_get_status)
@@ -380,4 +382,138 @@ def test_handle_evaluate_gates_scan_resolve_fails(mock_resolve_scan, mock_resolv
         handlers.handle_evaluate_gates(mock_workbench, mock_params)
     mock_resolve_proj.assert_called_once()
     mock_resolve_scan.assert_called_once()
+
+def test_handle_evaluate_gates_fail_vulnerabilities(monkeypatch, mock_workbench, mock_params):
+    """Test failing gate check due to vulnerabilities."""
+    # Setup mocks for FAIL scenario (vulnerabilities)
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = False
+    mock_params.fail_on_policy = False
+    mock_params.fail_on_vuln_severity = "high"  # Fail on high or critical
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # No pending files
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {})
+    
+    # No policy warnings
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
+    )
+    
+    # HAS vulnerabilities to trigger failure
+    monkeypatch.setattr(
+        mock_workbench, 
+        'list_vulnerabilities', 
+        lambda *args, **kwargs: [
+            {"severity": "high", "id": "CVE-2022-1234", "component": "test-component"},
+            {"severity": "medium", "id": "CVE-2022-5678", "component": "test-component"},
+        ]
+    )
+
+    # Run handler
+    result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is False  # Should FAIL because of high vulnerability
+
+def test_handle_evaluate_gates_pass_low_vulnerabilities(monkeypatch, mock_workbench, mock_params):
+    """Test passing gate check with lower severity vulnerabilities."""
+    # Setup mocks for PASS scenario (only low vulnerabilities, threshold is high)
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = False
+    mock_params.fail_on_policy = False
+    mock_params.fail_on_vuln_severity = "high"  # Only fail on high or critical
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # No pending files
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {})
+    
+    # No policy warnings
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
+    )
+    
+    # HAS vulnerabilities but only medium and low (below threshold)
+    monkeypatch.setattr(
+        mock_workbench, 
+        'list_vulnerabilities', 
+        lambda *args, **kwargs: [
+            {"severity": "medium", "id": "CVE-2022-1234", "component": "test-component"},
+            {"severity": "low", "id": "CVE-2022-5678", "component": "test-component"},
+        ]
+    )
+
+    # Run handler
+    result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+    assert result is True  # Should PASS because vulnerabilities are below threshold
+
+def test_handle_evaluate_gates_warn_vulnerabilities_no_fail_flag(monkeypatch, mock_workbench, mock_params):
+    """Test warning but not failing when vulnerabilities exist but no fail flag is set."""
+    # Setup mocks for warn scenario (vulnerabilities but no fail flag)
+    mock_params.command = 'evaluate-gates'
+    mock_params.project_name = "P"
+    mock_params.scan_name = "S"
+    mock_params.fail_on_pending = False
+    mock_params.fail_on_policy = False
+    mock_params.fail_on_vuln_severity = None  # No vulnerability threshold set
+    mock_params.show_pending_files = False
+    
+    # Setup monkeypatching
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    monkeypatch.setattr(handlers.evaluate_gates, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    
+    # Scan status
+    scan_status_results = {"status": "FINISHED"}
+    monkeypatch.setattr(mock_workbench, 'get_scan_status', lambda *args, **kwargs: scan_status_results)
+    
+    # No pending files
+    monkeypatch.setattr(mock_workbench, 'get_pending_files', lambda *args, **kwargs: {})
+    
+    # No policy warnings
+    monkeypatch.setattr(
+        mock_workbench, 
+        'scans_get_policy_warnings_counter', 
+        lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
+    )
+    
+    # HAS critical vulnerabilities, but no fail flag set
+    monkeypatch.setattr(
+        mock_workbench, 
+        'list_vulnerabilities', 
+        lambda *args, **kwargs: [
+            {"severity": "critical", "id": "CVE-2022-1234", "component": "test-component"},
+            {"severity": "high", "id": "CVE-2022-5678", "component": "test-component"},
+        ]
+    )
+
+    # Run handler with capturing stdout to check for warning message
+    with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+        result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
+        output = mock_stdout.getvalue()
+        assert "⚠️ Warning: Found 2 vulnerabilities" in output
+        assert "Note: Gate is not set to fail on vulnerabilities" in output
+    
+    assert result is True  # Should PASS despite critical vulnerabilities because no fail flag
 

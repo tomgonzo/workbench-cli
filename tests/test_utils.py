@@ -19,7 +19,8 @@ from workbench_agent.utils import (
     format_duration,            # Added
     # _print_operation_summary, # Skipping test - primarily printing
     # _fetch_display_save_results, # Skipping test - better for integration
-    _save_results_to_file       # Added
+    _save_results_to_file,       # Added
+    _validate_reuse_source
 )
 from workbench_agent.exceptions import (
     WorkbenchAgentError,
@@ -193,7 +194,7 @@ def test_resolve_scan_not_found_project_scope(mock_workbench, mock_params):
     mock_workbench.get_project_scans.return_value = [] # Simulate not found
 
     with patch('workbench_agent.utils._resolve_project', return_value="TEST_PROJECT"):
-        with pytest.raises(ScanNotFoundError, match="Scan 'nonexistent_scan' not found in the 'test_project project'"):
+        with pytest.raises(ScanNotFoundError, match="Scan 'nonexistent_scan' not found in the 'test_project' project"):
             _resolve_scan(mock_workbench, "nonexistent_scan", "test_project", create_if_missing=False, params=mock_params)
 
 def test_resolve_scan_not_found_global_scope(mock_workbench, mock_params):
@@ -225,7 +226,7 @@ def test_resolve_scan_api_error_project_scope(mock_workbench, mock_params):
     mock_workbench.get_project_scans.side_effect = ApiError("API error")
 
     with patch('workbench_agent.utils._resolve_project', return_value="TEST_PROJECT"):
-        with pytest.raises(ApiError, match="Failed to list scans in the 'test_project project' while resolving 'test_scan': API error"):
+        with pytest.raises(ApiError, match="Failed to list scans in the 'test_project' project while resolving 'test_scan': API error"):
             _resolve_scan(mock_workbench, "test_scan", "test_project", create_if_missing=False, params=mock_params)
 
 def test_resolve_scan_network_error_project_scope(mock_workbench, mock_params):
@@ -234,7 +235,7 @@ def test_resolve_scan_network_error_project_scope(mock_workbench, mock_params):
     mock_workbench.get_project_scans.side_effect = NetworkError("Network error")
 
     with patch('workbench_agent.utils._resolve_project', return_value="TEST_PROJECT"):
-        with pytest.raises(ApiError, match="Failed to list scans in the 'test_project project' while resolving 'test_scan': Network error"): # Wrapped in ApiError
+        with pytest.raises(ApiError, match="Failed to list scans in the 'test_project' project while resolving 'test_scan': Network error"): # Wrapped in ApiError
             _resolve_scan(mock_workbench, "test_scan", "test_project", create_if_missing=False, params=mock_params)
 
 # --- Tests for _execute_standard_scan_flow (verify context) ---
@@ -281,6 +282,27 @@ def test_execute_standard_scan_flow_id_reuse_project(mock_resolve_proj_reuse, mo
         mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
         mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
         True, "specific_project", "REUSE_PROJ_CODE" # Check reuse args
+    )
+    assert scan_completed is True
+    assert isinstance(durations, dict)
+
+# Test with pre-validated values
+def test_execute_standard_scan_flow_with_prevalidated_reuse(mock_workbench, mock_params):
+    # Set up pre-validated reuse values
+    mock_params.id_reuse = True
+    mock_params.api_reuse_type = "specific_project"
+    mock_params.resolved_specific_code_for_reuse = "PRE_VALIDATED_PROJ_CODE"
+    mock_params.project_name = "CurrentProject"
+
+    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
+
+    # No additional resolve_project or resolve_scan calls should happen
+    # The pre-validated values should be used directly
+    mock_workbench.run_scan.assert_called_once_with(
+        "CURRENT_SCAN_CODE",
+        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
+        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
+        True, "specific_project", "PRE_VALIDATED_PROJ_CODE" # Check reuse args with pre-validated code
     )
     assert scan_completed is True
     assert isinstance(durations, dict)
@@ -347,7 +369,7 @@ def test_execute_standard_scan_flow_id_reuse_scan_fails(mock_resolve_scan_reuse,
     mock_params.id_reuse_source = "NonExistentScan"
     mock_params.project_name = "CurrentProject"
 
-    with pytest.raises(ValidationError, match="Error looking up scan code 'NonExistentScan' for reuse"):
+    with pytest.raises(ValidationError, match="The scan specified as an identification reuse source 'NonExistentScan' does not exist"):
         _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
 
     assert mock_resolve_scan_reuse.call_count >= 1 # At least local lookup attempted
@@ -540,6 +562,111 @@ def test_save_results_to_file_write_error(mock_makedirs, mock_open_file):
     # Add assertion for log capture if logging is tested
 
 
+# --- Tests for _validate_reuse_source ---
+def test_validate_reuse_source_none_when_disabled(mock_workbench, mock_params):
+    mock_params.id_reuse = False
+    
+    api_reuse_type, resolved_code = _validate_reuse_source(mock_workbench, mock_params)
+    
+    assert api_reuse_type is None
+    assert resolved_code is None
+
+@patch('workbench_agent.utils._resolve_project')
+def test_validate_reuse_source_project_success(mock_resolve_project, mock_workbench, mock_params):
+    mock_params.id_reuse = True
+    mock_params.id_reuse_type = "project"
+    mock_params.id_reuse_source = "ReuseProject"
+    mock_resolve_project.return_value = "REUSE_PROJ_CODE"
+    
+    api_reuse_type, resolved_code = _validate_reuse_source(mock_workbench, mock_params)
+    
+    assert api_reuse_type == "specific_project"
+    assert resolved_code == "REUSE_PROJ_CODE"
+    mock_resolve_project.assert_called_once_with(mock_workbench, "ReuseProject", create_if_missing=False)
+
+@patch('workbench_agent.utils._resolve_project')
+def test_validate_reuse_source_project_not_found(mock_resolve_project, mock_workbench, mock_params):
+    mock_params.id_reuse = True
+    mock_params.id_reuse_type = "project"
+    mock_params.id_reuse_source = "NonExistentProject"
+    mock_resolve_project.side_effect = ProjectNotFoundError("Project not found")
+    
+    with pytest.raises(ValidationError, match="The project specified as an identification reuse source.*does not exist"):
+        _validate_reuse_source(mock_workbench, mock_params)
+
+@patch('workbench_agent.utils._resolve_scan')
+def test_validate_reuse_source_scan_local_success(mock_resolve_scan, mock_workbench, mock_params):
+    mock_params.id_reuse = True
+    mock_params.id_reuse_type = "scan"
+    mock_params.id_reuse_source = "ReuseScan"
+    mock_params.project_name = "CurrentProject"
+    mock_resolve_scan.return_value = ("REUSE_SCAN_CODE", 123)
+    
+    api_reuse_type, resolved_code = _validate_reuse_source(mock_workbench, mock_params)
+    
+    assert api_reuse_type == "specific_scan"
+    assert resolved_code == "REUSE_SCAN_CODE"
+    mock_resolve_scan.assert_called_once_with(
+        mock_workbench, "ReuseScan", project_name="CurrentProject", create_if_missing=False, params=mock_params
+    )
+
+@patch('workbench_agent.utils._resolve_scan')
+def test_validate_reuse_source_scan_global_success(mock_resolve_scan, mock_workbench, mock_params):
+    mock_params.id_reuse = True
+    mock_params.id_reuse_type = "scan"
+    mock_params.id_reuse_source = "ReuseScan"
+    mock_params.project_name = "CurrentProject"
+    
+    # First call fails (local project), second call succeeds (global)
+    mock_resolve_scan.side_effect = [
+        ScanNotFoundError("Not found in project"),
+        ("GLOBAL_SCAN_CODE", 456)
+    ]
+    
+    api_reuse_type, resolved_code = _validate_reuse_source(mock_workbench, mock_params)
+    
+    assert api_reuse_type == "specific_scan"
+    assert resolved_code == "GLOBAL_SCAN_CODE"
+    assert mock_resolve_scan.call_count == 2
+    mock_resolve_scan.assert_any_call(
+        mock_workbench, "ReuseScan", project_name="CurrentProject", create_if_missing=False, params=mock_params
+    )
+    mock_resolve_scan.assert_any_call(
+        mock_workbench, "ReuseScan", project_name=None, create_if_missing=False, params=mock_params
+    )
+
+@patch('workbench_agent.utils._resolve_scan')
+def test_validate_reuse_source_scan_not_found(mock_resolve_scan, mock_workbench, mock_params):
+    mock_params.id_reuse = True
+    mock_params.id_reuse_type = "scan"
+    mock_params.id_reuse_source = "NonExistentScan"
+    mock_params.project_name = "CurrentProject"
+    
+    # Both local and global searches fail
+    mock_resolve_scan.side_effect = [
+        ScanNotFoundError("Not found in project"),
+        ScanNotFoundError("Not found globally")
+    ]
+    
+    with pytest.raises(ValidationError, match="The scan specified as an identification reuse source.*does not exist"):
+        _validate_reuse_source(mock_workbench, mock_params)
+
+def test_validate_reuse_source_missing_source_project(mock_workbench, mock_params):
+    mock_params.id_reuse = True
+    mock_params.id_reuse_type = "project"
+    mock_params.id_reuse_source = None
+    
+    with pytest.raises(ConfigurationError, match="Missing project name in --id-reuse-source"):
+        _validate_reuse_source(mock_workbench, mock_params)
+
+def test_validate_reuse_source_missing_source_scan(mock_workbench, mock_params):
+    mock_params.id_reuse = True
+    mock_params.id_reuse_type = "scan"
+    mock_params.id_reuse_source = None
+    
+    with pytest.raises(ConfigurationError, match="Missing scan name in --id-reuse-source"):
+        _validate_reuse_source(mock_workbench, mock_params)
+
 # --- MOVED TESTS for _resolve_scan (More Cases - remain the same) ---
 def test_resolve_scan_project_scope_create_success(monkeypatch, mock_workbench, mock_params):
     # Setup test parameters
@@ -613,7 +740,7 @@ def test_resolve_scan_project_scope_not_found_no_create(monkeypatch, mock_workbe
     monkeypatch.setattr(mock_workbench, 'get_project_scans', mock_get_project_scans)
     
     # Call function and verify exception
-    with pytest.raises(ScanNotFoundError, match="Scan 'MissingScan' not found in the 'ProjectZ project'"):
+    with pytest.raises(ScanNotFoundError, match="Scan 'MissingScan' not found in the 'ProjectZ' project"):
         _resolve_scan(
             workbench=mock_workbench,
             scan_name="MissingScan",

@@ -20,14 +20,20 @@ def add_common_scan_options(subparser):
     scan_options_args.add_argument("--autoid-file-copyrights", help="Auto-Identify copyright statements in files.", action="store_true", default=False)
     scan_options_args.add_argument("--autoid-pending-ids", help="Auto-Identify pending files using the Top Match.", action="store_true", default=False)
     scan_options_args.add_argument("--delta-scan", help="For KB scans, only scan new/modified files with Delta Scan.", action="store_true", default=False)
-    scan_options_args.add_argument("--id-reuse", help="Auto-Identify files using existing identifications.", action="store_true", default=False)
+    scan_options_args.add_argument("--id-reuse", help="Enable reuse of existing identifications to speed up scan process.", action="store_true", default=False)
     scan_options_args.add_argument(
         "--id-reuse-type",
-        help="Control how ID Reuse operates. Supports: 'any' (any existing ID), 'only_me' (IDs by this user token), 'project' (IDs from another project), 'scan' (IDs from another scan).",
+        help="Specify the source type for identification reuse:\n"
+             "  'any'     - use any existing identification in the system\n"
+             "  'only_me' - only reuse identifications made by the current user token\n"
+             "  'project' - reuse identifications from a specific project (requires --id-reuse-source)\n"
+             "  'scan'    - reuse identifications from a specific scan (requires --id-reuse-source)",
         choices=["any", "only_me", "project", "scan"],
         default="any"
     )
-    scan_options_args.add_argument("--id-reuse-source", help="Project/Scan NAME for 'project' or 'scan' reuse type (required if id-reuse-type is 'project' or 'scan').", metavar="NAME")
+    scan_options_args.add_argument("--id-reuse-source", help="Name of the project or scan to reuse identifications from.\n"
+                                "Required when --id-reuse-type is 'project' or 'scan'.", 
+                                metavar="NAME")
     scan_options_args.add_argument("--run-dependency-analysis", help="Run dependency analysis after KB scan.", action="store_true", default=False)
 
 def add_common_monitoring_options(subparser):

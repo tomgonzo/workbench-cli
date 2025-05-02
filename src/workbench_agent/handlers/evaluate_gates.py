@@ -2,305 +2,230 @@
 
 import logging
 import argparse
+from typing import Dict, List, Optional, Union, Any, Tuple
 
 from ..api import Workbench
 from ..utils import (
     _resolve_project,
-    _resolve_scan
+    _resolve_scan,
+    _wait_for_scan_completion,
+    handler_error_wrapper
 )
 from ..exceptions import (
     WorkbenchAgentError,
     ApiError,
     NetworkError,
+    ProcessError,
+    ProcessTimeoutError,
     ValidationError,
     CompatibilityError,
     ProjectNotFoundError,
-    ScanNotFoundError,
-    ProcessError,
-    ProcessTimeoutError
+    ScanNotFoundError
 )
 
 # Get logger
 logger = logging.getLogger("log")
 
 
+@handler_error_wrapper
 def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> bool:
     """
-    Handler for the 'evaluate-gates' command. Checks scan status, pending files,
-    and policy violations. Sets exit code based on --fail-on flag.
-
+    Handler for the 'evaluate-gates' command. 
+    Checks scan status and evaluates policy warnings.
+    
+    Args:
+        workbench: The Workbench API client
+        params: Command line parameters
+        
     Returns:
-        bool: True if gate checks pass according to --fail-on, False otherwise.
+        bool: True if all gates passed, False if any gate failed
+        
+    Raises:
+        Various exceptions based on errors that occur during the process
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
-    # Initialize check results
-    found_pending = False
-    found_policy_warnings = False
-    found_vulnerabilities = False
-    vulnerability_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
-    pending_files_details = {}
-    api_check_error = False # Flag if checks couldn't be performed
-
-    try:
-        # --- Resolve Project and Scan ---
-        project_code = _resolve_project(workbench, params.project_name, create_if_missing=False)
-        scan_code, scan_id = _resolve_scan(
-            workbench,
-            scan_name=params.scan_name,
-            project_name=params.project_name,
-            create_if_missing=False,
-            params=params
-        )
-
-        print(f"\nEvaluating gates for scan '{scan_code}' (Project: '{project_code}')...")
-
-        # --- 1. Check Scan and DA Completion Status ---
-        print("\nEnsuring the Scan finished...")
-        try:
-             kb_status_data = workbench.get_scan_status("SCAN", scan_code)
-             kb_status = kb_status_data.get("status", "UNKNOWN").upper()
-             logging.debug(f"Current Scan status: {kb_status}")
-             if kb_status not in {"FINISHED", "FAILED", "CANCELLED"}:
-                 print("KB Scan is not finished. Waiting...")
-                 workbench.wait_for_scan_to_finish(
-                     "SCAN", scan_code, params.scan_number_of_tries, params.scan_wait_time
-                 )
-                 print("KB Scan finished.")
-                 # Re-check status after waiting
-                 kb_status_data = workbench.get_scan_status("SCAN", scan_code)
-                 kb_status = kb_status_data.get("status", "UNKNOWN").upper()
-
-             if kb_status in {"FAILED", "CANCELLED"}:
-                  print(f"Error: KB Scan {kb_status}. Cannot evaluate gates.")
-                  # If scan itself failed, the gates implicitly fail regardless of --fail-on
-                  return False
-
-        except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
-             print(f"\nError checking/waiting for KB Scan completion: {e}")
-             logger.error(f"Error checking/waiting for KB scan '{scan_code}' during gate evaluation: {e}", exc_info=True)
-             # If we can't confirm scan completion, fail the gates
-             return False
-        except Exception as e:
-             print(f"\nUnexpected error checking KB Scan status: {e}")
-             logger.error(f"Unexpected error checking KB scan '{scan_code}' status: {e}", exc_info=True)
-             return False
-        
-        print("\nEnsuring Dependency Analysis finished...")
-        try:
-             da_status_data = workbench.get_scan_status("DEPENDENCY_ANALYSIS", scan_code)
-             da_status = da_status_data.get("status", "UNKNOWN").upper()
-             logging.debug(f"Current KB Scan status: {kb_status}")
-             if kb_status not in {"FINISHED", "FAILED", "CANCELLED"}:
-                 print("Dependency Analysis has not finished. Waiting...")
-                 workbench.wait_for_scan_to_finish(
-                     "DEPENDENCY_ANALYSIS", scan_code, params.scan_number_of_tries, params.scan_wait_time
-                 )
-                 print("Dependency Analysis finished.")
-                 # Re-check status after waiting
-                 da_status_data = workbench.get_scan_status("DEPENDENCY_ANALYSIS", scan_code)
-                 da_status = da_status_data.get("status", "UNKNOWN").upper()
-
-             if da_status in {"FAILED", "CANCELLED"}:
-                  print(f"Error: Dependency Analysis {da_status}. Cannot evaluate gates.")
-                  # If scan itself failed, the gates implicitly fail regardless of --fail-on
-                  return False
-
-        except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
-             print(f"\nError checking/waiting for KB Scan completion: {e}")
-             logger.error(f"Error checking/waiting for KB scan '{scan_code}' during gate evaluation: {e}", exc_info=True)
-             # If we can't confirm scan completion, fail the gates
-             return False
-        except Exception as e:
-             print(f"\nUnexpected error checking KB Scan status: {e}")
-             logger.error(f"Unexpected error checking KB scan '{scan_code}' status: {e}", exc_info=True)
-             return False
-
-
-        # --- 2. Check for Pending Identifications ---
-        print("\nChecking Pending Identifications...")
-        try:
-            pending_files_details = workbench.get_pending_files(scan_code)
-            if pending_files_details:
-                found_pending = True
-                num_pending = len(pending_files_details)
-                print(f"Check Result: Found {num_pending} file(s) Pending Identification.")
-                if params.show_pending_files:
-                    print("Files Pending Identification:")
-                    count = 0
-                    for file_id, file_path in pending_files_details.items():
-                        print(f"  - {file_path} (ID: {file_id})")
-                        count += 1
-                        if count >= 10:
-                            print(f"  ... and {num_pending - count} more.")
-                            break
-            else:
-                print("Check Result: No Files are Pending Identification.")
-        except (ApiError, NetworkError) as e:
-            print(f"\nWarning: Could not check for pending identifications due to API/Network error: {e}")
-            logger.warning(f"API/Network error checking pending files for scan '{scan_code}': {e}")
-            api_check_error = True # Mark that a check failed
-        except Exception as e:
-            print(f"\nWarning: Unexpected error checking for pending identifications: {e}")
-            logger.warning(f"Unexpected error checking pending files for scan '{scan_code}': {e}", exc_info=True)
-            api_check_error = True # Mark that a check failed
-
-        # --- 3. Check Policy Violations ---
-        print("\nChecking Policy Violations...")
-        try:
-            policy_warnings_data = workbench.scans_get_policy_warnings_counter(scan_code)
     
-            # Get totals from the data
-            total_warnings = int(policy_warnings_data.get("policy_warnings_total", 0))
-            files_with_warnings = int(policy_warnings_data.get("identified_files_with_warnings", 0))
-            deps_with_warnings = int(policy_warnings_data.get("dependencies_with_warnings", 0))
+    # Resolve project and scan (find only)
+    print("\nResolving scan for gate evaluation...")
+    project_code = _resolve_project(workbench, params.project_name, create_if_missing=False)
+    scan_code, scan_id = _resolve_scan(
+        workbench,
+        scan_name=params.scan_name,
+        project_name=params.project_name,
+        create_if_missing=False,
+        params=params
+    )
+    
+    # Wait for scan and dependency analysis to complete
+    print("\nVerifying scan completion...")
+    scan_completed, da_completed, _ = _wait_for_scan_completion(workbench, params, scan_code)
+    
+    if not scan_completed:
+        print("\n❌ Gate Evaluation Failed: KB Scan has not completed successfully.")
+        return False
+    
+    # Track gate pass/fail states
+    pending_files_gate_passed = True
+    policy_gate_passed = True
+    vuln_gate_passed = True
+    
+    # Check for pending files - always check this
+    print("\nChecking for pending files...")
+    pending_count = 0
+    try:
+        pending_files = workbench.get_pending_files(scan_code)
+        pending_count = len(pending_files)
+    except (ApiError, NetworkError) as e:
+        print(f"\n⚠️ Warning: Failed to check for pending files: {e}")
+        logger.warning(f"Error checking pending files for scan '{scan_code}': {e}")
+        # Only fail if pending files check is explicitly required
+        if params.fail_on_pending:
+            pending_files_gate_passed = False
+            print(f"\n❌ Gate Failed: Unable to verify pending files status due to API error")
+        pending_files = {}
+    
+    if pending_count > 0:
+        if params.fail_on_pending:
+            print(f"\n❌ Gate Failed: Found {pending_count} pending files that require identification.")
+            pending_files_gate_passed = False
+        else:
+            print(f"\n⚠️ Warning: Found {pending_count} pending files that require identification.")
+            print("Note: Gate is not set to fail on pending files (--fail-on-pending not specified).")
+        
+        # Display pending files if requested
+        show_pending_files = getattr(params, 'show_pending_files', False)
+        if show_pending_files and pending_count > 0:
+            print("\nPending Files:")
+            for file_id, file_path in pending_files.items():
+                print(f"  {file_path}")
+    else:
+        print("\n✅ No pending files found - all files have been identified.")
+    
+    # Check for policy warnings - always check this
+    print("\nChecking for policy warnings...")
+    policy_data = None
+    try:
+        policy_data = workbench.scans_get_policy_warnings_counter(scan_code)
+        
+        # Extract the count correctly based on the API response structure
+        # The API might return {data: {policy_warnings_total: N}} or just {policy_warnings_total: N}
+        if isinstance(policy_data, dict):
+            if "data" in policy_data and isinstance(policy_data["data"], dict):
+                policy_warning_count = policy_data["data"].get("policy_warnings_total", 0)
+            else:
+                policy_warning_count = policy_data.get("policy_warnings_total", 
+                                     policy_data.get("total", 0))  # Fallback to 'total' for backward compatibility
+        else:
+            policy_warning_count = 0
+            logger.warning(f"Unexpected policy warnings data format: {policy_data}")
+        
+        if policy_warning_count > 0:
+            if params.fail_on_policy:
+                print(f"\n❌ Gate Failed: Found {policy_warning_count} policy warnings.")
+                policy_gate_passed = False
+            else:
+                print(f"\n⚠️ Warning: Found {policy_warning_count} policy warnings.")
+                print("Note: Gate is not set to fail on policy (--fail-on-policy not specified).")
+        else:
+            print("\n✅ No policy warnings found.")
+    except (ApiError, NetworkError) as e:
+        print(f"\n⚠️ Warning: Failed to check for policy warnings: {e}")
+        logger.warning(f"Error checking policy warnings for scan '{scan_code}': {e}")
+        if params.fail_on_policy:
+            policy_gate_passed = False
+            print(f"\n❌ Gate Failed: Unable to verify policy warnings status due to API error")
+    
+    # Check for vulnerabilities - always check this
+    print("\nChecking for vulnerabilities...")
+    try:
+        vulnerabilities = workbench.list_vulnerabilities(scan_code)
+        
+        # Count vulnerabilities by severity
+        vuln_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "other": 0}
+        severities_order = ["critical", "high", "medium", "low"]
+        
+        for vuln in vulnerabilities:
+            severity = vuln.get("severity", "").lower()
+            if severity in vuln_counts:
+                vuln_counts[severity] += 1
+            else:
+                vuln_counts["other"] += 1
+        
+        total_vulns = sum(vuln_counts.values())
+        
+        if total_vulns > 0:
             
-            if total_warnings > 0:
-                found_policy_warnings = True
-                print(f"There are {total_warnings} policy warnings. "
-                      f"Warnings in Identified Files: {files_with_warnings}. "
-                      f"Warnings in Dependencies: {deps_with_warnings}.")
+            # Check if we should fail based on severity threshold
+            if params.fail_on_vuln_severity:
+                threshold_idx = severities_order.index(params.fail_on_vuln_severity)
+                has_threshold_vulns = False
                 
+                for severity in severities_order[:threshold_idx + 1]:
+                    if vuln_counts[severity] > 0:
+                        has_threshold_vulns = True
+                        print(f"\n❌ Gate Failed: Found vulnerabilities with severity {severity.upper()} (threshold: {params.fail_on_vuln_severity.upper()})")
+                        vuln_gate_passed = False
+                        break
+                
+                if vuln_gate_passed:
+                    print(f"\n✅ No vulnerabilities found with severity {params.fail_on_vuln_severity.upper()} or higher.")
             else:
-                print("Check Result: No Files, Components, or Dependencies with policy warnings.")
-
-        except (ApiError, NetworkError) as e:
-            print(f"\nWarning: Could not check for policy violations due to API/Network error: {e}")
-            logger.warning(f"API/Network error checking policy violations for scan '{scan_code}': {e}")
-            api_check_error = True # Mark that a check failed
-        except Exception as e:
-            print(f"\nWarning: Unexpected error checking for policy violations: {e}")
-            logger.warning(f"Unexpected error checking policy violations for scan '{scan_code}': {e}", exc_info=True)
-            api_check_error = True # Mark that a check failed
-
-        # --- 4. Check for Vulnerabilities ---
-        print("\nChecking Vulnerabilities...")
-        try:
-            vulnerabilities_data = workbench.list_vulnerabilities(scan_code)
-            if vulnerabilities_data:
-                found_vulnerabilities = True
-                num_cves = len(vulnerabilities_data)
-                unique_components = set()
-
-                for vuln in vulnerabilities_data:
-                    severity = vuln.get("severity", "UNKNOWN").upper()
-                    # Ensure we only count known severities in our predefined dict
-                    if severity in vulnerability_counts:
-                        vulnerability_counts[severity] += 1
-                    else: # Count anything else as UNKNOWN
-                        vulnerability_counts["UNKNOWN"] += 1
-
-                    # Collect unique components for the summary message
-                    comp_name = vuln.get("component_name", "Unknown")
-                    comp_version = vuln.get("component_version", "Unknown")
-                    unique_components.add(f"{comp_name}:{comp_version}")
-
-                num_unique_components = len(unique_components)
-                print(f"Check Result: Found {num_cves} vulnerabilities affecting {num_unique_components} components.")
-                print(f"  By CVSS Score, "
-                      f"{vulnerability_counts['CRITICAL']} are Critical, "
-                      f"{vulnerability_counts['HIGH']} are High, "
-                      f"{vulnerability_counts['MEDIUM']} are Medium, and "
-                      f"{vulnerability_counts['LOW']} are Low.")
-
-                if vulnerability_counts['UNKNOWN'] > 0:
-                    print(f"  - Unknown:  {vulnerability_counts['UNKNOWN']}")
+                # If vulnerabilities exist but gate is not set to fail
+                print(f"\n⚠️ Warning: Found {total_vulns} vulnerabilities. By CVSS Score:")
+                for severity in severities_order:
+                    if vuln_counts[severity] > 0:
+                        print(f" - {severity.upper()}: {vuln_counts[severity]}")
+                print("Note: Gate is not set to fail on vulnerabilities (--fail-on-vuln-severity not specified).")
+        else:
+            print("\n✅ No vulnerabilities found.")
+    except (ApiError, NetworkError) as e:
+        print(f"\n⚠️ Warning: Failed to check for vulnerabilities: {e}")
+        logger.warning(f"Error checking vulnerabilities for scan '{scan_code}': {e}")
+        if params.fail_on_vuln_severity:
+            vuln_gate_passed = False
+            print(f"\n❌ Gate Failed: Unable to verify vulnerabilities status due to API error")
+    
+    # Final gate evaluation summary
+    print("\n" + "="*50)
+    print("Gate Evaluation Summary:")
+    print("="*50)
+    
+    all_gates_passed = pending_files_gate_passed and policy_gate_passed and vuln_gate_passed
+    
+    if params.fail_on_pending:
+        status = "✅ PASSED" if pending_files_gate_passed else "❌ FAILED"
+        print(f"Pending Files Gate: {status} ({pending_count} pending files)")
+    else:
+        print(f"Pending Files: {pending_count} files {'✅' if pending_count == 0 else '⚠️'}")
+    
+    if params.fail_on_policy:
+        if policy_data and isinstance(policy_data, dict):
+            if 'data' in policy_data and isinstance(policy_data['data'], dict):
+                policy_count = policy_data['data'].get('policy_warnings_total', 0)
             else:
-                print("Check Result: No vulnerabilities found.")
-
-        except ScanNotFoundError:
-             # If scan exists but vuln check fails specifically with ScanNotFound, treat as no vulns found for gate purposes
-             print("Check Result: Vulnerability data not available (ScanNotFound during vuln check). Assuming no vulnerabilities for gate check.")
-             logger.warning(f"Scan '{scan_code}' found, but vulnerability check resulted in ScanNotFound. Treating as 0 vulnerabilities.")
-        except (ApiError, NetworkError) as e:
-            print(f"\nWarning: Could not check for vulnerabilities due to API/Network error: {e}")
-            logger.warning(f"API/Network error checking vulnerabilities for scan '{scan_code}': {e}")
-            api_check_error = True # Mark that a check failed
-        except Exception as e:
-            print(f"\nWarning: Unexpected error checking for vulnerabilities: {e}")
-            logger.warning(f"Unexpected error checking vulnerabilities for scan '{scan_code}': {e}", exc_info=True)
-            api_check_error = True # Mark that a check failed
-
-        # --- 5. Determine Final Gate Status based on failure flags ---
-        final_gates_passed = True
-        failure_reason = []
-
-        # Initialize Gates
-        pending_status = "NOT USED"
-        policy_status = "NOT USED"
-        vuln_status = "NOT USED"
-
-        if api_check_error:
-             # If we couldn't perform the checks reliably, fail the gate if *any* failure condition is active
-             if params.fail_on_pending or params.fail_on_policy or params.fail_on_vuln_severity:
-                 final_gates_passed = False
-                 failure_reason.append("API error during checks")
-             else:
-                 print("\nWarning: API errors occurred during checks, but no --fail-on-* flags specified. Passing gates.")
-
+                policy_count = policy_data.get('policy_warnings_total', policy_data.get('total', 0))
         else:
-            # Apply failure conditions based on checks performed
-            if params.fail_on_pending and found_pending:
-                if found_pending:
-                    pending_status = "FAIL"
-                    final_gates_passed = False
-                    failure_reason.append("pending identifications found")
-                else:
-                    pending_status = "PASS"
-
-            if params.fail_on_policy and found_policy_warnings:
-                if found_policy_warnings:
-                    policy_status = "FAIL"
-                    final_gates_passed = False
-                    failure_reason.append("policy violations found")
-                else:
-                    policy_status = "PASS"
-
-            # Check vulnerability severity gate
-            if params.fail_on_vuln_severity and found_vulnerabilities:
-                fail_severity_level = params.fail_on_vuln_severity.upper()
-                severities_to_check = []
-                if fail_severity_level == 'LOW':
-                    severities_to_check = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
-                elif fail_severity_level == 'MEDIUM':
-                    severities_to_check = ['CRITICAL', 'HIGH', 'MEDIUM']
-                elif fail_severity_level == 'HIGH':
-                    severities_to_check = ['CRITICAL', 'HIGH']
-                elif fail_severity_level == 'CRITICAL':
-                    severities_to_check = ['CRITICAL']
-
-                vulnerability_failed = False
-                for severity in severities_to_check:
-                    if vulnerability_counts.get(severity, 0) > 0:
-                        vulnerability_failed = True
-                        final_gates_passed = False
-                        failure_reason.append(f"vulnerabilities found at severity '{fail_severity_level}' or higher")
-                        break # No need to check lower severities if already failed
-
-                vuln_status = "FAIL" if vulnerability_failed else "PASS"
-            elif params.fail_on_vuln_severity: # Flag was set, but no vulnerabilities were found
-                vuln_status = "PASS"
-            # else: vuln_status remains "NOT USED"
-
-        # --- 6. Print Final Status ---
-        print("\n--- Gate Evaluation Summary ---")
-        print(f"Pending Identifications: {pending_status:<10}")
-        print(f"Policy Violations:       {policy_status:<10}")
-        print(f"Vulnerabilities:         {vuln_status:<10}")
-        print("-----------------------------") # Adjusted length
-        if final_gates_passed:
-            print("Final Result: PASSED")
-        else:
-            print(f"Final Result: FAILED (Reason(s): {', '.join(failure_reason)})")
-        print("-------------------------")
-
-        return final_gates_passed
-
-    except (ProjectNotFoundError, ScanNotFoundError, ApiError, NetworkError,
-            ProcessError, ProcessTimeoutError, ValidationError, CompatibilityError) as e:
-        # If resolution or fundamental API calls fail, re-raise to indicate command failure
-        raise
-    except Exception as e:
-        # Wrap unknown exceptions
-        logger.error(f"Failed to execute '{params.command}' command: {e}", exc_info=True)
-        raise WorkbenchAgentError(f"Failed to execute {params.command} command: {str(e)}",
-                                details={"error": str(e)})
+            policy_count = "Not Checked"
+        status = "✅ PASSED" if policy_gate_passed else "❌ FAILED"
+        print(f"Policy Warnings Gate: {status} ({policy_count} warnings)")
+    else:
+        policy_count = "Not Checked"
+        if policy_data and isinstance(policy_data, dict):
+            if 'data' in policy_data and isinstance(policy_data['data'], dict):
+                policy_count = policy_data['data'].get('policy_warnings_total', 0)
+            else:
+                policy_count = policy_data.get('policy_warnings_total', policy_data.get('total', 0))
+        print(f"Policy Warnings: {policy_count} warnings {'✅' if policy_count == 0 or policy_count == 'Not Checked' else '⚠️'}")
+    
+    if params.fail_on_vuln_severity:
+        status = "✅ PASSED" if vuln_gate_passed else "❌ FAILED"
+        print(f"Vulnerability Gate: {status} (Threshold: {params.fail_on_vuln_severity.upper()})")
+    else:
+        total_vulns = sum(vuln_counts.values()) if 'vuln_counts' in locals() else "Not Checked"
+        print(f"Vulnerabilities: {total_vulns} {'✅' if total_vulns == 0 or total_vulns == 'Not Checked' else '⚠️'}")
+    
+    print("="*50)
+    print(f"Overall Gate Status: {'✅ PASSED' if all_gates_passed else '❌ FAILED'}")
+    print("="*50)
+    
+    return all_gates_passed

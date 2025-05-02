@@ -788,33 +788,207 @@ def test_get_scan_identified_licenses_scan_not_found(mock_send, workbench_inst):
 
 @patch.object(Workbench, '_send_request')
 def test_list_vulnerabilities_success(mock_send, workbench_inst):
-    mock_send.return_value = {"status": "1", "data": {
-        "list": [
-            {"id": "CVE-2021-1234", "severity": "HIGH"},
-            {"id": "CVE-2021-5678", "severity": "MEDIUM"}
-        ]
-    }}
+    # First call is for count
+    count_response = {
+        "status": "1",
+        "data": {
+            "count_results": 2
+        }
+    }
+    
+    # Second call is for page 1
+    page_response = {
+        "status": "1", 
+        "data": {
+            "list": [
+                {"id": "CVE-2021-1234", "severity": "HIGH"},
+                {"id": "CVE-2021-5678", "severity": "MEDIUM"}
+            ]
+        }
+    }
+    
+    # Set up the mock to return the appropriate responses in sequence
+    mock_send.side_effect = [count_response, page_response]
+    
     vulns = workbench_inst.list_vulnerabilities("scan1")
     assert len(vulns) == 2
     assert vulns[0]["id"] == "CVE-2021-1234"
     assert vulns[1]["severity"] == "MEDIUM"
-    mock_send.assert_called_once()
-    payload = mock_send.call_args[0][0]
-    assert payload['group'] == 'vulnerabilities'
-    assert payload['action'] == 'list_vulnerabilities'
-    assert payload['data']['scan_code'] == 'scan1'
+    
+    # Verify API calls
+    assert mock_send.call_count == 2
+    
+    # Check the count request
+    count_payload = mock_send.call_args_list[0][0][0]
+    assert count_payload['group'] == 'vulnerabilities'
+    assert count_payload['action'] == 'list_vulnerabilities'
+    assert count_payload['data']['scan_code'] == 'scan1'
+    assert count_payload['data']['count_results'] == 1
+    
+    # Check the page request
+    page_payload = mock_send.call_args_list[1][0][0]
+    assert page_payload['group'] == 'vulnerabilities'
+    assert page_payload['action'] == 'list_vulnerabilities'
+    assert page_payload['data']['scan_code'] == 'scan1'
+    assert page_payload['data']['page'] == 1
 
 @patch.object(Workbench, '_send_request')
 def test_list_vulnerabilities_none_found(mock_send, workbench_inst):
-    mock_send.return_value = {"status": "1", "message": "No vulnerabilities found.", "data": []}
+    # Count response shows 0 vulnerabilities
+    count_response = {
+        "status": "1", 
+        "data": {
+            "count_results": 0
+        }
+    }
+    
+    mock_send.return_value = count_response
+    
     vulns = workbench_inst.list_vulnerabilities("scan1")
     assert vulns == []
+    
+    # Verify only the count API call was made
+    assert mock_send.call_count == 1
+    
+    # Check the call arguments
+    count_payload = mock_send.call_args[0][0]
+    assert count_payload['group'] == 'vulnerabilities'
+    assert count_payload['action'] == 'list_vulnerabilities'
+    assert count_payload['data']['scan_code'] == 'scan1'
+    assert count_payload['data']['count_results'] == 1
 
 @patch.object(Workbench, '_send_request')
 def test_list_vulnerabilities_api_error(mock_send, workbench_inst):
     mock_send.return_value = {"status": "0", "error": "API error"}
-    with pytest.raises(ApiError, match="Failed to list vulnerabilities"):
+    with pytest.raises(ApiError, match="Failed to get vulnerability count"):
         workbench_inst.list_vulnerabilities("scan1")
+
+@patch.object(Workbench, '_send_request')
+def test_list_vulnerabilities_with_pagination(mock_send, workbench_inst):
+    # First call is to get the count
+    count_response = {
+        "status": "1", 
+        "data": {
+            "count_results": 120  # More than default page size (100)
+        }
+    }
+    
+    # Second call is for page 1
+    page1_response = {
+        "status": "1", 
+        "data": {
+            "list": [{"id": f"CVE-2021-{i}", "severity": "HIGH"} for i in range(1, 101)]
+        }
+    }
+    
+    # Third call is for page 2
+    page2_response = {
+        "status": "1", 
+        "data": {
+            "list": [{"id": f"CVE-2021-{i}", "severity": "MEDIUM"} for i in range(101, 121)]
+        }
+    }
+    
+    # Set up the mock to return the appropriate responses in sequence
+    mock_send.side_effect = [count_response, page1_response, page2_response]
+    
+    # Call the method
+    vulns = workbench_inst.list_vulnerabilities("scan1")
+    
+    # Verify the results
+    assert len(vulns) == 120
+    assert vulns[0]["id"] == "CVE-2021-1"
+    assert vulns[99]["id"] == "CVE-2021-100"  # Last item from page 1
+    assert vulns[100]["id"] == "CVE-2021-101"  # First item from page 2
+    assert vulns[119]["id"] == "CVE-2021-120"  # Last item
+    
+    # Verify the API calls
+    assert mock_send.call_count == 3
+    
+    # Check the first call (count request)
+    count_payload = mock_send.call_args_list[0][0][0]
+    assert count_payload['group'] == 'vulnerabilities'
+    assert count_payload['action'] == 'list_vulnerabilities'
+    assert count_payload['data']['scan_code'] == 'scan1'
+    assert count_payload['data']['count_results'] == 1
+    
+    # Check the second call (page 1)
+    page1_payload = mock_send.call_args_list[1][0][0]
+    assert page1_payload['group'] == 'vulnerabilities'
+    assert page1_payload['action'] == 'list_vulnerabilities'
+    assert page1_payload['data']['scan_code'] == 'scan1'
+    assert page1_payload['data']['page'] == 1
+    
+    # Check the third call (page 2)
+    page2_payload = mock_send.call_args_list[2][0][0]
+    assert page2_payload['group'] == 'vulnerabilities'
+    assert page2_payload['action'] == 'list_vulnerabilities'
+    assert page2_payload['data']['scan_code'] == 'scan1'
+    assert page2_payload['data']['page'] == 2
+
+@patch.object(Workbench, '_send_request')
+def test_list_vulnerabilities_zero_count(mock_send, workbench_inst):
+    # Count response shows 0 vulnerabilities
+    count_response = {
+        "status": "1", 
+        "data": {
+            "count_results": 0
+        }
+    }
+    
+    mock_send.return_value = count_response
+    
+    # Call the method
+    vulns = workbench_inst.list_vulnerabilities("scan1")
+    
+    # Verify the results
+    assert vulns == []
+    
+    # Verify that only the count API call was made
+    assert mock_send.call_count == 1
+
+@patch.object(Workbench, '_send_request')
+def test_list_vulnerabilities_count_api_error(mock_send, workbench_inst):
+    # Error response for the count request
+    error_response = {
+        "status": "0", 
+        "error": "API error during count"
+    }
+    
+    mock_send.return_value = error_response
+    
+    # Call should raise ApiError
+    with pytest.raises(ApiError, match="Failed to get vulnerability count"):
+        workbench_inst.list_vulnerabilities("scan1")
+    
+    # Verify that only the count API call was made
+    assert mock_send.call_count == 1
+
+@patch.object(Workbench, '_send_request')
+def test_list_vulnerabilities_page_api_error(mock_send, workbench_inst):
+    # First call is to get the count
+    count_response = {
+        "status": "1", 
+        "data": {
+            "count_results": 120
+        }
+    }
+    
+    # Second call is for page 1, but it returns an error
+    error_response = {
+        "status": "0", 
+        "error": "API error on page 1"
+    }
+    
+    # Set up the mock to return the appropriate responses in sequence
+    mock_send.side_effect = [count_response, error_response]
+    
+    # Call should raise ApiError
+    with pytest.raises(ApiError, match="Failed to fetch vulnerabilities page 1"):
+        workbench_inst.list_vulnerabilities("scan1")
+    
+    # Verify that two API calls were made
+    assert mock_send.call_count == 2
 
 # --- Tests for report generation ---
 @patch.object(Workbench, '_send_request')
