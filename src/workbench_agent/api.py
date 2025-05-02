@@ -486,6 +486,7 @@ class Workbench:
         git_url: Optional[str] = None,
         git_branch: Optional[str] = None,
         git_tag: Optional[str] = None,
+        git_commit: Optional[str] = None,
         git_depth: Optional[int] = None
     ) -> bool:
         """
@@ -497,6 +498,7 @@ class Workbench:
             git_url: Optional URL to a Git repository for Git-based scan.
             git_branch: Optional branch name (if git_url is provided).
             git_tag: Optional tag name (if git_url is provided, alternative to branch).
+            git_commit: Optional commit hash (if git_url is provided, alternative to branch or tag).
             git_depth: Optional git clone depth (if git_url is provided).
             
         Returns:
@@ -526,8 +528,12 @@ class Workbench:
             git_ref_value = git_branch
             git_ref_type = "branch"
             logger.info(f"  Including Git Branch: {git_branch}")
-        # If neither branch nor tag is provided but git_url is, API might default,
-        # but our argparse setup requires one or the other for scan-git.
+        elif git_commit:
+            git_ref_value = git_commit
+            git_ref_type = "commit"
+            logger.info(f"  Including Git Commit: {git_commit}")
+        # If neither branch, tag, or commit are provided but git_url is, API might default,
+        # but our argparse setup requires one of the three for scan-git.
         
         if git_url:
             # Include Git parameters only if a Git URL is provided

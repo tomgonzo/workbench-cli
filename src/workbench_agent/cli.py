@@ -261,6 +261,7 @@ Example Usage:
     ref_group = scan_git_parser.add_mutually_exclusive_group(required=True)
     ref_group.add_argument("--git-branch", help="The git branch to scan.", type=str, metavar="BRANCH")
     ref_group.add_argument("--git-tag", help="The git tag to scan.", type=str, metavar="TAG")
+    ref_group.add_argument("--git-commit", help="The git commit to scan.", type=str, metavar="COMMIT")
 
     add_common_scan_options(scan_git_parser)
     add_common_monitoring_options(scan_git_parser)
@@ -293,10 +294,14 @@ Example Usage:
         if args.command == 'scan-git':
             if not args.git_url:
                 raise ValidationError("Git URL is required for scan-git command")
-            if not args.git_branch and not args.git_tag:
-                raise ValidationError("Must specify either git branch or tag")
+            if not args.git_branch and not args.git_tag and not args.git_commit:
+                raise ValidationError("Must specify either a git branch, tag, or commit to scan")
             if args.git_branch and args.git_tag:
                 raise ValidationError("Cannot specify both git branch and tag")
+            if args.git_branch and args.git_commit:
+                raise ValidationError("Cannot specify both git branch and commit")
+            if args.git_tag and args.git_commit:
+                raise ValidationError("Cannot specify both git tag and commit")
         
         # Validate ID reuse parameters for both scan and scan-git
         if args.id_reuse and args.id_reuse_type in ['project', 'scan'] and not args.id_reuse_source:

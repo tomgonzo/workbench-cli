@@ -72,6 +72,7 @@ def test_parse_scan_git_branch():
     assert args.git_url == 'http://git.com'
     assert args.git_branch == 'dev'
     assert args.git_tag is None
+    assert args.git_commit is None  # Verify git_commit is None
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-tag', 'v1.0'])
 def test_parse_scan_git_tag():
@@ -79,6 +80,18 @@ def test_parse_scan_git_tag():
     assert args.command == 'scan-git'
     assert args.git_tag == 'v1.0'
     assert args.git_branch is None
+    assert args.git_commit is None  # Verify git_commit is None
+
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-commit', 'abc123'])
+def test_parse_scan_git_commit():
+    args = parse_cmdline_args()
+    assert args.command == 'scan-git'
+    assert args.project_name == 'PG'
+    assert args.scan_name == 'SG'
+    assert args.git_url == 'http://git.com'
+    assert args.git_commit == 'abc123'
+    assert args.git_branch is None  # Verify git_branch is None
+    assert args.git_tag is None  # Verify git_tag is None
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'import-da', '--project-name', 'P', '--scan-name', 'S', '--path', 'results.json'])
 @patch('os.path.exists', return_value=True) # Mock path validation
@@ -142,9 +155,19 @@ def test_parse_validation_scan_git_branch_and_tag():
     with pytest.raises(SystemExit):
          parse_cmdline_args()
 
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-branch', 'dev', '--git-commit', 'abc123'])
+def test_parse_validation_scan_git_branch_and_commit():
+    with pytest.raises(SystemExit):  # Argparse handles this validation, raising SystemExit
+         parse_cmdline_args()
+
+@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-tag', 'v1.0', '--git-commit', 'abc123'])
+def test_parse_validation_scan_git_tag_and_commit():
+    with pytest.raises(SystemExit):  # Argparse handles this validation, raising SystemExit
+         parse_cmdline_args()
+
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com'])
 def test_parse_validation_scan_git_missing_ref():
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit):  # Argparse handles this validation, raising SystemExit
          parse_cmdline_args()
 
 @patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '/non/existent/path'])
