@@ -1,25 +1,24 @@
-# FossID Workbench Agent
+# FossID Workbench Agent (Experimental)
+A prototype CLI inspired by the official [Workbench Agent](https://github.com/fossid-ab/workbench-agent) that interacts with the Workbench API to:
 
-A command-line tool for interacting with the FossID Workbench API, enabling automation of common scanning and reporting tasks.
-
-## Features
-Workbench Agent supports various operations for scanning your code and interacting with the results.
+### Project and Scan Management
+* Create Projects and Scans for first-time scans
+* Reuse Projects and Scans for incremental scans
 
 ### Scanning Options
-*   Upload code (directories or files) for scanning.
-*   Scan Git repositories (branches or tags).
-*   Import Dependency Analysis results (e.g., `analyzer-result.json`).
+*   Upload directories or files for scanning.
+*   Pull Git repositories (branches or tags) for scanning.
+*   Import Dependency Analysis results (e.g., `analyzer-result.json`) from FossID-DA or ORT.
 
 ### Results Options
-*   Fetch scan results (scanned file metrics, identified components and licenses, dependencies, policy violations).
-*   Check scan for pending identifications and policy violations with optional failure mode.
-*   Generate and download reports (scan or project scope) with a simplified naming scheme.
+*   Fetch scan results (scan metrics, components, licenses, dependencies, policy violations, vulnerabilities) and save as JSON.
+*   Fail CI/CD pipelines based on the presence of pending identifications, policy violations, or vulnerabilities.
+*   Generate and download reports (scan or project scope) to consume or save as build artifacts.
 
 ## Prerequisites
 
-*   **Python 3.9+**
-*   **pip** (Python package installer, usually included with Python)
-*   Access to a FossID Workbench instance (URL, Username, API Token)
+*   **Python 3.9+** and **pip**
+*   Access to FossID Workbench
 
 ## Installation
 
@@ -52,7 +51,7 @@ Workbench Agent supports various operations for scanning your code and interacti
         You should see `(.venv)` appear at the beginning of your terminal prompt.
 
 3.  **Install the Package:**
-    This command installs the `workbench-agent` tool and its dependencies (like `requests`) into your active virtual environment.
+    Install `workbench-agent` and its dependencies into your virtual environment.
 
     ```bash
     pip install .
@@ -68,9 +67,9 @@ Workbench Agent supports various operations for scanning your code and interacti
     pip install -e .
     ```
 
-## Configuration (Environment Variables)
+## Configuration
 
-The agent requires credentials to connect to the Workbench API. These can be provided via environment variables for convenience and security:
+Credentials for the Workbench API can be provided via environment variables for convenience and security:
 
 *   `WORKBENCH_URL`: API Endpoint URL (e.g., `https://workbench.example.com/api.php`)
 *   `WORKBENCH_USER`: Workbench Username
@@ -80,7 +79,7 @@ You can also provide these using the `--api-url`, `--api-user`, and `--api-token
 
 ## Usage
 
-Run the agent using the `workbench-agent` command followed by the desired subcommand and its options. Make sure your virtual environment is activated.
+Run `workbench-agent` with the desired command and its options.
 
 ```bash
 workbench-agent <COMMAND> [OPTIONS...]
@@ -116,12 +115,12 @@ workbench-agent scan \
 ```bash
 workbench-agent scan \
     --project-name MYPROJ --scan-name MYSCAN02 \
-    --path ./src \
+    --path ./src.zip \
     --id-reuse --id-reuse-type project --id-reuse-source "MyBaseProject" \
-    --show-components --show-licenses --show-dependencies
+    --show-scan-metrics --show-components --show-licenses --show-dependencies
 ```
 
-### Import DA results only:
+### Import DA results (does not scan)
 
 ```bash
 workbench-agent import-da \
@@ -135,15 +134,24 @@ workbench-agent import-da \
 ```bash
 workbench-agent show-results \
     --project-name MYPROJ --scan-name MYSCAN01 \
-    --show-licenses --show-components --show-dependencies --show-scan-metrics
+    --show-scan-metrics --show-licenses --show-components --show-dependencies --show-scan-metrics --show-vulnerabilities \
+    --results-path ./results.json
 ```
 
-### Evaluate gates for a scan (check pending IDs, show pending files, fail on policy violations):
+### Evaluate gates for a scan (check pending IDs, show pending files, fail on pending IDs):
 
 ```bash
 workbench-agent evaluate-gates \
     --project-name MYPROJ --scan-name MYSCAN01 \
-    --show-files --fail-on policy
+    --show-files --fail-on-pending
+```
+
+### Evaluate gates for a scan (fail on vuln severity):
+
+```bash
+workbench-agent evaluate-gates \
+    --project-name MYPROJ --scan-name MYSCAN01 \
+    --fail-on-vuln-severity critical
 ```
 
 (This command exits with code 0 if gates pass, 1 if they fail)
