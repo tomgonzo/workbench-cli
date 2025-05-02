@@ -36,6 +36,7 @@ def test_handle_scan_git_success_branch(mock_fetch_results, mock_exec_flow, mock
     mock_params.git_url = "http://my.git/repo.git"
     mock_params.git_branch = "main"
     mock_params.git_tag = None
+    mock_params.git_commit = None  # Ensure commit is None for branch test
     mock_params.scan_number_of_tries = 10
     
     # Setup mock return values
@@ -85,6 +86,7 @@ def test_handle_scan_git_success_tag(mock_fetch_results, mock_exec_flow, mock_as
     mock_params.git_url = "http://my.git/repo.git"
     mock_params.git_branch = None
     mock_params.git_tag = "v1.0.0" 
+    mock_params.git_commit = None  # Ensure commit is None for tag test
     mock_params.scan_number_of_tries = 10
     
     # Setup mock return values
@@ -117,6 +119,56 @@ def test_handle_scan_git_success_tag(mock_fetch_results, mock_exec_flow, mock_as
 @patch('workbench_agent.handlers.scan_git._resolve_scan')
 @patch('workbench_agent.handlers.scan_git._assert_scan_is_idle')
 @patch('workbench_agent.handlers.scan_git._execute_standard_scan_flow')
+@patch('workbench_agent.handlers.scan_git._fetch_display_save_results')
+def test_handle_scan_git_success_commit(mock_fetch_results, mock_exec_flow, mock_assert_idle,
+                                       mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+    """Tests successful execution of handle_scan_git using a commit."""
+    # Setup mock_params for scan-git with commit
+    mock_params.command = 'scan-git'
+    mock_params.project_name = "GitProjCommit"
+    mock_params.scan_name = "GitScanCommit"
+    mock_params.git_url = "http://my.git/repo.git"
+    mock_params.git_branch = None
+    mock_params.git_tag = None
+    mock_params.git_commit = "abc123def456"
+    mock_params.scan_number_of_tries = 10
+    
+    # Setup mock return values
+    mock_resolve_proj.return_value = "GIT_PROJ_C_C"
+    mock_resolve_scan.return_value = ("GIT_SCAN_C_C", 569)
+    
+    # Mock the git download and wait methods
+    mock_workbench.download_content_from_git.return_value = True
+    
+    # Mock the execute_standard_scan_flow to return success with durations
+    mock_exec_flow.return_value = (True, False, {"kb_scan": 125.0, "dependency_analysis": 0})
+
+    # Call the handler
+    handle_scan_git(mock_workbench, mock_params)
+
+    # Assertions
+    mock_resolve_proj.assert_called_once_with(mock_workbench, "GitProjCommit", create_if_missing=True)
+    mock_resolve_scan.assert_called_once_with(
+        mock_workbench, 
+        scan_name="GitScanCommit", 
+        project_name="GitProjCommit", 
+        create_if_missing=True, 
+        params=mock_params
+    )
+    mock_assert_idle.assert_called_once()
+    
+    # Assert git-related methods are called
+    mock_workbench.download_content_from_git.assert_called_once_with("GIT_SCAN_C_C")
+    mock_workbench.wait_for_git_clone.assert_called_once_with("GIT_SCAN_C_C", 10, 10)
+    
+    # Assert standard flow execution
+    mock_exec_flow.assert_called_once_with(mock_workbench, mock_params, "GIT_PROJ_C_C", "GIT_SCAN_C_C", 569)
+    mock_fetch_results.assert_called_once_with(mock_workbench, mock_params, "GIT_SCAN_C_C")
+
+@patch('workbench_agent.handlers.scan_git._resolve_project')
+@patch('workbench_agent.handlers.scan_git._resolve_scan')
+@patch('workbench_agent.handlers.scan_git._assert_scan_is_idle')
+@patch('workbench_agent.handlers.scan_git._execute_standard_scan_flow')
 def test_handle_scan_git_download_start_fails(mock_exec_flow, mock_assert_idle, 
                                             mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     """Tests failure during the git download initiation API call."""
@@ -126,6 +178,8 @@ def test_handle_scan_git_download_start_fails(mock_exec_flow, mock_assert_idle,
     mock_params.scan_name = "S"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     
     # Setup mock return values
     mock_resolve_proj.return_value = "PC"
@@ -159,6 +213,8 @@ def test_handle_scan_git_download_wait_fails(mock_exec_flow, mock_assert_idle,
     mock_params.scan_name = "S"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     mock_params.scan_number_of_tries = 5
     
     # Setup mock return values
@@ -190,6 +246,8 @@ def test_handle_scan_git_project_not_found(mock_resolve_proj, mock_workbench, mo
     mock_params.scan_name = "S"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     
     # Call the handler and verify exception
     with pytest.raises(ProjectNotFoundError, match="Git project not found"):
@@ -209,6 +267,8 @@ def test_handle_scan_git_scan_not_found(mock_resolve_scan, mock_resolve_proj, mo
     mock_params.scan_name = "NonExistent"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     
     # Setup mock return values
     mock_resolve_proj.return_value = "PC"
@@ -232,6 +292,8 @@ def test_handle_scan_git_compatibility_error(mock_resolve_scan, mock_resolve_pro
     mock_params.scan_name = "ExistingScan"
     mock_params.git_url = "new_url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     
     # Setup mock return values
     mock_resolve_proj.return_value = "PC"
@@ -258,6 +320,8 @@ def test_handle_scan_git_api_error_in_exec(mock_exec_flow, mock_assert_idle,
     mock_params.scan_name = "S"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     mock_params.scan_number_of_tries = 5
     
     # Setup mock return values
@@ -292,6 +356,8 @@ def test_handle_scan_git_network_error(mock_exec_flow, mock_assert_idle,
     mock_params.scan_name = "S"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     mock_params.scan_number_of_tries = 5
     
     # Setup mock return values
@@ -326,6 +392,8 @@ def test_handle_scan_git_process_error(mock_exec_flow, mock_assert_idle,
     mock_params.scan_name = "S"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     mock_params.scan_number_of_tries = 5
     
     # Setup mock return values
@@ -360,6 +428,8 @@ def test_handle_scan_git_process_timeout_error(mock_exec_flow, mock_assert_idle,
     mock_params.scan_name = "S"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     mock_params.scan_number_of_tries = 5
     
     # Setup mock return values
@@ -394,6 +464,8 @@ def test_handle_scan_git_unexpected_error(mock_exec_flow, mock_assert_idle,
     mock_params.scan_name = "S"
     mock_params.git_url = "url"
     mock_params.git_branch = "b"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
     mock_params.scan_number_of_tries = 5
     
     # Setup mock return values
