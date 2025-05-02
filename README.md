@@ -89,12 +89,12 @@ Use `workbench-agent --help` to see the main help message and workbench-agent <C
 
 ## Commands:
 
-scan: Upload local code, run KB scan, optionally run DA scan.
-scan-git: Clone and scan a Git repository.
-import-da: Import Dependency Analysis results.
-show-results: Fetch and display results for an existing scan.
-evaluate-gates: Check scan status, pending IDs, and policy violations.
-download-reports: Generate and download reports for a scan or project.
+* scan: Upload local code files or directories for scanning. 
+* scan-git: Clone a Git branch or tag to scan it.
+* import-da: Import Dependency Analysis results. (from FossID-DA or ORT)
+* show-results: Fetch and display results for an existing scan.
+* evaluate-gates: Check pending IDs, policy violations, and vulnerabilities.
+* download-reports: download reports for a scan or project.
 
 ## Examples:
 
