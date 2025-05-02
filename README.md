@@ -16,7 +16,6 @@ A prototype CLI inspired by the official [Workbench Agent](https://github.com/fo
 *   Generate and download reports (scan or project scope) to consume or save as build artifacts.
 
 ## Prerequisites
-
 *   **Python 3.9+** and **pip**
 *   Access to FossID Workbench
 
@@ -68,17 +67,18 @@ A prototype CLI inspired by the official [Workbench Agent](https://github.com/fo
     ```
 
 ## Configuration
-
-Credentials for the Workbench API can be provided via environment variables for convenience and security:
+Credentials for the Workbench API can be provided via environment variables for convenience:
 
 *   `WORKBENCH_URL`: API Endpoint URL (e.g., `https://workbench.example.com/api.php`)
 *   `WORKBENCH_USER`: Workbench Username
 *   `WORKBENCH_TOKEN`: Workbench API Token
 
-You can also provide these using the `--api-url`, `--api-user`, and `--api-token` command-line arguments, which will override the environment variables if set.
+Note: You can also provide these using the `--api-url`, `--api-user`, and `--api-token` arguments, which override the environment variables if set.
 
-## Usage
+## Logging
+The agent creates a log file named log-agent.txt in the directory where it's run. You can control the logging level using the --log argument (DEBUG, INFO, WARNING, ERROR). Console output is generally kept at INFO level unless --log is set higher.
 
+# Usage
 Run `workbench-agent` with the desired command and its options.
 
 ```bash
@@ -96,12 +96,14 @@ Use `workbench-agent --help` to see the main help message and workbench-agent <C
 * evaluate-gates: Check pending IDs, policy violations, and vulnerabilities.
 * download-reports: download reports for a scan or project.
 
-## Examples:
-
+# Examples:
 (Ensure environment variables are set or use --api-url, --api-user, --api-token)
 
-### Full scan uploading a directory, run DA, show results:
+## Examples for SCAN command
+Scan takes a Project Name, Scan Name, and Path. It also supports various `show-*` arguments for showing results after the scan is done.
 
+### Scan by uploading a directory, running Dependency Analysis. 
+### After the scan, show Scan Metrics, Identified Components, and Licenses.
 ```bash
 workbench-agent scan \
     --project-name MYPROJ --scan-name MYSCAN01 \
@@ -110,27 +112,61 @@ workbench-agent scan \
     --show-components --show-licenses --show-scan-metrics
 ```
 
-### Scan using identification reuse from a specific project:
+Note: When a directory is passed, it will be compressed as ZIP before uploading.
 
+### Scan a ZIP file, reusing identifications from a specific project.
+### After the scan, show Dependencies, Policy Warnings, and Vulnerabilities.
 ```bash
 workbench-agent scan \
     --project-name MYPROJ --scan-name MYSCAN02 \
     --path ./src.zip \
     --id-reuse --id-reuse-type project --id-reuse-source "MyBaseProject" \
-    --show-scan-metrics --show-components --show-licenses --show-dependencies
+    --show-dependencies --show-policy-warnings --show-vulnerabilities
 ```
 
-### Import DA results (does not scan)
+## Examples for SCAN-GIT Command
+Scan-Git takes a Project Name, Scan Name, Git Repo URL, and either a Branch, Tag, or Commit Ref. It also supports various `show-*` arguments for showing results after the scan is done. 
 
+### Scan by Cloning a Branch from a Git repository:
+### After the scan, show Scan Metrics, Policy Warnings, and Vulnerabilities.
+```bash
+workbench-agent scan-git \
+    --project-name MYGITPROJ --scan-name MYGITSCAN01 \
+    --git-url https://github.com/owner/repo --git-branch develop \
+    --show-scan-metrics --show-policy-warnings --show-vulnerabilities
+```
+
+### Scan by Cloning a Tag from a Git repository:
+```bash
+workbench-agent scan-git \
+    --project-name MYGITPROJ --scan-name GitTag1.0 \
+    --git-url https://github.com/owner/repo --git-tag "1.0" \
+    --show-dependencies --show-vulnerabilities
+```
+
+### Scan by Cloning a Commit from a Git repository:
+```bash
+workbench-agent scan-git \
+    --project-name MYGITPROJ --scan-name Commit-ffac537e6cbbf934b08745a378932722df287a53 \
+    --git-url https://github.com/owner/repo --git-commit ffac537e6cbbf934b08745a378932722df287a53 \
+    --show-policy-warnings
+```
+
+## Examples for IMPORT-DA Command
+Import-DA takes a Project Name, Scan Name, and Path to a `analyzer-result.json` file. This works with FossID-DA or ORT's Analyzer.
+
+### Import an Analyzer JSON from ORT or FossID-DA (does not scan)
 ```bash
 workbench-agent import-da \
     --project-name MYPROJ --scan-name MYSCAN03 \
     --path ./ort-test-data/analyzer-result.json \
-    --show-dependencies
+    --show-dependencies --show-vulnerabilities
 ```
 
-### Show results for an existing scan:
+## Examples for SHOW-RESULTS Command
+Show-Results takes a Project Name, Scan Name, and any of the various `show-*` arguments. The results can be exported as JSON and saved to the path specified with the `--results-path` argument.
 
+### Show All Available Results
 ```bash
 workbench-agent show-results \
     --project-name MYPROJ --scan-name MYSCAN01 \
@@ -138,40 +174,45 @@ workbench-agent show-results \
     --results-path ./results.json
 ```
 
-### Evaluate gates for a scan (check pending IDs, show pending files, fail on pending IDs):
+## Examples for the EVALUATE-GATES Command
+Evaluate-Gates takes a Project Name and Scan Name. To fail a Pipeline, specify one or more of the available `--fail-on-*` arguments. This command exits with code 0 if gates pass, 1 if they fail.
 
+### Evaluate Gates, failing if there are Files Pending ID and showing Pending Files:
 ```bash
 workbench-agent evaluate-gates \
     --project-name MYPROJ --scan-name MYSCAN01 \
-    --show-files --fail-on-pending
+    --show-pending-files --fail-on-pending
 ```
 
-### Evaluate gates for a scan (fail on vuln severity):
+### Evaluate Gates, failing if Policy Warnings or Files Pending ID are present:
+```bash
+workbench-agent evaluate-gates \
+    --project-name MYPROJ --scan-name MYSCAN01 \
+    --fail-on-policy --fail-on-pending
+```
 
+### Evaluate Gates, failing if CRITICAL severity vulnerabilities are present:
 ```bash
 workbench-agent evaluate-gates \
     --project-name MYPROJ --scan-name MYSCAN01 \
     --fail-on-vuln-severity critical
 ```
 
-(This command exits with code 0 if gates pass, 1 if they fail)
+Note: `--fail-on-vuln-severity` accepts critical, high, medium, or low. It will fail on vulnerabilities of the specified severity or higher.
 
+## Examples for DOWNLOAD-REPORTS Command
+Download-Reports takes a Project Name, Scan Name, Report Scope, and Report Path. By default, all available reports are downloaded. Choose which reports to download by adjusting the `--report-scope` and `--report-type`. 
 
-### Scan a Git repository branch:
-
-```bash
-workbench-agent scan-git \
-    --project-name MYGITPROJ --scan-name MYGITSCAN01 \
-    --git-url https://github.com/owner/repo.git --git-branch develop
-```
-
-### Download XLSX and SPDX reports for a project:
-
+### Download Project-Level XLSX and SPDX reports:
 ```bash
 workbench-agent download-reports \
     --project-name MYPROJ --report-scope project \
     --report-type xlsx,spdx --report-save-path reports/
 ```
 
-## Logging
-The agent creates a log file named log-agent.txt in the directory where it's run. You can control the logging level using the --log argument (DEBUG, INFO, WARNING, ERROR). Console output is generally kept at INFO level unless --log is set higher.
+### Download all Scan-Level reports:
+```bash
+workbench-agent download-reports \
+    --project-name MYPROJ --report-scope scan \
+    --report-save-path reports/
+```
