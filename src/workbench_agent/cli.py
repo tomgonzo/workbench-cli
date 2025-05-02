@@ -7,6 +7,7 @@ from argparse import RawTextHelpFormatter
 
 # Import Workbench to access report type constants
 from .api import Workbench
+from .exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,7 @@ Example Usage:
     )
     show_results_parser.add_argument("--scan-name", help="Scan Name to fetch results for.", required=True, metavar="NAME")
     show_results_parser.add_argument("--project-name", help="Project Name containing the scan.", required=True, metavar="NAME")
+    add_common_monitoring_options(show_results_parser)
     add_common_result_options(show_results_parser)
 
     # --- 'evaluate-gates' Subcommand ---
@@ -264,15 +266,68 @@ Example Usage:
     add_common_monitoring_options(scan_git_parser)
     add_common_result_options(scan_git_parser)
 
+    # --- Validate args after parsing ---
     args = parser.parse_args()
-    if args.command in ['scan', 'scan-git'] and args.id_reuse:
-        if args.id_reuse_type in ['project', 'scan'] and not args.id_reuse_source:
-             parser.error(f"--id-reuse-source is required when --id-reuse-type is '{args.id_reuse_type}'.")
-        if args.id_reuse_type not in ['project', 'scan'] and args.id_reuse_source:
-             logger.warning(f"--id-reuse-source ('{args.id_reuse_source}') provided but --id-reuse-type is '{args.id_reuse_type}'. Source name will be ignored.")
-             args.id_reuse_source = None
+    
+    # Validate common parameters
+    if not args.api_url or not args.api_user or not args.api_token:
+        raise ValidationError("API URL, user, and token must be provided")
+    
+    # Fix API URL if it doesn't end with '/api.php'
+    if args.api_url and not args.api_url.endswith('/api.php'):
+        if args.api_url.endswith('/'):
+            args.api_url = args.api_url + 'api.php'
+        else:
+            args.api_url = args.api_url + '/api.php'
+    
+    # Validate command-specific parameters
+    if args.command == 'scan' or args.command == 'scan-git':
+        # For scan command, validate path exists
+        if args.command == 'scan':
+            if not args.path:
+                raise ValidationError("Path is required for scan command")
+            if not os.path.exists(args.path):
+                raise ValidationError(f"Path does not exist: {args.path}")
+        
+        # For scan-git, validate Git URL and reference
+        if args.command == 'scan-git':
+            if not args.git_url:
+                raise ValidationError("Git URL is required for scan-git command")
+            if not args.git_branch and not args.git_tag:
+                raise ValidationError("Must specify either git branch or tag")
+            if args.git_branch and args.git_tag:
+                raise ValidationError("Cannot specify both git branch and tag")
+        
+        # Validate ID reuse parameters for both scan and scan-git
+        if args.id_reuse and args.id_reuse_type in ['project', 'scan'] and not args.id_reuse_source:
+            raise ValidationError("ID reuse source project/scan name is required when id-reuse-type is 'project' or 'scan'")
+        if args.id_reuse and args.id_reuse_type not in ['project', 'scan'] and args.id_reuse_source:
+            logger.warning(f"--id-reuse-source ('{args.id_reuse_source}') provided but --id-reuse-type is '{args.id_reuse_type}'. Source name will be ignored.")
+            args.id_reuse_source = None
+    
+    elif args.command == 'import-da':
+        # Validate path for import-da
+        if not args.path:
+            raise ValidationError("Path is required for import-da command")
+        if not os.path.exists(args.path):
+            raise ValidationError(f"Path does not exist: {args.path}")
+    
+    elif args.command == 'download-reports':
+        # Validate project name for project scope
+        if args.report_scope == 'project' and not args.project_name:
+            raise ValidationError("Project name is required for project scope report")
+        
+        # Validate scan name for scan scope
+        if args.report_scope == 'scan' and not args.scan_name:
+            raise ValidationError("Scan name is required for scan scope report")
+    
     elif args.command == 'show-results':
-        if not (args.show_licenses or args.show_components or args.show_policy_warnings or args.show_scan_metrics or args.show_dependencies or args.show_vulnerabilities):
-            parser.error("The 'show-results' command requires at least one --show-* flag.")
-
+        # Validate that at least one show flag is provided
+        show_flags = [
+            args.show_licenses, args.show_components, args.show_dependencies,
+            args.show_scan_metrics, args.show_policy_warnings, args.show_vulnerabilities
+        ]
+        if not any(show_flags):
+            raise ValidationError("At least one '--show-*' flag must be provided")
+    
     return args

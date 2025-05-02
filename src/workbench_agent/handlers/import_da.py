@@ -8,7 +8,6 @@ from ..api import Workbench
 from ..utils import (
     _resolve_project,
     _resolve_scan,
-    _print_operation_summary,
     _fetch_display_save_results
 )
 from ..exceptions import (
@@ -79,9 +78,6 @@ def handle_import_da(workbench: Workbench, params: argparse.Namespace):
             logger.error(f"Unexpected error during DA import for scan '{scan_code}': {e}", exc_info=True)
             raise WorkbenchAgentError(f"Unexpected error during DA import: {e}",
                                     details={"error": str(e), "scan_code": scan_code})
-
-        # --- Print Summary ---
-        _print_operation_summary(params, da_completed, project_code, scan_code, {"dependency_analysis": 0.0})
 
         # --- Fetch, Display, and Save Results using the utility function ---
         _fetch_display_save_results(workbench, params, scan_code)

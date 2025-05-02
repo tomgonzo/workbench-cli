@@ -21,14 +21,17 @@ from workbench_agent.api import Workbench
 @patch('workbench_agent.handlers._resolve_project')
 @patch('workbench_agent.handlers._resolve_scan')
 @patch('os.makedirs')
+@patch('workbench_agent.handlers._wait_for_scan_completion')
+@patch('workbench_agent.handlers._print_operation_summary')
 @patch('workbench_agent.handlers.Workbench.generate_report')
 @patch('workbench_agent.handlers._save_report_content')
-def test_handle_download_reports_scan_sync(mock_save, mock_gen_report, mock_makedirs, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_download_reports_scan_sync(mock_save, mock_gen_report, mock_print_summary, mock_wait_completion, mock_makedirs, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
     mock_params.report_scope = 'scan'; mock_params.report_type = 'html'; mock_params.report_save_path = "/out"
     mock_params.selection_type=None; mock_params.selection_view=None; mock_params.disclaimer=None; mock_params.include_vex=True # Defaults from handler
     mock_resolve_proj.return_value = "PC"
     mock_resolve_scan.return_value = ("SC", 1)
+    mock_wait_completion.return_value = (True, True, {"kb_scan": 45.0, "dependency_analysis": 30.0})  # Scan & DA completed
     mock_response = MagicMock(spec=requests.Response)
     mock_response.headers = {'content-type': 'text/html'}
     mock_gen_report.return_value = mock_response
@@ -37,9 +40,37 @@ def test_handle_download_reports_scan_sync(mock_save, mock_gen_report, mock_make
 
     mock_resolve_proj.assert_called_once_with(mock_workbench, "P", create_if_missing=False)
     mock_resolve_scan.assert_called_once_with(mock_workbench, scan_name="S", project_name="P", create_if_missing=False, params=mock_params)
+    mock_wait_completion.assert_called_once_with(mock_workbench, mock_params, "SC")
+    mock_print_summary.assert_called_once_with(mock_params, True, "PC", "SC", {"kb_scan": 45.0, "dependency_analysis": 30.0})
     mock_makedirs.assert_called_once_with("/out", exist_ok=True)
     mock_gen_report.assert_called_once_with(scope='scan', project_code='PC', scan_code='SC', report_type='html', selection_type=None, selection_view=None, disclaimer=None, include_vex=True)
     mock_save.assert_called_once_with(mock_response, "/out", report_scope='scan', name_component='S', report_type='html')
+
+@patch('workbench_agent.handlers._resolve_project')
+@patch('workbench_agent.handlers._resolve_scan')
+@patch('os.makedirs')
+@patch('workbench_agent.handlers._wait_for_scan_completion')
+@patch('workbench_agent.handlers._print_operation_summary')
+@patch('workbench_agent.handlers.Workbench.generate_report')
+@patch('workbench_agent.handlers._save_report_content')
+def test_handle_download_reports_scan_incomplete(mock_save, mock_gen_report, mock_print_summary, mock_wait_completion, mock_makedirs, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+    mock_params.command = 'download-reports'; mock_params.project_name = "P"; mock_params.scan_name = "S"
+    mock_params.report_scope = 'scan'; mock_params.report_type = 'html'; mock_params.report_save_path = "/out"
+    mock_params.selection_type=None; mock_params.selection_view=None; mock_params.disclaimer=None; mock_params.include_vex=True
+    mock_resolve_proj.return_value = "PC"
+    mock_resolve_scan.return_value = ("SC", 1)
+    mock_wait_completion.return_value = (False, False, {"kb_scan": 0.0, "dependency_analysis": 0.0})  # Scan not completed
+
+    with pytest.raises(ProcessError, match="Cannot generate reports because the scan has not completed successfully"):
+        handlers.handle_download_reports(mock_workbench, mock_params)
+
+    mock_resolve_proj.assert_called_once()
+    mock_resolve_scan.assert_called_once()
+    mock_wait_completion.assert_called_once()
+    mock_print_summary.assert_not_called()
+    mock_makedirs.assert_not_called()
+    mock_gen_report.assert_not_called()
+    mock_save.assert_not_called()
 
 @patch('workbench_agent.handlers._resolve_project')
 @patch('workbench_agent.handlers._resolve_scan')
@@ -122,9 +153,11 @@ def test_handle_download_reports_multiple_one_fails(mock_save, mock_download, mo
 @patch('workbench_agent.handlers._resolve_scan')
 @patch('workbench_agent.handlers.Workbench.list_scans') # Mock the list_scans used for project lookup
 @patch('os.makedirs')
+@patch('workbench_agent.handlers._wait_for_scan_completion')
+@patch('workbench_agent.handlers._print_operation_summary')
 @patch('workbench_agent.handlers.Workbench.generate_report')
 @patch('workbench_agent.handlers._save_report_content')
-def test_handle_download_reports_scan_global_resolve(mock_save, mock_gen_report, mock_makedirs, mock_list_scans_lookup, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
+def test_handle_download_reports_scan_global_resolve(mock_save, mock_gen_report, mock_print_summary, mock_wait_completion, mock_makedirs, mock_list_scans_lookup, mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     """Tests downloading report for a scan resolved globally (no project name provided)."""
     mock_params.command = 'download-reports'; mock_params.project_name = None; mock_params.scan_name = "GlobalScan" # No project name
     mock_params.report_scope = 'scan'; mock_params.report_type = 'json'; mock_params.report_save_path = "/out"
@@ -136,6 +169,7 @@ def test_handle_download_reports_scan_global_resolve(mock_save, mock_gen_report,
         {"name": "OtherScan", "code": "OSC", "id": "111", "project_code": "OTHER_PC"},
         {"name": "GlobalScan", "code": "GLOBAL_SC", "id": "999", "project_code": "FOUND_PC"} # Found project code
     ]
+    mock_wait_completion.return_value = (True, True, {"kb_scan": 60.0, "dependency_analysis": 40.0})  # Scan & DA completed
     mock_response = MagicMock(spec=requests.Response)
     mock_response.headers = {'content-type': 'application/json'}
     mock_gen_report.return_value = mock_response
@@ -145,6 +179,8 @@ def test_handle_download_reports_scan_global_resolve(mock_save, mock_gen_report,
     mock_resolve_proj.assert_not_called() # _resolve_project not called directly
     mock_resolve_scan.assert_called_once_with(mock_workbench, scan_name="GlobalScan", project_name=None, create_if_missing=False, params=mock_params) # Global resolve
     mock_list_scans_lookup.assert_called_once_with() # list_scans called for project lookup
+    mock_wait_completion.assert_called_once_with(mock_workbench, mock_params, "GLOBAL_SC")
+    mock_print_summary.assert_called_once_with(mock_params, True, "FOUND_PC", "GLOBAL_SC", {"kb_scan": 60.0, "dependency_analysis": 40.0})
     mock_makedirs.assert_called_once_with("/out", exist_ok=True)
     # Check generate_report uses the looked-up project_code
     mock_gen_report.assert_called_once_with(scope='scan', project_code='FOUND_PC', scan_code='GLOBAL_SC', report_type='json', selection_type=None, selection_view=None, disclaimer=None, include_vex=True)

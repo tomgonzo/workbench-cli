@@ -9,7 +9,8 @@ from ..api import Workbench
 from ..utils import (
     _resolve_project,
     _resolve_scan,
-    _save_report_content
+    _save_report_content,
+    _wait_for_scan_completion
 )
 from ..exceptions import (
     WorkbenchAgentError,
@@ -32,12 +33,20 @@ def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
 
+    # Ensure required parameters have default values
+    if not hasattr(params, 'scan_number_of_tries'):
+        params.scan_number_of_tries = 60  # Default value
+    if not hasattr(params, 'scan_wait_time'):
+        params.scan_wait_time = 5  # Default value in seconds
+
     report_scope = params.report_scope.lower()
     project_code = None
     scan_code = None
     scan_id = None
     entity_name_log = ""
     name_for_file = ""
+    da_completed = False
+    durations = None
 
     try:
         if report_scope == "project":
@@ -78,6 +87,13 @@ def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
                      raise ProjectNotFoundError(f"Failed to find project context for globally resolved scan '{scan_code}': {proj_lookup_err}")
 
             name_for_file = scan_name
+            
+            # For scan reports, wait for scan and dependency analysis to complete
+            print(f"\n--- Waiting for scan processes to complete ---")
+            scan_completed, da_completed, durations = _wait_for_scan_completion(workbench, params, scan_code)
+            
+            if not scan_completed:
+                raise ProcessError("Cannot generate reports because the scan has not completed successfully.")
 
         else:
             raise ValidationError(f"Invalid report scope: {report_scope}. Must be 'scan' or 'project'.")
@@ -174,7 +190,7 @@ def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
                         success_values={"FINISHED"},
                         failure_values={"FAILED", "CANCELLED"},
                         max_tries=params.scan_number_of_tries,
-                        wait_interval=5,
+                        wait_interval=params.scan_wait_time,
                         progress_indicator=True
                     )
                     print(f"Report generation complete (Process ID: {process_id}).")

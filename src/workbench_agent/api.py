@@ -1112,7 +1112,7 @@ class Workbench:
             print("DA Result Import Mode.")
             print(f"Importing DA results into Scan '{scan_code}'.")
         else:
-            print(f"Starting Dependency Analysis for scan '{scan_code}'.")
+            logger.debug(f"Starting Dependency Analysis for scan '{scan_code}'.")
 
         response = self._send_request(payload)
         if response.get("status") == "1":
