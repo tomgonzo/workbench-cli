@@ -30,7 +30,7 @@ workbench-agent <COMMAND> [OPTIONS...]
 * evaluate-gates: Check pending IDs, policy violations, and vulnerabilities.
 * download-reports: download reports for a scan or project.
 
-Use `workbench-agent --help` to see the main help message and workbench-agent <COMMAND> --help for help on a specific command.
+Use `workbench-agent --help` to see the main help message and `workbench-agent <COMMAND> --help` for help on a specific command.
 
 ## Configuration
 Credentials for the Workbench API can be provided via environment variables for convenience:
