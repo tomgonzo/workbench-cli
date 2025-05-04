@@ -15,11 +15,38 @@ A prototype CLI inspired by the official [Workbench Agent](https://github.com/fo
 *   Fail CI/CD pipelines based on the presence of pending identifications, policy violations, or vulnerabilities.
 *   Generate and download reports (scan or project scope) to consume or save as build artifacts.
 
-## Prerequisites
-*   **Python 3.9+** and **pip**
-*   Access to FossID Workbench
+# Usage
+Run `workbench-agent` with the desired command and its options.
 
-## Installation
+```bash
+workbench-agent <COMMAND> [OPTIONS...]
+```
+
+### Commands:
+* scan: Upload local code files or directories for scanning. 
+* scan-git: Clone a Git branch or tag to scan it.
+* import-da: Import Dependency Analysis results. (from FossID-DA or ORT)
+* show-results: Fetch and display results for an existing scan.
+* evaluate-gates: Check pending IDs, policy violations, and vulnerabilities.
+* download-reports: download reports for a scan or project.
+
+Use `workbench-agent --help` to see the main help message and workbench-agent <COMMAND> --help for help on a specific command.
+
+## Configuration
+Credentials for the Workbench API can be provided via environment variables for convenience:
+
+*   `WORKBENCH_URL`: API Endpoint URL (e.g., `https://workbench.example.com/api.php`)
+*   `WORKBENCH_USER`: Workbench Username
+*   `WORKBENCH_TOKEN`: Workbench API Token
+
+Note: You can also provide these using the `--api-url`, `--api-user`, and `--api-token` arguments, which override the environment variables if set.
+
+## Running with Docker:
+This repo publishes a public image to GHCR. Run it with:
+`docker run ghcr.io/tomgonzo/workbench-agent:latest --help`
+
+## Running with Python
+Prefer to run without Docker? You'll need at least Python 3.9 installed.
 
 1.  **Clone the Repository:**
     ```bash
@@ -55,46 +82,8 @@ A prototype CLI inspired by the official [Workbench Agent](https://github.com/fo
     ```bash
     pip install .
     ```
-    *(You might need to use `pip3` instead of `pip` depending on your system configuration).*
-
-    This makes the `workbench-agent` command available in your terminal while the virtual environment is active.
-
-4.  **(Optional) Installation for Development:**
-    If you plan to modify the agent's code, install it in "editable" mode. This links the installed command to your source code, so changes are reflected immediately without reinstalling.
-
-    ```bash
-    pip install -e .
-    ```
-
-## Configuration
-Credentials for the Workbench API can be provided via environment variables for convenience:
-
-*   `WORKBENCH_URL`: API Endpoint URL (e.g., `https://workbench.example.com/api.php`)
-*   `WORKBENCH_USER`: Workbench Username
-*   `WORKBENCH_TOKEN`: Workbench API Token
-
-Note: You can also provide these using the `--api-url`, `--api-user`, and `--api-token` arguments, which override the environment variables if set.
-
-## Logging
-The agent creates a log file named log-agent.txt in the directory where it's run. You can control the logging level using the --log argument (DEBUG, INFO, WARNING, ERROR). Console output is generally kept at INFO level unless --log is set higher.
-
-# Usage
-Run `workbench-agent` with the desired command and its options.
-
-```bash
-workbench-agent <COMMAND> [OPTIONS...]
-```
-
-Use `workbench-agent --help` to see the main help message and workbench-agent <COMMAND> --help for help on a specific command.
-
-## Commands:
-
-* scan: Upload local code files or directories for scanning. 
-* scan-git: Clone a Git branch or tag to scan it.
-* import-da: Import Dependency Analysis results. (from FossID-DA or ORT)
-* show-results: Fetch and display results for an existing scan.
-* evaluate-gates: Check pending IDs, policy violations, and vulnerabilities.
-* download-reports: download reports for a scan or project.
+    
+This makes the `workbench-agent` command available in your terminal while the virtual environment is active.
 
 # Examples:
 (Ensure environment variables are set or use --api-url, --api-user, --api-token)
@@ -213,3 +202,6 @@ workbench-agent download-reports \
     --project-name MYPROJ --report-scope scan \
     --report-save-path reports/
 ```
+
+## Logging
+The agent creates a log file named log-agent.txt in the directory where it's run. You can control the logging level using the --log argument (DEBUG, INFO, WARNING, ERROR). Console output is generally kept at INFO level unless --log is set higher.
