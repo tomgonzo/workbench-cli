@@ -1,6 +1,6 @@
 ## This workflow runs any time code is pushed to a branch.
 ## By doing so, Branches always have up-to-date results in Workbench.
-name: Update Branch Scan using Git Clone
+name: Scan-Git with WB-Agent Script
 on: push
       
 jobs:
