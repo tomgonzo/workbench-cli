@@ -38,7 +38,7 @@ jobs:
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         show-results \
         --project-name $GITHUB_REPOSITORY \
-        --scan-name $GITHUB_REF \
+        --scan-name Container-$GITHUB_REF \
         --show-components \
         --show-dependencies \
         --show-licenses \
