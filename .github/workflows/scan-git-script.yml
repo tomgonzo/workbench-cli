@@ -25,7 +25,7 @@ jobs:
         run: |
           workbench-agent scan-git \
             --project-name $GITHUB_REPOSITORY \
-            --scan-name $GITHUB_REF \
+            --scan-name ScanGit-Script-$GITHUB_REF \
             --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
             --git-branch $GITHUB_REF_NAME \
             --git-depth 1 \
