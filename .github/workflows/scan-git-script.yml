@@ -41,7 +41,7 @@ jobs:
         run: |
           workbench-agent show-results \
             --project-name $GITHUB_REPOSITORY \
-            --scan-name $GITHUB_REF \
+            --scan-name ScanGit-Script-$GITHUB_REF \
             --show-components \
             --show-dependencies \
             --show-licenses \
