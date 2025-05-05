@@ -1,7 +1,7 @@
 ## This workflow runs any time code is pushed to a branch.
 ## By doing so, Branches always have up-to-date results in Workbench.
-name: Update Branch Scan using Zip Upload
-on: push
+name: Scan Zip with WB Agent Script
+on: workflow_dispatch
       
 jobs:
   fossid_scan:
