@@ -21,7 +21,7 @@ jobs:
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         scan-git \
         --project-name $GITHUB_REPOSITORY \
-        --scan-name $GITHUB_REF \
+        --scan-name Container-$GITHUB_REF \
         --git-url https://${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY \
         --git-branch $GITHUB_REF_NAME \
         --git-depth 1 \
