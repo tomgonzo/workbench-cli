@@ -1,0 +1,46 @@
+# This workflow will do a clean install of node dependencies, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: Scan with Workbench Agent
+
+on: workflow_dispatch
+
+jobs:
+  workbench-scan:
+    runs-on: ubuntu-latest
+    env:
+      WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
+      WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
+      WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
+    steps:
+    - name: Scan by Cloning from Git
+      run: |
+        docker run ghcr.io/tomgonzo/workbench-agent:latest \
+        --api-url ${{ env.WORKBENCH_URL }} \
+        --api-user ${{ env.WORKBENCH_USER }} \
+        --api-token ${{ env.WORKBENCH_TOKEN }} \
+        scan-git \
+        --project-name $GITHUB_REPOSITORY \
+        --scan-name $GITHUB_REF \
+        --git-url https://${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY \
+        --git-branch $GITHUB_REF_NAME \
+        --git-depth 1 \
+        --run-dependency-analysis \
+        --autoid-file-licenses \
+        --autoid-file-copyrights \
+        --show-scan-metrics
+
+    - name: Show Scan Results
+      run: |
+        docker run ghcr.io/tomgonzo/workbench-agent:latest \
+        --api-url ${{ env.WORKBENCH_URL }} \
+        --api-user ${{ env.WORKBENCH_USER }} \
+        --api-token ${{ env.WORKBENCH_TOKEN }} \
+        show-results \
+        --project-name $GITHUB_REPOSITORY \
+        --scan-name $GITHUB_REF \
+        --show-components \
+        --show-dependencies \
+        --show-licenses \
+        --show-policy-warnings \
+        --show-vulnerabilities
