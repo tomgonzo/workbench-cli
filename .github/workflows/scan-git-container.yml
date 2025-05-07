@@ -15,16 +15,19 @@ jobs:
     steps:
     - name: Scan by Cloning from Git
       run: |
-        docker run ghcr.io/tomgonzo/workbench-agent:latest \
+        docker run ghcr.io/tomgonzo/workbench-cli:latest \
         --api-url ${{ env.WORKBENCH_URL }} \
         --api-user ${{ env.WORKBENCH_USER }} \
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         scan-git \
         --project-name $GITHUB_REPOSITORY \
         --scan-name ScanGit-Container-$GITHUB_REF \
-        --git-url https://${{ secrets.GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY \
+        --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
         --git-branch $GITHUB_REF_NAME \
         --git-depth 1 \
+        --id-reuse \
+        --id-reuse-type project \
+        --id-reuse-source $GITHUB_REPOSITORY \
         --run-dependency-analysis \
         --autoid-file-licenses \
         --autoid-file-copyrights \
@@ -32,7 +35,7 @@ jobs:
 
     - name: Show Scan Results
       run: |
-        docker run ghcr.io/tomgonzo/workbench-agent:latest \
+        docker run ghcr.io/tomgonzo/workbench-cli:latest \
         --api-url ${{ env.WORKBENCH_URL }} \
         --api-user ${{ env.WORKBENCH_USER }} \
         --api-token ${{ env.WORKBENCH_TOKEN }} \
