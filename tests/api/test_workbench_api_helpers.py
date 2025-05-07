@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch, mock_open
 import os
 import tempfile
 import shutil
+import zipfile
 
 from workbench_cli.api.workbench_api_helpers import WorkbenchAPIHelpers
 from workbench_cli.exceptions import (
@@ -153,36 +154,27 @@ def test_send_request_git_repository_access_error(helpers_inst, mock_session):
     assert exc_info.value.__dict__["code"] == "git_repository_access_error"
 
 # --- Test _is_status_check_supported ---
-def test_is_status_check_supported_yes(helpers_inst, mocker):
-    mock_send = mocker.patch.object(helpers_inst, '_send_request')
-    mock_send.return_value = {"status": "1"}
-    assert helpers_inst._is_status_check_supported("scan1", "SCAN") is True
-    mock_send.assert_called_once()
+def test_is_status_check_supported_yes(helpers_inst):
+    with patch.object(helpers_inst, '_send_request', return_value={"status": "1"}):
+        assert helpers_inst._is_status_check_supported("scan1", "SCAN") is True
 
-def test_is_status_check_supported_no_invalid_type(helpers_inst, mocker):
-    mock_send = mocker.patch.object(helpers_inst, '_send_request')
+def test_is_status_check_supported_no_invalid_type(helpers_inst):
     error_payload = {
         "status": "0", "error": "RequestData.Base.issues_while_parsing_request",
         "data": [{"code": "RequestData.Base.field_not_valid_option", "message_parameters": {"fieldname": "type"}}]
     }
-    mock_send.return_value = error_payload
-    assert helpers_inst._is_status_check_supported("scan1", "EXTRACT_ARCHIVES") is False
-    mock_send.assert_called_once()
+    with patch.object(helpers_inst, '_send_request', return_value=error_payload):
+        assert helpers_inst._is_status_check_supported("scan1", "EXTRACT_ARCHIVES") is False
 
-def test_is_status_check_supported_api_error(helpers_inst, mocker):
-    mock_send = mocker.patch.object(helpers_inst, '_send_request')
-    # Simulate a different status 0 error
-    mock_send.return_value = {"status": "0", "error": "Scan not found"}
-    # Should raise the underlying API error
-    with pytest.raises(ApiError, match="API error during EXTRACT_ARCHIVES support check: Scan not found"):
-        helpers_inst._is_status_check_supported("scan1", "EXTRACT_ARCHIVES")
+def test_is_status_check_supported_api_error(helpers_inst):
+    with patch.object(helpers_inst, '_send_request', return_value={"status": "0", "error": "Scan not found"}):
+        with pytest.raises(ApiError, match="API error during EXTRACT_ARCHIVES support check: Scan not found"):
+            helpers_inst._is_status_check_supported("scan1", "EXTRACT_ARCHIVES")
 
-def test_is_status_check_supported_network_error(helpers_inst, mocker):
-    mock_send = mocker.patch.object(helpers_inst, '_send_request')
-    # Simulate a network error during the probe
-    mock_send.side_effect = NetworkError("Connection failed")
-    with pytest.raises(NetworkError):
-        helpers_inst._is_status_check_supported("scan1", "EXTRACT_ARCHIVES")
+def test_is_status_check_supported_network_error(helpers_inst):
+    with patch.object(helpers_inst, '_send_request', side_effect=NetworkError("Connection failed")):
+        with pytest.raises(NetworkError):
+            helpers_inst._is_status_check_supported("scan1", "EXTRACT_ARCHIVES")
 
 # --- Test _wait_for_process ---
 def test_wait_for_process_success(helpers_inst, mocker):
@@ -420,7 +412,74 @@ def test_is_excluded_by_gitignore_empty_patterns(helpers_inst):
     assert helpers_inst._is_excluded_by_gitignore("any/path", []) is False
 
 # --- Tests for file operations ---
-@pytest.mark.skip(reason="Requires more complex file system setup")
 def test_create_zip_archive(helpers_inst, mocker):
-    # This would require more complex setup with temporary files and directories
-    pass
+    """Test creating a ZIP archive from a directory structure."""
+    # Create a temporary directory structure for testing
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Create some files and directories to include
+        os.makedirs(os.path.join(temp_dir, "src"))
+        os.makedirs(os.path.join(temp_dir, "docs"))
+        os.makedirs(os.path.join(temp_dir, ".git"))  # Should be excluded
+        os.makedirs(os.path.join(temp_dir, "__pycache__"))  # Should be excluded
+        
+        # Create some files
+        with open(os.path.join(temp_dir, "src", "main.py"), "w") as f:
+            f.write("print('Hello, world!')")
+        with open(os.path.join(temp_dir, "docs", "readme.md"), "w") as f:
+            f.write("# Test Project")
+        with open(os.path.join(temp_dir, ".git", "config"), "w") as f:
+            f.write("# Git config")
+        with open(os.path.join(temp_dir, ".gitignore"), "w") as f:
+            f.write("*.log\nbuild/\n")
+        
+        # Create a file that should be excluded by gitignore
+        with open(os.path.join(temp_dir, "debug.log"), "w") as f:
+            f.write("DEBUG LOG")
+        os.makedirs(os.path.join(temp_dir, "build"))
+        with open(os.path.join(temp_dir, "build", "output.txt"), "w") as f:
+            f.write("Build output")
+
+        # Call the method to create a zip archive
+        zip_path = helpers_inst._create_zip_archive(temp_dir)
+        
+        # Verify the zip file was created
+        assert os.path.exists(zip_path)
+        
+        # Extract the contents to a new temp directory for verification
+        extract_dir = tempfile.mkdtemp()
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+                
+                # Get list of all extracted files
+                extracted_files = []
+                for root, _, files in os.walk(extract_dir):
+                    for file in files:
+                        rel_path = os.path.relpath(os.path.join(root, file), extract_dir)
+                        extracted_files.append(rel_path)
+                
+                # Check included files
+                temp_dir_name = os.path.basename(temp_dir)
+                assert f"{temp_dir_name}/src/main.py" in extracted_files
+                assert f"{temp_dir_name}/docs/readme.md" in extracted_files
+                
+                # Check excluded files/directories (by .gitignore)
+                assert f"{temp_dir_name}/debug.log" not in extracted_files
+                assert not any(f.startswith(f"{temp_dir_name}/build/") for f in extracted_files)
+                
+                # Check excluded directories (always excluded)
+                assert not any(f.startswith(f"{temp_dir_name}/.git/") for f in extracted_files)
+                assert not any(f.startswith(f"{temp_dir_name}/__pycache__/") for f in extracted_files)
+                
+        finally:
+            shutil.rmtree(extract_dir, ignore_errors=True)
+    
+    finally:
+        # Clean up
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        # Clean up zip file's temp dir (zip file is in a temp dir created by the method)
+        if os.path.exists(zip_path):
+            parent_dir = os.path.dirname(zip_path)
+            if os.path.exists(parent_dir):
+                shutil.rmtree(parent_dir, ignore_errors=True)

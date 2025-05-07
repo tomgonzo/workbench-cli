@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch, Mock, call
+from unittest.mock import MagicMock, patch, Mock, call, mock_open
 import argparse
 import requests
 
@@ -41,6 +41,9 @@ except ImportError:
             def ANY(self):
                 from unittest.mock import ANY
                 return ANY
+            
+            def mock_open(self, *args, **kwargs):
+                return mock_open(*args, **kwargs)
         
         return SimpleMocker()
 
