@@ -44,7 +44,7 @@ def test_handle_evaluate_gates_pass(monkeypatch, mock_workbench, mock_params):
     # No policy warnings
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
     
@@ -93,7 +93,7 @@ def test_handle_evaluate_gates_pass_needs_wait(monkeypatch, mock_workbench, mock
     # No policy warnings
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
     
@@ -129,7 +129,7 @@ def test_handle_evaluate_gates_fail_pending(monkeypatch, mock_workbench, mock_pa
     # No policy warnings
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
     
@@ -165,7 +165,7 @@ def test_handle_evaluate_gates_fail_policy(monkeypatch, mock_workbench, mock_par
     # HAS policy warnings to trigger failure
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 5, "identified_files_with_warnings": 2, "dependencies_with_warnings": 3}
     )
     
@@ -200,7 +200,7 @@ def test_handle_evaluate_gates_pass_with_pending_fail_on_policy(monkeypatch, moc
     # No policy warnings (which would cause failure)
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
     
@@ -235,7 +235,7 @@ def test_handle_evaluate_gates_pass_with_policy_fail_on_pending(monkeypatch, moc
     # HAS policy warnings but shouldn't fail
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 5, "identified_files_with_warnings": 2, "dependencies_with_warnings": 3}
     )
     
@@ -322,7 +322,7 @@ def test_handle_evaluate_gates_fail_api_error_pending(monkeypatch, mock_workbenc
     # No policy warnings
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
 
@@ -357,7 +357,7 @@ def test_handle_evaluate_gates_pass_api_error_pending_fail_on_none(monkeypatch, 
     # Policy violations exist but should be ignored
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 5, "identified_files_with_warnings": 2, "dependencies_with_warnings": 3}
     )
 
@@ -409,7 +409,7 @@ def test_handle_evaluate_gates_fail_vulnerabilities(monkeypatch, mock_workbench,
     # No policy warnings
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
     
@@ -452,7 +452,7 @@ def test_handle_evaluate_gates_pass_low_vulnerabilities(monkeypatch, mock_workbe
     # No policy warnings
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
     
@@ -495,7 +495,7 @@ def test_handle_evaluate_gates_warn_vulnerabilities_no_fail_flag(monkeypatch, mo
     # No policy warnings
     monkeypatch.setattr(
         mock_workbench, 
-        'scans_get_policy_warnings_counter', 
+        'get_policy_warnings_counter', 
         lambda *args, **kwargs: {"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
     

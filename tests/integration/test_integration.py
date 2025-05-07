@@ -217,7 +217,7 @@ def test_evaluate_gates_pass_flow(mocker, capsys):
     
     # No policy warnings
     mocks['policy_warnings'] = mocker.patch(
-        'workbench_cli.api.workbench_api.WorkbenchAPI.scans_get_policy_warnings_counter', 
+        'workbench_cli.api.workbench_api.WorkbenchAPI.get_policy_warnings_counter', 
         return_value={"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
     )
     

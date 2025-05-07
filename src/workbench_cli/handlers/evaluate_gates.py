@@ -108,7 +108,7 @@ def handle_evaluate_gates(workbench: WorkbenchAPI, params: argparse.Namespace) -
     print("\nChecking for policy warnings...")
     policy_data = None
     try:
-        policy_data = workbench.scans_get_policy_warnings_counter(scan_code)
+        policy_data = workbench.get_policy_warnings_counter(scan_code)
         
         # Extract the count correctly based on the API response structure
         # The API might return {data: {policy_warnings_total: N}} or just {policy_warnings_total: N}

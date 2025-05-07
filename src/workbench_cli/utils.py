@@ -1043,7 +1043,7 @@ def _fetch_results(workbench: 'Workbench', params: argparse.Namespace, scan_code
         try:
             logger.debug(f"\nFetching Scan Policy Warnings Counter for '{scan_code}'...")
             # Use the counter method for summary display
-            policy_warnings_data = workbench.scans_get_policy_warnings_counter(scan_code)
+            policy_warnings_data = workbench.get_policy_warnings_counter(scan_code)
             logger.debug("Successfully fetched policy warnings counter.")
             collected_results['policy_warnings'] = policy_warnings_data
         except (ApiError, NetworkError) as e:

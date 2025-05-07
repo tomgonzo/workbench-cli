@@ -1054,7 +1054,7 @@ class WorkbenchAPI(WorkbenchAPIHelpers):
             logger.error(f"Failed to get pending files for scan '{scan_code}': {error_msg}")
             return {} # Return empty dict on error
 
-    def scans_get_policy_warnings_counter(self, scan_code: str) -> Dict[str, Any]:
+    def get_policy_warnings_counter(self, scan_code: str) -> Dict[str, Any]:
         """
         Gets the count of policy warnings for a specific scan.
 
