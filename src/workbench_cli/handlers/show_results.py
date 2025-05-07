@@ -1,32 +1,35 @@
-# workbench_agent/handlers/show_results.py
+# workbench_cli/handlers/show_results.py
 
 import logging
 import argparse
 from typing import Dict, List, Optional, Union, Any, Tuple
 
-from ..api import Workbench
+from ..api import WorkbenchAPI
 from ..utils import (
     _resolve_project,
     _resolve_scan,
     _fetch_display_save_results,
+    _wait_for_scan_completion,
     handler_error_wrapper
 )
 from ..exceptions import (
-    WorkbenchAgentError,
+    WorkbenchCLIError,
     ApiError,
     NetworkError,
     ValidationError,
     CompatibilityError,
     ProjectNotFoundError,
-    ScanNotFoundError
+    ScanNotFoundError,
+    ProcessTimeoutError,
+    ProcessError
 )
 
 # Get logger
-logger = logging.getLogger("log")
+logger = logging.getLogger("workbench-cli")
 
 
 @handler_error_wrapper
-def handle_show_results(workbench: Workbench, params: argparse.Namespace) -> bool:
+def handle_show_results(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
     """
     Handler for the 'show-results' command. Fetches and displays results for an existing scan.
     
@@ -36,9 +39,6 @@ def handle_show_results(workbench: Workbench, params: argparse.Namespace) -> boo
         
     Returns:
         bool: True if the operation was successful
-        
-    Raises:
-        Various exceptions based on errors that occur during the process
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
     
@@ -60,6 +60,25 @@ def handle_show_results(workbench: Workbench, params: argparse.Namespace) -> boo
         create_if_missing=False,
         params=params
     )
+    
+    # Wait for scan to complete before fetching results
+    print("\nChecking scan completion status...")
+    # This try/except block is necessary for the handler's logic to continue even if scan
+    # status checking fails - we still want to attempt to show results
+    try:
+        kb_scan_completed, da_completed, _ = _wait_for_scan_completion(workbench, params, scan_code)
+        
+        if not kb_scan_completed:
+            print("\nWarning: The KB scan has not completed successfully. Results may be incomplete.")
+            logger.warning(f"Showing results for scan '{scan_code}' that has not completed successfully.")
+        
+        # Dependency analysis might not be needed for all result types, so just warn
+        if not da_completed and any([params.show_dependencies, params.show_vulnerabilities]):
+            print("\nNote: Dependency Analysis has not completed. Dependency-related results may be incomplete.")
+            logger.warning(f"Showing dependency results for scan '{scan_code}' without completed DA.")
+    except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
+        logger.warning(f"Could not verify scan completion for '{scan_code}': {e}. Proceeding anyway.")
+        print("\nWarning: Could not verify scan completion status. Results may be incomplete.")
     
     # Fetch and display results
     print(f"\nFetching results for scan '{scan_code}'...")

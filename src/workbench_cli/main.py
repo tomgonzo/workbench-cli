@@ -6,11 +6,11 @@ from typing import Optional
 
 # Import from other modules in the package
 from .cli import parse_cmdline_args
-from .api import Workbench
+from .api import WorkbenchAPI
 from . import handlers
-from .utils import format_duration
+from .utils import format_duration, _format_and_print_error
 from .exceptions import (
-    WorkbenchAgentError,
+    WorkbenchCLIError,
     ApiError,
     NetworkError,
     ConfigurationError,
@@ -19,7 +19,9 @@ from .exceptions import (
     ProcessTimeoutError,
     FileSystemError,
     ValidationError,
-    CompatibilityError
+    CompatibilityError,
+    ProjectNotFoundError,
+    ScanNotFoundError
 )
 
 
@@ -41,7 +43,7 @@ def main() -> int:
         # Configure file handler (overwrite mode) and stream handler
         logging.basicConfig(level=log_level,
                             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                            handlers=[logging.FileHandler("log-agent.txt", mode='w')],
+                            handlers=[logging.FileHandler("workbench-cli-log.txt", mode='w')],
                             force=True) # Use force=True to allow reconfiguration if run multiple times
 
         # Add console handler separately to control its level independently
@@ -51,10 +53,10 @@ def main() -> int:
         console_handler.setLevel(logging.INFO if log_level <= logging.INFO else log_level)
         logging.getLogger().addHandler(console_handler)
 
-        logger = logging.getLogger("agent")
+        logger = logging.getLogger("workbench-cli")
 
         # Print Configuration for this Run
-        print("--- Workbench Agent Configuration ---")
+        print("--- Workbench CLI Configuration ---")
         print(f"Command: {params.command}")
         for k, v in sorted(params.__dict__.items()):
             if k == 'command': continue
@@ -67,7 +69,7 @@ def main() -> int:
 
         # Initialize Workbench API client
         try:
-            workbench = Workbench(params.api_url, params.api_user, params.api_token)
+            workbench = WorkbenchAPI(params.api_url, params.api_user, params.api_token)
             logger.info("Workbench client initialized.")
         except AuthenticationError as e:
             print(f"\nAuthentication Error: {e.message}")
@@ -103,14 +105,14 @@ def main() -> int:
                 # evaluate-gates returns True for PASS, False for FAIL
                 exit_code = 0 if result else 1
                 if exit_code == 0:
-                    print("\nWorkbench Agent finished successfully (Gates Passed).")
+                    print("\nWorkbench CLI finished successfully (Gates Passed).")
                 else:
                     # Don't print 'Error' here, just the status
-                    print("\nWorkbench Agent finished (Gates FAILED).")
+                    print("\nWorkbench CLI finished (Gates FAILED).")
             else:
                 # For other commands, success is assumed if no exception was raised
                 exit_code = 0
-                print("\nWorkbench Agent finished successfully.")
+                print("\nWorkbench CLI finished successfully.")
 
         else:
             # This case should ideally be caught by argparse, but handle defensively
@@ -129,10 +131,10 @@ def main() -> int:
         print(f"\nRuntime Error: {e.message}")
         if logger: logger.error("%s: %s", type(e).__name__, e.message, exc_info=True)
         exit_code = 1
-    except WorkbenchAgentError as e:
-        # Catch any other specific agent errors that might be missed above
-        print(f"\nWorkbench Agent Error: {e.message}")
-        if logger: logger.error("Unhandled WorkbenchAgentError: %s", e.message, exc_info=True)
+    except WorkbenchCLIError as e:
+        # Catch any other specific CLI errors that might be missed above
+        print(f"\nWorkbench CLI Error: {e.message}")
+        if logger: logger.error("Unhandled WorkbenchCLIError: %s", e.message, exc_info=True)
         exit_code = 1
     except Exception as e:
         # Catch truly unexpected errors

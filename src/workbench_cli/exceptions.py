@@ -1,28 +1,18 @@
-"""Custom exception classes for the Workbench Agent.
+"""Custom exception classes for the Workbench CLI.
 
-This module defines the exception hierarchy for the Workbench Agent. All exceptions
-should inherit from WorkbenchAgentError to allow for easy catching of agent-specific
+This module defines the exception hierarchy for the Workbench CLI. All exceptions
+should inherit from WorkbenchCLIError to allow for easy catching of cli-specific
 errors.
 
-Example:
-    try:
-        # Some agent operation
-        result = agent.upload_code(path)
-    except WorkbenchAgentError as e:
-        # Handle any agent-specific error
-        logger.error(f"Agent error: {e}")
-    except Exception as e:
-        # Handle unexpected errors
-        logger.error(f"Unexpected error: {e}")
 """
 
 from typing import Optional
 
-class WorkbenchAgentError(Exception):
-    """Base class for all Workbench Agent errors.
+class WorkbenchCLIError(Exception):
+    """Base class for all Workbench CLI errors.
     
     All custom exceptions in this module should inherit from this class.
-    This allows for easy catching of any agent-specific error.
+    This allows for easy catching of any Workbench CLI-specific error.
     
     Attributes:
         message: A human-readable error message
@@ -35,7 +25,7 @@ class WorkbenchAgentError(Exception):
         self.details = details or {}
         super().__init__(self.message)
 
-class ApiError(WorkbenchAgentError):
+class ApiError(WorkbenchCLIError):
     """Represents an error returned by the Workbench API or during API interaction.
     
     This is raised when the API returns an error response or when there's an
@@ -49,7 +39,7 @@ class ApiError(WorkbenchAgentError):
     """
     pass
 
-class NetworkError(WorkbenchAgentError):
+class NetworkError(WorkbenchCLIError):
     """Represents a network-level error during API communication.
     
     This includes connection errors, timeouts, and other network-related issues.
@@ -121,7 +111,7 @@ class ScanExistsError(ResourceExistsError):
     """
     pass
 
-class ProcessError(WorkbenchAgentError):
+class ProcessError(WorkbenchCLIError):
     """Raised for failures during background Workbench processes.
     
     This includes errors during scanning, report generation, and other
@@ -146,7 +136,7 @@ class ProcessTimeoutError(ProcessError):
     """
     pass
 
-class ConfigurationError(WorkbenchAgentError):
+class ConfigurationError(WorkbenchCLIError):
     """Raised for invalid configuration or command-line arguments.
     
     This includes missing required parameters, invalid parameter values,
@@ -160,7 +150,7 @@ class ConfigurationError(WorkbenchAgentError):
     """
     pass
 
-class FileSystemError(WorkbenchAgentError):
+class FileSystemError(WorkbenchCLIError):
     """Raised for errors related to local file/directory operations.
     
     This includes file not found, permission denied, and other filesystem-related
@@ -174,7 +164,7 @@ class FileSystemError(WorkbenchAgentError):
     """
     pass
 
-class CompatibilityError(WorkbenchAgentError):
+class CompatibilityError(WorkbenchCLIError):
     """Raised when an existing scan is incompatible with the requested operation.
     
     This includes trying to run operations that aren't supported by the
@@ -188,7 +178,7 @@ class CompatibilityError(WorkbenchAgentError):
     """
     pass
 
-class ValidationError(WorkbenchAgentError):
+class ValidationError(WorkbenchCLIError):
     """Raised when input validation fails.
     
     This includes invalid file formats, unsupported options, and other

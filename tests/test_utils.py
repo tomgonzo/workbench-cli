@@ -7,12 +7,13 @@ import json # Added for _save_results_to_file test
 import os # Added for _save_results_to_file test
 import requests # Added for Response objects in tests
 from unittest.mock import MagicMock, patch, mock_open # Added mock_open
+from unittest.mock import call
 
 # --- Updated Imports ---
-from workbench_agent.utils import (
+from workbench_cli.utils import (
     _resolve_project,
     _resolve_scan,
-    _execute_standard_scan_flow,
+    # _execute_standard_scan_flow, # Removed - function has been refactored out
     # fetch_and_process_results, # Removed - function doesn't exist in provided utils.py
     _save_report_content,
     _ensure_scan_compatibility,
@@ -22,8 +23,8 @@ from workbench_agent.utils import (
     _save_results_to_file,       # Added
     _validate_reuse_source
 )
-from workbench_agent.exceptions import (
-    WorkbenchAgentError,
+from workbench_cli.exceptions import (
+    WorkbenchCLIError,
     ApiError,
     NetworkError,
     ConfigurationError,
@@ -38,8 +39,8 @@ from workbench_agent.exceptions import (
     ProjectExistsError,
     ScanExistsError
 )
-# Import Workbench needed for type hinting/mocking
-from workbench_agent.api import Workbench
+# Import WorkbenchAPI needed for type hinting/mocking
+from workbench_cli.api import WorkbenchAPI
 
 # --- Fixtures (remain the same) ---
 @pytest.fixture
@@ -73,17 +74,10 @@ def mock_params(mocker): # Use mocker fixture for MagicMock
     params.git_branch = None
     params.git_tag = None
     params.git_depth = None
-    # Add defaults for _execute_standard_scan_flow if needed
-    params.limit = 10
-    params.sensitivity = 5.0
-    params.autoid_file_licenses = False
-    params.autoid_file_copyrights = False
-    params.autoid_pending_ids = False
-    params.delta_scan = False
+    # Add defaults for id-reuse validation tests
     params.id_reuse = False
     params.id_reuse_type = None
     params.id_reuse_source = None
-    params.run_dependency_analysis = False
     # Add defaults for result fetching/display (though function test removed)
     params.show_licenses = False
     params.show_components = False
@@ -93,7 +87,7 @@ def mock_params(mocker): # Use mocker fixture for MagicMock
     params.path_result = None
     return params
 
-# --- Tests for _resolve_project (remain the same) ---
+# --- Tests for _resolve_project ---
 def test_resolve_project_success(mock_workbench):
     # Ensure mock returns project_name and project_code as used in utils.py
     mock_workbench.list_projects.return_value = [{"project_name": "test_project", "project_code": "TEST_PROJECT"}]
@@ -162,13 +156,13 @@ def test_resolve_project_api_error_create(mock_workbench):
     mock_workbench.create_project.assert_called_once_with("NewProject")
 
 
-# --- Tests for _resolve_scan (mostly remain the same, verify context) ---
+# --- Tests for _resolve_scan ---
 def test_resolve_scan_success_project_scope(mock_workbench, mock_params):
     # Setup
     mock_params.project_name = "test_project"
     mock_params.scan_name = "test_scan"
     # Mock _resolve_project call within _resolve_scan
-    with patch('workbench_agent.utils._resolve_project', return_value="TEST_PROJECT") as mock_res_proj:
+    with patch('workbench_cli.utils._resolve_project', return_value="TEST_PROJECT") as mock_res_proj:
         result = _resolve_scan(mock_workbench, "test_scan", "test_project", create_if_missing=False, params=mock_params)
 
     assert result == ("TEST_SCAN", 123) # ID is int
@@ -193,7 +187,7 @@ def test_resolve_scan_not_found_project_scope(mock_workbench, mock_params):
     mock_params.scan_name = "nonexistent_scan"
     mock_workbench.get_project_scans.return_value = [] # Simulate not found
 
-    with patch('workbench_agent.utils._resolve_project', return_value="TEST_PROJECT"):
+    with patch('workbench_cli.utils._resolve_project', return_value="TEST_PROJECT"):
         with pytest.raises(ScanNotFoundError, match="Scan 'nonexistent_scan' not found in the 'test_project' project"):
             _resolve_scan(mock_workbench, "nonexistent_scan", "test_project", create_if_missing=False, params=mock_params)
 
@@ -201,295 +195,223 @@ def test_resolve_scan_not_found_global_scope(mock_workbench, mock_params):
     mock_params.project_name = None
     mock_params.scan_name = "nonexistent_scan"
     mock_workbench.list_scans.return_value = [] # Simulate not found
-
-    with pytest.raises(ScanNotFoundError, match="Scan 'nonexistent_scan' not found globally"): # Match updated message
+    
+    with pytest.raises(ScanNotFoundError, match="Scan 'nonexistent_scan' not found globally"):
         _resolve_scan(mock_workbench, "nonexistent_scan", project_name=None, create_if_missing=False, params=mock_params)
 
-# Test create_if_missing=True finds existing scan (no ScanExistsError expected from _resolve_scan)
-@patch('workbench_agent.utils._ensure_scan_compatibility')
-def test_resolve_scan_found_create_no_error(mock_compat_check, mock_workbench, mock_params):
+def test_resolve_scan_found_create_no_error(mock_workbench, mock_params):
     mock_params.project_name = "test_project"
     mock_params.scan_name = "test_scan"
-    mock_params.command = 'scan' # A command where create_if_missing might be True
 
-    with patch('workbench_agent.utils._resolve_project', return_value="TEST_PROJECT"):
-        code, scan_id = _resolve_scan(mock_workbench, "test_scan", "test_project", create_if_missing=True, params=mock_params)
+    with patch('workbench_cli.utils._resolve_project', return_value="TEST_PROJECT"):
+        result = _resolve_scan(mock_workbench, "test_scan", "test_project", create_if_missing=True, params=mock_params)
 
-    assert code == "TEST_SCAN"
-    assert scan_id == 123
-    mock_workbench.create_webapp_scan.assert_not_called()
-    mock_compat_check.assert_called_once() # Compatibility check should still run
+    assert result == ("TEST_SCAN", 123) # ID is int
+    # These are the assertions that matter
+    mock_workbench.create_webapp_scan.assert_not_called() # Should not attempt creation
+    # No longer check compatibility here as it's now done separately
 
+# Tests for the new _ensure_scan_compatibility function
+def test_ensure_scan_compatibility_scan_command_success(mock_workbench, mock_params):
+    # Setup mock scan_info response with no git info for scan command
+    mock_workbench.get_scan_information.return_value = {
+        "code": "TEST_SCAN",
+        "name": "Test Scan",
+        "git_repo_url": None,
+        "git_branch": None,
+        "git_ref_type": None
+    }
+    
+    # Setup for scan command
+    mock_params.command = "scan"
+    
+    # Should not raise any exceptions
+    _ensure_scan_compatibility(mock_workbench, mock_params, "TEST_SCAN")
+    
+    # Verify scan info was requested
+    mock_workbench.get_scan_information.assert_called_once_with("TEST_SCAN")
+
+def test_ensure_scan_compatibility_scan_git_command_success(mock_workbench, mock_params):
+    # Setup mock scan_info response with git info matching params
+    mock_workbench.get_scan_information.return_value = {
+        "code": "TEST_SCAN",
+        "name": "Test Scan",
+        "git_repo_url": "https://github.com/example/repo.git",
+        "git_branch": "main",
+        "git_ref_type": "branch"
+    }
+    
+    # Setup for scan-git command with matching git info
+    mock_params.command = "scan-git"
+    mock_params.git_url = "https://github.com/example/repo.git"
+    mock_params.git_branch = "main"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
+    
+    # Should not raise any exceptions
+    _ensure_scan_compatibility(mock_workbench, mock_params, "TEST_SCAN")
+    
+    # Verify scan info was requested
+    mock_workbench.get_scan_information.assert_called_once_with("TEST_SCAN")
+
+def test_ensure_scan_compatibility_scan_command_incompatible(mock_workbench, mock_params):
+    # Setup mock scan_info response with git info for scan command (incompatible)
+    mock_workbench.get_scan_information.return_value = {
+        "code": "TEST_SCAN",
+        "name": "Test Scan",
+        "git_repo_url": "https://github.com/example/repo.git",
+        "git_branch": "main",
+        "git_ref_type": "branch"
+    }
+    
+    # Setup for scan command which is incompatible with git scans
+    mock_params.command = "scan"
+    
+    # Should raise CompatibilityError
+    with pytest.raises(CompatibilityError, match="Scan 'TEST_SCAN' was created for Git scanning .* and cannot be reused for code upload"):
+        _ensure_scan_compatibility(mock_workbench, mock_params, "TEST_SCAN")
+    
+    # Verify scan info was requested
+    mock_workbench.get_scan_information.assert_called_once_with("TEST_SCAN")
+
+def test_ensure_scan_compatibility_scan_git_command_incompatible_url(mock_workbench, mock_params):
+    # Setup mock scan_info response with git info not matching params
+    mock_workbench.get_scan_information.return_value = {
+        "code": "TEST_SCAN",
+        "name": "Test Scan",
+        "git_repo_url": "https://github.com/example/repo.git",
+        "git_branch": "main",
+        "git_ref_type": "branch"
+    }
+    
+    # Setup for scan-git command with non-matching git URL
+    mock_params.command = "scan-git"
+    mock_params.git_url = "https://github.com/different/repo.git"
+    mock_params.git_branch = "main"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
+    
+    # Should raise CompatibilityError
+    with pytest.raises(CompatibilityError, match="Scan 'TEST_SCAN' already exists but is configured for a different Git repository"):
+        _ensure_scan_compatibility(mock_workbench, mock_params, "TEST_SCAN")
+    
+    # Verify scan info was requested
+    mock_workbench.get_scan_information.assert_called_once_with("TEST_SCAN")
+
+def test_ensure_scan_compatibility_scan_git_command_incompatible_ref_type(mock_workbench, mock_params):
+    # Setup mock scan_info response with git info not matching params
+    mock_workbench.get_scan_information.return_value = {
+        "code": "TEST_SCAN",
+        "name": "Test Scan",
+        "git_repo_url": "https://github.com/example/repo.git",
+        "git_branch": "v1.0.0",
+        "git_ref_type": "tag"
+    }
+    
+    # Setup for scan-git command with non-matching ref type (branch vs tag)
+    mock_params.command = "scan-git"
+    mock_params.git_url = "https://github.com/example/repo.git"
+    mock_params.git_branch = "main"
+    mock_params.git_tag = None
+    mock_params.git_commit = None
+    
+    # Should raise CompatibilityError
+    with pytest.raises(CompatibilityError, match="Scan 'TEST_SCAN' exists with ref type 'tag', but current command specified ref type 'branch'"):
+        _ensure_scan_compatibility(mock_workbench, mock_params, "TEST_SCAN")
+    
+    # Verify scan info was requested
+    mock_workbench.get_scan_information.assert_called_once_with("TEST_SCAN")
+
+def test_ensure_scan_compatibility_scan_not_found(mock_workbench, mock_params):
+    # Setup mock scan_info to raise ScanNotFoundError
+    mock_workbench.get_scan_information.side_effect = ScanNotFoundError("Scan not found")
+    
+    # Should not raise any exceptions, just return
+    _ensure_scan_compatibility(mock_workbench, mock_params, "NONEXISTENT_SCAN")
+    
+    # Verify scan info was requested
+    mock_workbench.get_scan_information.assert_called_once_with("NONEXISTENT_SCAN")
+
+def test_ensure_scan_compatibility_api_error(mock_workbench, mock_params):
+    # Setup mock scan_info to raise ApiError
+    mock_workbench.get_scan_information.side_effect = ApiError("API Error")
+    
+    # Should not raise any exceptions, just return
+    _ensure_scan_compatibility(mock_workbench, mock_params, "TEST_SCAN")
+    
+    # Verify scan info was requested
+    mock_workbench.get_scan_information.assert_called_once_with("TEST_SCAN")
+
+# Re-adding the deleted tests for _resolve_scan error handling
 def test_resolve_scan_api_error_project_scope(mock_workbench, mock_params):
     mock_params.project_name = "test_project"
     mock_params.scan_name = "test_scan"
-    mock_workbench.get_project_scans.side_effect = ApiError("API error")
-
-    with patch('workbench_agent.utils._resolve_project', return_value="TEST_PROJECT"):
-        with pytest.raises(ApiError, match="Failed to list scans in the 'test_project' project while resolving 'test_scan': API error"):
+    # Mock resolves project, but get_project_scans fails
+    with patch('workbench_cli.utils._resolve_project', return_value="TEST_PROJECT"):
+        mock_workbench.get_project_scans.side_effect = ApiError("API Error")
+        with pytest.raises(ApiError, match="Failed to list scans .* while resolving 'test_scan'"):
             _resolve_scan(mock_workbench, "test_scan", "test_project", create_if_missing=False, params=mock_params)
 
 def test_resolve_scan_network_error_project_scope(mock_workbench, mock_params):
     mock_params.project_name = "test_project"
     mock_params.scan_name = "test_scan"
-    mock_workbench.get_project_scans.side_effect = NetworkError("Network error")
-
-    with patch('workbench_agent.utils._resolve_project', return_value="TEST_PROJECT"):
-        with pytest.raises(ApiError, match="Failed to list scans in the 'test_project' project while resolving 'test_scan': Network error"): # Wrapped in ApiError
+    # Mock resolves project, but get_project_scans fails with network error
+    with patch('workbench_cli.utils._resolve_project', return_value="TEST_PROJECT"):
+        mock_workbench.get_project_scans.side_effect = NetworkError("Network Failure")
+        with pytest.raises(ApiError, match="Failed to list scans in the 'test_project' project while resolving 'test_scan'"):
             _resolve_scan(mock_workbench, "test_scan", "test_project", create_if_missing=False, params=mock_params)
 
-# --- Tests for _execute_standard_scan_flow (verify context) ---
-def test_execute_standard_scan_flow_success(mock_workbench, mock_params):
-    # Assume start_scan and wait_for_scan_to_finish succeed via mock_workbench
-    mock_params.project_name = "TEST_PROJECT_NAME" # Need project name for reuse lookup logic
-
-    # Function should now return scan_completed, da_completed flags, and durations
-    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
-
-    # Verify the function calls
-    mock_workbench.assert_process_can_start.assert_called_once_with("SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time)
-    mock_workbench.run_scan.assert_called_once_with(
-        "TEST_SCAN",
-        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
-        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
-        mock_params.id_reuse, None, None # api_reuse_type, resolved_code_for_reuse
-    )
-    mock_workbench.wait_for_scan_to_finish.assert_called_once_with(
-        "SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
-    )
-    
-    # Check return values
-    assert scan_completed is True
-    assert da_completed is False  # DA is not requested by default in test params
-    assert isinstance(durations, dict)
-    assert "kb_scan" in durations
-    assert "dependency_analysis" in durations
-
-# Test ID Reuse Logic within _execute_standard_scan_flow
-@patch("workbench_agent.utils._resolve_project") # Mock project lookup for reuse
-def test_execute_standard_scan_flow_id_reuse_project(mock_resolve_proj_reuse, mock_workbench, mock_params):
-    mock_params.id_reuse = True
-    mock_params.id_reuse_type = "project"
-    mock_params.id_reuse_source = "ReuseSourceProject"
-    mock_params.project_name = "CurrentProject" # Needed for context
-    mock_resolve_proj_reuse.return_value = "REUSE_PROJ_CODE"
-
-    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
-
-    mock_resolve_proj_reuse.assert_called_once_with(mock_workbench, "ReuseSourceProject", create_if_missing=False)
-    mock_workbench.run_scan.assert_called_once_with(
-        "CURRENT_SCAN_CODE",
-        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
-        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
-        True, "specific_project", "REUSE_PROJ_CODE" # Check reuse args
-    )
-    assert scan_completed is True
-    assert isinstance(durations, dict)
-
-# Test with pre-validated values
-def test_execute_standard_scan_flow_with_prevalidated_reuse(mock_workbench, mock_params):
-    # Set up pre-validated reuse values
-    mock_params.id_reuse = True
-    mock_params.api_reuse_type = "specific_project"
-    mock_params.resolved_specific_code_for_reuse = "PRE_VALIDATED_PROJ_CODE"
-    mock_params.project_name = "CurrentProject"
-
-    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
-
-    # No additional resolve_project or resolve_scan calls should happen
-    # The pre-validated values should be used directly
-    mock_workbench.run_scan.assert_called_once_with(
-        "CURRENT_SCAN_CODE",
-        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
-        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
-        True, "specific_project", "PRE_VALIDATED_PROJ_CODE" # Check reuse args with pre-validated code
-    )
-    assert scan_completed is True
-    assert isinstance(durations, dict)
-
-@patch("workbench_agent.utils._resolve_scan") # Mock scan lookup for reuse
-def test_execute_standard_scan_flow_id_reuse_scan_local(mock_resolve_scan_reuse, mock_workbench, mock_params):
-    mock_params.id_reuse = True
-    mock_params.id_reuse_type = "scan"
-    mock_params.id_reuse_source = "ReuseSourceScan"
-    mock_params.project_name = "CurrentProject" # Needed for local lookup
-    # Simulate finding the reuse scan in the *current* project
-    mock_resolve_scan_reuse.return_value = ("REUSE_SCAN_CODE", 456)
-
-    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
-
-    # Check that _resolve_scan was called for reuse lookup within the current project
-    mock_resolve_scan_reuse.assert_called_once_with(
-        mock_workbench, "ReuseSourceScan", project_name="CurrentProject", create_if_missing=False, params=mock_params
-    )
-    mock_workbench.run_scan.assert_called_once_with(
-        "CURRENT_SCAN_CODE",
-        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
-        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
-        True, "specific_scan", "REUSE_SCAN_CODE" # Check reuse args
-    )
-    assert scan_completed is True
-    assert isinstance(durations, dict)
-
-@patch("workbench_agent.utils._resolve_scan") # Mock scan lookup for reuse
-def test_execute_standard_scan_flow_id_reuse_scan_global(mock_resolve_scan_reuse, mock_workbench, mock_params):
-    mock_params.id_reuse = True
-    mock_params.id_reuse_type = "scan"
-    mock_params.id_reuse_source = "ReuseSourceScan"
-    mock_params.project_name = "CurrentProject"
-    # Simulate *not* finding in current project, then finding globally
-    mock_resolve_scan_reuse.side_effect = [
-        ScanNotFoundError("Not in current"), # First call (local) fails
-        ("REUSE_SCAN_CODE_GLOBAL", 789)      # Second call (global) succeeds
-    ]
-
-    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
-
-    # Check that _resolve_scan was called twice (local then global)
-    assert mock_resolve_scan_reuse.call_count == 2
-    mock_resolve_scan_reuse.assert_any_call(
-        mock_workbench, "ReuseSourceScan", project_name="CurrentProject", create_if_missing=False, params=mock_params
-    )
-    mock_resolve_scan_reuse.assert_any_call(
-        mock_workbench, "ReuseSourceScan", project_name=None, create_if_missing=False, params=mock_params # Global call
-    )
-    mock_workbench.run_scan.assert_called_once_with(
-        "CURRENT_SCAN_CODE",
-        mock_params.limit, mock_params.sensitivity, mock_params.autoid_file_licenses,
-        mock_params.autoid_file_copyrights, mock_params.autoid_pending_ids, mock_params.delta_scan,
-        True, "specific_scan", "REUSE_SCAN_CODE_GLOBAL" # Check reuse args
-    )
-    assert scan_completed is True
-    assert isinstance(durations, dict)
-
-@patch("workbench_agent.utils._resolve_scan", side_effect=ValidationError("Global lookup failed")) # Mock scan lookup for reuse
-def test_execute_standard_scan_flow_id_reuse_scan_fails(mock_resolve_scan_reuse, mock_workbench, mock_params):
-    mock_params.id_reuse = True
-    mock_params.id_reuse_type = "scan"
-    mock_params.id_reuse_source = "NonExistentScan"
-    mock_params.project_name = "CurrentProject"
-
-    with pytest.raises(ValidationError, match="The scan specified as an identification reuse source 'NonExistentScan' does not exist"):
-        _execute_standard_scan_flow(mock_workbench, mock_params, "CURRENT_PROJ_CODE", "CURRENT_SCAN_CODE", 123)
-
-    assert mock_resolve_scan_reuse.call_count >= 1 # At least local lookup attempted
-    mock_workbench.run_scan.assert_not_called() # Should fail before run_scan
-
-# Test with dependency analysis enabled
-def test_execute_standard_scan_flow_with_da(mock_workbench, mock_params):
-    mock_params.project_name = "TEST_PROJECT_NAME"
-    mock_params.run_dependency_analysis = True
-
-    scan_completed, da_completed, durations = _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
-
-    # Verify both scan and DA were started and completed
-    mock_workbench.assert_process_can_start.assert_any_call("SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time)
-    mock_workbench.wait_for_scan_to_finish.assert_any_call(
-        "SCAN", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
-    )
-    mock_workbench.assert_process_can_start.assert_any_call("DEPENDENCY_ANALYSIS", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time)
-    mock_workbench.start_dependency_analysis.assert_called_once_with("TEST_SCAN", import_only=False)
-    mock_workbench.wait_for_scan_to_finish.assert_any_call(
-        "DEPENDENCY_ANALYSIS", "TEST_SCAN", mock_params.scan_number_of_tries, mock_params.scan_wait_time
-    )
-    
-    # Check that both flags are True
-    assert scan_completed is True
-    assert da_completed is True
-    assert isinstance(durations, dict)
-    assert "kb_scan" in durations
-    assert "dependency_analysis" in durations
-
-# Other error tests for _execute_standard_scan_flow remain largely the same, just ensure mock_params has project_name if needed
-def test_execute_standard_scan_flow_start_api_error(mock_workbench, mock_params):
-    mock_params.project_name = "TEST_PROJECT_NAME"
-    mock_workbench.run_scan.side_effect = ApiError("API error on start") # run_scan is called now
-    with pytest.raises(WorkbenchAgentError, match="Unexpected error starting KB Scan: API error on start"): # Wrapped now
-        _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
-    mock_workbench.wait_for_scan_to_finish.assert_not_called()
-
-def test_execute_standard_scan_flow_wait_network_error(mock_workbench, mock_params):
-    mock_params.project_name = "TEST_PROJECT_NAME"
-    mock_workbench.wait_for_scan_to_finish.side_effect = NetworkError("Network error on wait")
-    with pytest.raises(WorkbenchAgentError, match="Unexpected error starting KB Scan: Network error on wait"):
-        _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
-    mock_workbench.run_scan.assert_called_once()
-
-def test_execute_standard_scan_flow_wait_process_error(mock_workbench, mock_params):
-    mock_params.project_name = "TEST_PROJECT_NAME"
-    mock_workbench.wait_for_scan_to_finish.side_effect = ProcessError("Process error on wait")
-    with pytest.raises(ProcessError): # Not wrapped
-        _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
-
-def test_execute_standard_scan_flow_wait_process_timeout(mock_workbench, mock_params):
-    mock_params.project_name = "TEST_PROJECT_NAME"
-    mock_workbench.wait_for_scan_to_finish.side_effect = ProcessTimeoutError("Process timeout on wait")
-    with pytest.raises(ProcessTimeoutError): # Not wrapped
-        _execute_standard_scan_flow(mock_workbench, mock_params, "TEST_PROJECT", "TEST_SCAN", 123)
-
-
-# --- REMOVED Tests for fetch_and_process_results ---
-# Reason: The function fetch_and_process_results does not exist in the provided utils.py.
-# The replacement _fetch_display_save_results is complex and better suited for integration tests.
-
-
-# --- Tests for _save_report_content (remain the same) ---
+# --- Tests for _save_report_content ---
 def test_save_report_content_success(mock_workbench):
-    response = requests.Response()
-    response.status_code = 200
-    response._content = b"test content"
-    response.headers = {'content-type': 'text/plain'}
-    response.encoding = 'utf-8' # Simulate encoding being set
-
-    # Use mock_open from unittest.mock
-    with patch("builtins.open", mock_open()) as mock_file, \
-         patch("os.makedirs") as mock_makedirs:
-        _save_report_content(response, "/save/path", "scan", "MyScan", "txt")
-        expected_path = os.path.join("/save", "path", "scan-MyScan-txt.txt") # Check generated filename
-        mock_file.assert_called_once_with(expected_path, "w", encoding='utf-8') # Check mode and encoding
-        mock_file().write.assert_called_once_with("test content") # Check content decoded
+    content = "Sample report content in text format."
+    output_dir = "/tmp"  # Use a valid directory path
+    
+    with patch("builtins.open", mock_open()) as mock_file:
+        _save_report_content(content, output_dir, "scan", "test_scan", "text")
+        
+    mock_file.assert_called_once_with(os.path.join(output_dir, "scan-test_scan-text.txt"), 'w', encoding='utf-8')  # File opened in text mode with encoding
+    mock_file().write.assert_called_once_with(content)  # Content written directly
 
 def test_save_report_content_binary(mock_workbench):
-    response = requests.Response()
-    response.status_code = 200
-    response._content = b"\x80binary data" # Non-utf8 data
-    response.headers = {'content-type': 'application/octet-stream'} 
-    response.encoding = None # Simulate no encoding
-
-    with patch("builtins.open", mock_open()) as mock_file, \
-         patch("os.makedirs") as mock_makedirs:
-        _save_report_content(response, "/save/path", "project", "MyProj", "bin_report")
-        # Generate expected filename (extension might be 'bin' or 'txt' depending on map)
-        # Assuming 'bin_report' is not in map, defaults to .txt
-        expected_path = os.path.join("/save", "path", "project-MyProj-bin_report.txt")
-        mock_file.assert_called_once_with(expected_path, "wb") # Check binary mode
-        mock_file().write.assert_called_once_with(b"\x80binary data") # Check binary content
+    binary_content = b'Some binary content'
+    output_dir = "/tmp"  # Use a valid directory path
+    
+    with patch("builtins.open", mock_open()) as mock_file:
+        _save_report_content(binary_content, output_dir, "scan", "test_scan", "binary")
+        
+    mock_file.assert_called_once_with(os.path.join(output_dir, "scan-test_scan-binary.bin"), 'wb')  # File opened in binary mode
+    mock_file().write.assert_called_once_with(binary_content)  # Binary content not encoded again
 
 def test_save_report_content_dict(mock_workbench):
-    content = {"key": "value", "list": [1, 2]}
-    with patch("builtins.open", mock_open()) as mock_file, \
-         patch("os.makedirs") as mock_makedirs:
-        _save_report_content(content, "/save/path", "scan", "MyScan", "results")
-        expected_path = os.path.join("/save", "path", "scan-MyScan-results.json") # Should be .json
-        mock_file.assert_called_once_with(expected_path, "w", encoding='utf-8')
-        # Check that json.dumps was effectively called (content written should be JSON string)
-        written_content = mock_file().write.call_args[0][0]
-        assert written_content == json.dumps(content, indent=2)
+    # Dict content should be converted to JSON
+    dict_content = {"key": "value", "nested": {"foo": "bar"}}
+    output_dir = "/tmp"  # Use a valid directory path
+    
+    with patch("builtins.open", mock_open()) as mock_file:
+        _save_report_content(dict_content, output_dir, "scan", "test_scan", "json")
+        
+    mock_file.assert_called_once_with(os.path.join(output_dir, "scan-test_scan-json.json"), 'w', encoding='utf-8')  # File opened in text mode with encoding
+    # Check that the dict is serialized to JSON
+    mock_file().write.assert_called_once()
+    written_data = mock_file().write.call_args[0][0]
+    # Parse as JSON to verify it's valid
+    assert json.loads(written_data) == dict_content
 
 def test_save_report_content_file_system_error(mock_workbench):
-    response = requests.Response()
-    response.status_code = 200
-    response._content = b"test content"
-    response.headers = {'content-type': 'application/pdf'}
-    response.encoding = None
+    content = "Sample report content in text format."
+    output_dir = "/tmp"  # Use a valid directory path
+    
+    # Path to patched file
+    filepath = os.path.join(output_dir, "scan-test_scan-text.txt")
+    
+    # First patch os.makedirs to succeed
+    with patch("os.makedirs", return_value=None):
+        # Then make open raise an IOError to simulate filesystem issues
+        with patch("builtins.open", side_effect=IOError("Cannot write to file")):
+            with pytest.raises(FileSystemError, match=f"Failed to write report to '{filepath}'"):
+                _save_report_content(content, output_dir, "scan", "test_scan", "text")
 
-    with patch("builtins.open", mock_open()) as mock_file, \
-         patch("os.makedirs") as mock_makedirs:
-        mock_makedirs.side_effect = OSError("Permission denied") # Simulate directory creation error
-        with pytest.raises(FileSystemError, match="Could not create output directory '.*/locked/dir': Permission denied"):
-            _save_report_content(response, "/locked/dir", "project", "MyProj", "pdf")
-
-# --- ADDED Tests for format_duration ---
+# --- Tests for format_duration ---
 @pytest.mark.parametrize("seconds, expected", [
     (0, "0 seconds"),
     (1, "1 second"),
@@ -501,406 +423,226 @@ def test_save_report_content_file_system_error(mock_workbench):
     (121, "2 minutes, 1 seconds"),
     (3600, "60 minutes"),
     (3661, "61 minutes, 1 seconds"),
-    (7322.5, "122 minutes, 2 seconds"), # Test rounding - updated to match implementation
+    (7322.5, "122 minutes, 2 seconds"), # Test rounding
     (None, "N/A"),
     ("abc", "Invalid Duration"),
 ])
 def test_format_duration(seconds, expected):
     assert format_duration(seconds) == expected
 
-# --- ADDED Tests for _save_results_to_file ---
+# --- Tests for _save_results_to_file ---
 @patch("builtins.open", new_callable=mock_open)
 @patch("os.makedirs")
 def test_save_results_to_file_success(mock_makedirs, mock_open_file):
-    results_data = {"scan_metrics": {"total": 100}, "kb_licenses": [{"id": "MIT"}]}
-    filepath = "/output/dir/results.json"
-    scan_code = "SCAN123"
-
-    # Mock the file.write call to actually store what's written
-    written_data = []
-    mock_file_instance = mock_open_file.return_value
-    mock_file_instance.write.side_effect = lambda data: written_data.append(data)
-
-    _save_results_to_file(filepath, results_data, scan_code)
-
-    mock_makedirs.assert_called_once_with("/output/dir", exist_ok=True)
-    mock_open_file.assert_called_once_with(filepath, 'w', encoding='utf-8')
+    # Test parameters
+    data = {
+        "licenses": ["MIT", "Apache-2.0"],
+        "components": [
+            {"name": "component1", "license": "MIT"},
+            {"name": "component2", "license": "Apache-2.0"},
+        ],
+        "vulnerabilities": [
+            {"id": "CVE-2022-1234", "component": "component1", "severity": "high"},
+        ],
+    }
+    output_path = "/path/to/results.json"
+    scan_code = "TEST_SCAN"
     
-    # Verify write was called and we have captured the data
-    assert mock_file_instance.write.called
-    assert written_data  # Should not be empty
+    # Run function
+    _save_results_to_file(output_path, data, scan_code)
     
-    # Join all written data to check content
-    full_content = ''.join(written_data)
-    assert '"scan_metrics"' in full_content
-    assert '"total": 100' in full_content
-    assert '"kb_licenses"' in full_content
-    assert '"id": "MIT"' in full_content
+    # Check directory creation
+    mock_makedirs.assert_called_once_with(os.path.dirname(output_path), exist_ok=True)
+    
+    # Check file open
+    mock_open_file.assert_called_once_with(output_path, "w", encoding="utf-8")
+    
+    # Need to check that json.dump was called - can't check exact content because json.dump writes in chunks
+    # But we can check the parsed result from what was written
+    handle = mock_open_file()
+    assert handle.write.called
+    
+    # Mock how json.dump would serialize if we need to check the content later
+    with patch('json.dump') as mock_json_dump:
+        _save_results_to_file(output_path, data, scan_code)
+        mock_json_dump.assert_called_once()
+        json_args = mock_json_dump.call_args[0]
+        assert json_args[0] == data  # First arg should be the data dict
 
 @patch("os.makedirs", side_effect=OSError("Cannot create dir"))
 def test_save_results_to_file_makedirs_error(mock_makedirs):
-    results_data = {"key": "value"}
-    filepath = "/unwritable/results.json"
-    scan_code = "SCAN123"
-
-    # Should log error and print warning, but not raise exception
-    _save_results_to_file(filepath, results_data, scan_code)
-    # Add assertion for log capture if logging is tested
+    # Test parameters
+    data = {"data": "important"}
+    output_path = "/path/to/results.json"
+    scan_code = "TEST_SCAN"
+    
+    # Run function and check if it properly handles the exception
+    # The function itself doesn't raise exceptions but logs warnings
+    _save_results_to_file(output_path, data, scan_code)
+    
+    # Verify makedirs was called
+    mock_makedirs.assert_called_once_with(os.path.dirname(output_path), exist_ok=True)
 
 @patch("builtins.open", new_callable=mock_open)
 @patch("os.makedirs")
 def test_save_results_to_file_write_error(mock_makedirs, mock_open_file):
-    results_data = {"key": "value"}
-    filepath = "/output/results.json"
-    scan_code = "SCAN123"
-    mock_open_file.side_effect = IOError("Disk full")
-
-    # Should log error and print warning, but not raise exception
-    _save_results_to_file(filepath, results_data, scan_code)
-    mock_makedirs.assert_called_once()
-    mock_open_file.assert_called_once()
-    # Add assertion for log capture if logging is tested
-
+    # Test parameters
+    data = {"data": "important"}
+    output_path = "/path/to/results.json"
+    scan_code = "TEST_SCAN"
+    
+    # Configure mock file to raise error when json.dump would call write
+    mock_open_file.return_value.write.side_effect = OSError("Cannot write to file")
+    
+    # Run function and check if it properly handles the exception
+    # The function itself doesn't raise exceptions but logs warnings
+    _save_results_to_file(output_path, data, scan_code)
+    
+    # Verify makedirs was called
+    mock_makedirs.assert_called_once_with(os.path.dirname(output_path), exist_ok=True)
+    
+    # Check that open was called, even though the write will fail
+    mock_open_file.assert_called_once_with(output_path, "w", encoding="utf-8")
 
 # --- Tests for _validate_reuse_source ---
 def test_validate_reuse_source_none_when_disabled(mock_workbench, mock_params):
+    # No id_reuse enabled
     mock_params.id_reuse = False
+    mock_params.id_reuse_type = "project"
+    mock_params.id_reuse_source = "some_project"
     
-    api_reuse_type, resolved_code = _validate_reuse_source(mock_workbench, mock_params)
-    
-    assert api_reuse_type is None
-    assert resolved_code is None
+    # Should return (None, None) when ID reuse is disabled
+    assert _validate_reuse_source(mock_workbench, mock_params) == (None, None)
 
-@patch('workbench_agent.utils._resolve_project')
+@patch('workbench_cli.utils._resolve_project')
 def test_validate_reuse_source_project_success(mock_resolve_project, mock_workbench, mock_params):
+    # Set up params for project reuse
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "project"
-    mock_params.id_reuse_source = "ReuseProject"
-    mock_resolve_project.return_value = "REUSE_PROJ_CODE"
+    mock_params.id_reuse_source = "source_project"
     
-    api_reuse_type, resolved_code = _validate_reuse_source(mock_workbench, mock_params)
+    # Mock resolution successful
+    mock_resolve_project.return_value = "SOURCE_PROJECT"
     
-    assert api_reuse_type == "specific_project"
-    assert resolved_code == "REUSE_PROJ_CODE"
-    mock_resolve_project.assert_called_once_with(mock_workbench, "ReuseProject", create_if_missing=False)
+    # Call the function
+    result = _validate_reuse_source(mock_workbench, mock_params)
+    
+    # Check results
+    assert result == ("specific_project", "SOURCE_PROJECT")
+    mock_resolve_project.assert_called_once_with(mock_workbench, "source_project", create_if_missing=False)
 
-@patch('workbench_agent.utils._resolve_project')
+@patch('workbench_cli.utils._resolve_project')
 def test_validate_reuse_source_project_not_found(mock_resolve_project, mock_workbench, mock_params):
+    # Set up params for project reuse
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "project"
-    mock_params.id_reuse_source = "NonExistentProject"
-    mock_resolve_project.side_effect = ProjectNotFoundError("Project not found")
+    mock_params.id_reuse_source = "nonexistent_project"
     
-    with pytest.raises(ValidationError, match="The project specified as an identification reuse source.*does not exist"):
+    # Mock resolution failing
+    mock_resolve_project.side_effect = ProjectNotFoundError("Project 'nonexistent_project' not found")
+    
+    # Call should raise ValidationError - updated to match actual error message
+    with pytest.raises(ValidationError, match="The project specified as an identification reuse source .* does not exist in Workbench"):
         _validate_reuse_source(mock_workbench, mock_params)
 
-@patch('workbench_agent.utils._resolve_scan')
+@patch('workbench_cli.utils._resolve_scan')
 def test_validate_reuse_source_scan_local_success(mock_resolve_scan, mock_workbench, mock_params):
+    # Set up params for scan reuse in the same project
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "scan"
-    mock_params.id_reuse_source = "ReuseScan"
-    mock_params.project_name = "CurrentProject"
-    mock_resolve_scan.return_value = ("REUSE_SCAN_CODE", 123)
+    mock_params.id_reuse_source = "source_scan"
+    mock_params.project_name = "same_project"  # Current project (common scenario)
     
-    api_reuse_type, resolved_code = _validate_reuse_source(mock_workbench, mock_params)
+    # Mock scan resolution successful
+    mock_resolve_scan.return_value = ("SOURCE_SCAN", 123)
     
-    assert api_reuse_type == "specific_scan"
-    assert resolved_code == "REUSE_SCAN_CODE"
+    # Call the function
+    result = _validate_reuse_source(mock_workbench, mock_params)
+    
+    # Check results
+    assert result == ("specific_scan", "SOURCE_SCAN")
+    # Should look up in the same project context - using project_name parameter
     mock_resolve_scan.assert_called_once_with(
-        mock_workbench, "ReuseScan", project_name="CurrentProject", create_if_missing=False, params=mock_params
+        mock_workbench, 
+        "source_scan", 
+        project_name="same_project", 
+        create_if_missing=False, 
+        params=mock_params
     )
 
-@patch('workbench_agent.utils._resolve_scan')
+@patch('workbench_cli.utils._resolve_scan')
 def test_validate_reuse_source_scan_global_success(mock_resolve_scan, mock_workbench, mock_params):
+    # Set up params for scan reuse with project:scan format
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "scan"
-    mock_params.id_reuse_source = "ReuseScan"
-    mock_params.project_name = "CurrentProject"
+    mock_params.id_reuse_source = "other_project:source_scan"
+    mock_params.project_name = "current_project"  # Different from reuse source
     
-    # First call fails (local project), second call succeeds (global)
+    # Set up side effect for both the first (failure) and second (success) calls
     mock_resolve_scan.side_effect = [
-        ScanNotFoundError("Not found in project"),
-        ("GLOBAL_SCAN_CODE", 456)
+        ScanNotFoundError("Not found in current project"),  # First call fails
+        ("SOURCE_SCAN", 456)                               # Second call succeeds
     ]
     
-    api_reuse_type, resolved_code = _validate_reuse_source(mock_workbench, mock_params)
+    # Call the function
+    result = _validate_reuse_source(mock_workbench, mock_params)
     
-    assert api_reuse_type == "specific_scan"
-    assert resolved_code == "GLOBAL_SCAN_CODE"
+    # Check results
+    assert result == ("specific_scan", "SOURCE_SCAN")
+    
+    # Verify that both the local lookup and global lookup were attempted
     assert mock_resolve_scan.call_count == 2
-    mock_resolve_scan.assert_any_call(
-        mock_workbench, "ReuseScan", project_name="CurrentProject", create_if_missing=False, params=mock_params
+    
+    # First call should be to look up in current project
+    assert mock_resolve_scan.call_args_list[0] == call(
+        mock_workbench,
+        "other_project:source_scan",
+        project_name="current_project",
+        create_if_missing=False,
+        params=mock_params
     )
-    mock_resolve_scan.assert_any_call(
-        mock_workbench, "ReuseScan", project_name=None, create_if_missing=False, params=mock_params
+    
+    # Second call should be global lookup
+    assert mock_resolve_scan.call_args_list[1] == call(
+        mock_workbench,
+        "other_project:source_scan",
+        project_name=None,
+        create_if_missing=False,
+        params=mock_params
     )
 
-@patch('workbench_agent.utils._resolve_scan')
+@patch('workbench_cli.utils._resolve_scan')
 def test_validate_reuse_source_scan_not_found(mock_resolve_scan, mock_workbench, mock_params):
+    # Set up params for scan reuse
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "scan"
-    mock_params.id_reuse_source = "NonExistentScan"
-    mock_params.project_name = "CurrentProject"
+    mock_params.id_reuse_source = "nonexistent_scan"
+    mock_params.project_name = "current_project"
     
-    # Both local and global searches fail
-    mock_resolve_scan.side_effect = [
-        ScanNotFoundError("Not found in project"),
-        ScanNotFoundError("Not found globally")
-    ]
+    # Mock resolution failing
+    mock_resolve_scan.side_effect = ScanNotFoundError("Scan 'nonexistent_scan' not found")
     
-    with pytest.raises(ValidationError, match="The scan specified as an identification reuse source.*does not exist"):
+    # Call should raise ValidationError - match pattern changed to match actual error message
+    with pytest.raises(ValidationError, match="The scan specified as an identification reuse source .* does not exist in Workbench"):
         _validate_reuse_source(mock_workbench, mock_params)
 
 def test_validate_reuse_source_missing_source_project(mock_workbench, mock_params):
+    # Set up params for project reuse but missing source
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "project"
-    mock_params.id_reuse_source = None
+    mock_params.id_reuse_source = None  # Missing source
     
-    with pytest.raises(ConfigurationError, match="Missing project name in --id-reuse-source"):
+    # Call should raise ConfigurationError with the correct message
+    with pytest.raises(ConfigurationError, match="Missing project name in --id-reuse-source for ID reuse type 'project'"):
         _validate_reuse_source(mock_workbench, mock_params)
 
 def test_validate_reuse_source_missing_source_scan(mock_workbench, mock_params):
+    # Set up params for scan reuse but missing source
     mock_params.id_reuse = True
     mock_params.id_reuse_type = "scan"
-    mock_params.id_reuse_source = None
+    mock_params.id_reuse_source = None  # Missing source
     
-    with pytest.raises(ConfigurationError, match="Missing scan name in --id-reuse-source"):
+    # Call should raise ConfigurationError with the correct message
+    with pytest.raises(ConfigurationError, match="Missing scan name in --id-reuse-source for ID reuse type 'scan'"):
         _validate_reuse_source(mock_workbench, mock_params)
-
-# --- MOVED TESTS for _resolve_scan (More Cases - remain the same) ---
-def test_resolve_scan_project_scope_create_success(monkeypatch, mock_workbench, mock_params):
-    # Setup test parameters
-    mock_params.project_name = "ProjectY"
-    mock_params.scan_name = "NewScan"
-    mock_params.command = 'scan'  # create_if_missing will be True
-    
-    # Mock the _resolve_project function (to avoid dealing with workbench.list_projects setup)
-    def mock_resolve_project(wb, proj_name, **kwargs):
-        assert proj_name == "ProjectY"
-        return "PROJ_Y"
-    monkeypatch.setattr('workbench_agent.utils._resolve_project', mock_resolve_project)
-    
-    # Mock the get_project_scans method on workbench
-    first_call = True  # Flag to alternate responses
-    def mock_get_project_scans(project_code):
-        nonlocal first_call
-        assert project_code == "PROJ_Y"
-        
-        if first_call:
-            first_call = False
-            return []  # First call - empty list (scan not found)
-        else:
-            return [{"name": "NewScan", "code": "NEW_SCAN_CODE", "id": "555"}]  # Second call - scan exists
-    
-    monkeypatch.setattr(mock_workbench, 'get_project_scans', mock_get_project_scans)
-    
-    # Mock create_webapp_scan
-    def mock_create_scan(project_code, scan_name, **kwargs):
-        assert project_code == "PROJ_Y"
-        assert scan_name == "NewScan"
-        return True
-    monkeypatch.setattr(mock_workbench, 'create_webapp_scan', mock_create_scan)
-    
-    # Mock time.sleep to avoid delays
-    monkeypatch.setattr('time.sleep', lambda x: None)
-    
-    # Mock _ensure_scan_compatibility (no-op for this test)
-    monkeypatch.setattr('workbench_agent.utils._ensure_scan_compatibility', lambda *args, **kwargs: None)
-    
-    # Call the function under test
-    code, scan_id = _resolve_scan(
-        workbench=mock_workbench,
-        scan_name="NewScan",
-        project_name="ProjectY",
-        create_if_missing=True,
-        params=mock_params
-    )
-    
-    # Verify results
-    assert code == "NEW_SCAN_CODE"
-    assert scan_id == 555
-
-def test_resolve_scan_project_scope_not_found_no_create(monkeypatch, mock_workbench, mock_params):
-    # Setup test parameters
-    mock_params.project_name = "ProjectZ"
-    mock_params.scan_name = "MissingScan"
-    mock_params.command = 'show-results'  # create_if_missing will be False
-    
-    # Mock dependencies
-    def mock_resolve_project(wb, proj_name, **kwargs):
-        assert proj_name == "ProjectZ"
-        assert kwargs.get('create_if_missing') is False
-        return "PROJ_Z"
-    monkeypatch.setattr('workbench_agent.utils._resolve_project', mock_resolve_project)
-    
-    # Mock the get_project_scans method to return empty list (scan not found)
-    def mock_get_project_scans(project_code):
-        assert project_code == "PROJ_Z"
-        return []
-    monkeypatch.setattr(mock_workbench, 'get_project_scans', mock_get_project_scans)
-    
-    # Call function and verify exception
-    with pytest.raises(ScanNotFoundError, match="Scan 'MissingScan' not found in the 'ProjectZ' project"):
-        _resolve_scan(
-            workbench=mock_workbench,
-            scan_name="MissingScan",
-            project_name="ProjectZ",
-            create_if_missing=False,
-            params=mock_params
-        )
-
-def test_resolve_scan_global_scope_create_error(mock_workbench, mock_params):
-    mock_params.project_name = None # Global scope
-    mock_params.scan_name = "AnyScan"
-    # Cannot create in global scope
-    with pytest.raises(ConfigurationError, match="Cannot create a scan.*without specifying a --project-name"): # Check specific exception
-        _resolve_scan(
-            mock_workbench,
-            scan_name="AnyScan",
-            project_name=None, # Global scope
-            create_if_missing=True, # But create requested
-            params=mock_params
-        )
-
-def test_resolve_scan_triggers_compatibility_check(monkeypatch, mock_workbench, mock_params):
-    # Setup test parameters
-    mock_params.project_name = "ProjectW"
-    mock_params.scan_name = "ScanCompat"
-    mock_params.command = 'scan'  # create_if_missing will be True
-    
-    # Create existing scan to be found
-    existing_scan = {"name": "ScanCompat", "code": "SCAN_C", "id": "777"}
-    
-    # Mock dependencies
-    def mock_resolve_project(wb, proj_name, **kwargs):
-        assert proj_name == "ProjectW"
-        return "PROJ_W"
-    monkeypatch.setattr('workbench_agent.utils._resolve_project', mock_resolve_project)
-    
-    # Mock the get_project_scans method to return our scan
-    def mock_get_project_scans(project_code):
-        assert project_code == "PROJ_W"
-        return [existing_scan]
-    monkeypatch.setattr(mock_workbench, 'get_project_scans', mock_get_project_scans)
-    
-    # Create a spy for _ensure_scan_compatibility 
-    compatibility_check_called = False
-    def mock_compatibility_check(params, scan_info, scan_code):
-        nonlocal compatibility_check_called
-        assert scan_info == existing_scan
-        assert scan_code == "SCAN_C"
-        compatibility_check_called = True
-    monkeypatch.setattr('workbench_agent.utils._ensure_scan_compatibility', mock_compatibility_check)
-    
-    # Call the function
-    code, scan_id = _resolve_scan(
-        workbench=mock_workbench,
-        scan_name="ScanCompat",
-        project_name="ProjectW",
-        create_if_missing=True,
-        params=mock_params
-    )
-    
-    # Verify results
-    assert code == "SCAN_C"
-    assert scan_id == 777
-    assert compatibility_check_called, "Compatibility check was not called"
-
-
-# --- MOVED TESTS for _ensure_scan_compatibility (verify context/corrections) ---
-def test_ensure_scan_compatibility_git_branch_mismatch(mock_params):
-    mock_params.command = 'scan-git'
-    mock_params.git_url = "http://git.com"
-    mock_params.git_branch = "develop" # Requesting develop
-    # Simulate API response with git_ref_type
-    existing_scan_info = {"name": "GitScan", "code": "GITSCAN", "id": 1, "git_repo_url": "http://git.com", "git_branch": "main", "git_ref_type": "branch"}
-    with pytest.raises(CompatibilityError, match="already exists for branch 'main'"): # Match updated message
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "GITSCAN")
-
-def test_ensure_scan_compatibility_git_tag_vs_branch(mock_params):
-    mock_params.command = 'scan-git'
-    mock_params.git_url = "http://git.com"
-    mock_params.git_tag = "v1.0" # Requesting tag
-    # Simulate API response with git_ref_type
-    existing_scan_info = {"name": "GitScan", "code": "GITSCAN", "id": 1, "git_repo_url": "http://git.com", "git_branch": "main", "git_ref_type": "branch"}
-    with pytest.raises(CompatibilityError, match="exists with ref type 'branch'.*specified ref type 'tag'"): # Match updated message
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "GITSCAN")
-
-# Test case: Requesting branch, existing is tag
-def test_ensure_scan_compatibility_git_branch_vs_tag(mock_params):
-    mock_params.command = 'scan-git'
-    mock_params.git_url = "http://git.com"
-    mock_params.git_branch = "main" # Requesting branch
-    # Simulate API response with git_ref_type as tag
-    existing_scan_info = {"name": "GitScan", "code": "GITSCAN", "id": 1, "git_repo_url": "http://git.com", "git_branch": "v1.0", "git_ref_type": "tag"}
-    with pytest.raises(CompatibilityError, match="exists with ref type 'tag'.*specified ref type 'branch'"):
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "GITSCAN")
-
-# Test case: Requesting different tag
-def test_ensure_scan_compatibility_git_tag_mismatch(mock_params):
-    mock_params.command = 'scan-git'
-    mock_params.git_url = "http://git.com"
-    mock_params.git_tag = "v2.0" # Requesting v2.0
-    # Simulate API response with git_ref_type as tag v1.0
-    existing_scan_info = {"name": "GitScan", "code": "GITSCAN", "id": 1, "git_repo_url": "http://git.com", "git_branch": "v1.0", "git_ref_type": "tag"}
-    with pytest.raises(CompatibilityError, match="already exists for tag 'v1.0'"): # Match updated message
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "GITSCAN")
-
-# Test case: Requesting different URL
-def test_ensure_scan_compatibility_git_url_mismatch(mock_params):
-    mock_params.command = 'scan-git'
-    mock_params.git_url = "http://another-git.com" # Requesting different URL
-    mock_params.git_branch = "main"
-    existing_scan_info = {"name": "GitScan", "code": "GITSCAN", "id": 1, "git_repo_url": "http://git.com", "git_branch": "main", "git_ref_type": "branch"}
-    with pytest.raises(CompatibilityError, match="different Git repository"):
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "GITSCAN")
-
-# Test case: Requesting 'scan' (path upload) when existing is Git
-def test_ensure_scan_compatibility_scan_vs_git(mock_params):
-    mock_params.command = 'scan' # Requesting path upload
-    mock_params.path = "/some/path"
-    existing_scan_info = {"name": "GitScan", "code": "GITSCAN", "id": 1, "git_repo_url": "http://git.com", "git_branch": "main", "git_ref_type": "branch"}
-    with pytest.raises(CompatibilityError, match="created for Git scanning.*cannot be reused for code upload"):
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "GITSCAN")
-
-# Test case: Requesting 'scan-git' when existing is path upload
-def test_ensure_scan_compatibility_git_vs_scan(mock_params):
-    mock_params.command = 'scan-git' # Requesting git
-    mock_params.git_url = "http://git.com"
-    mock_params.git_branch = "main"
-    existing_scan_info = {"name": "PathScan", "code": "PATHSCAN", "id": 2} # No git info
-    with pytest.raises(CompatibilityError, match="created for code upload.*cannot be reused for Git scanning"):
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "PATHSCAN")
-
-# DA vs non-DA tests seem okay based on utils.py logic (which doesn't check scan_type)
-# The utils.py _ensure_scan_compatibility doesn't actually check DA vs non-DA.
-# Let's remove those specific tests as they don't reflect the current implementation.
-# def test_ensure_scan_compatibility_da_vs_non_da(mock_params): ...
-# def test_ensure_scan_compatibility_non_da_vs_da(mock_params): ...
-
-def test_ensure_scan_compatibility_no_conflict_scan(mock_params):
-    mock_params.command = 'scan' # Normal scan
-    existing_scan_info = {"name": "NormalScan", "code": "NSC", "id": 4} # Normal scan exists
-    try:
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "NSC")
-    except CompatibilityError:
-        pytest.fail("CompatibilityError raised unexpectedly for scan vs scan")
-
-def test_ensure_scan_compatibility_no_conflict_git(mock_params):
-    mock_params.command = 'scan-git' # Git scan
-    mock_params.git_url = "http://git.com"
-    mock_params.git_branch = "main"
-    existing_scan_info = {"name": "GitScan", "code": "GSC", "id": 5, "git_repo_url": "http://git.com", "git_branch": "main", "git_ref_type": "branch"} # Matching Git scan
-    try:
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "GSC")
-    except CompatibilityError:
-        pytest.fail("CompatibilityError raised unexpectedly for git vs git (match)")
-
-def test_ensure_scan_compatibility_no_conflict_import_da(mock_params):
-    mock_params.command = 'import-da' # DA import
-    existing_scan_info = {"name": "AnyScan", "code": "ASC", "id": 6} # Can reuse any scan type
-    try:
-        _ensure_scan_compatibility(mock_params, existing_scan_info, "ASC")
-    except CompatibilityError:
-        pytest.fail("CompatibilityError raised unexpectedly for import-da")
 

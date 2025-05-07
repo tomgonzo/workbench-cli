@@ -1,10 +1,10 @@
-# workbench_agent/handlers/evaluate_gates.py
+# workbench_cli/handlers/evaluate_gates.py
 
 import logging
 import argparse
 from typing import Dict, List, Optional, Union, Any, Tuple
 
-from ..api import Workbench
+from ..api import WorkbenchAPI
 from ..utils import (
     _resolve_project,
     _resolve_scan,
@@ -12,7 +12,7 @@ from ..utils import (
     handler_error_wrapper
 )
 from ..exceptions import (
-    WorkbenchAgentError,
+    WorkbenchCLIError,
     ApiError,
     NetworkError,
     ProcessError,
@@ -24,11 +24,11 @@ from ..exceptions import (
 )
 
 # Get logger
-logger = logging.getLogger("log")
+logger = logging.getLogger("workbench-cli")
 
 
 @handler_error_wrapper
-def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> bool:
+def handle_evaluate_gates(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
     """
     Handler for the 'evaluate-gates' command. 
     Checks scan status and evaluates policy warnings.
@@ -96,8 +96,16 @@ def handle_evaluate_gates(workbench: Workbench, params: argparse.Namespace) -> b
         show_pending_files = getattr(params, 'show_pending_files', False)
         if show_pending_files and pending_count > 0:
             print("\nPending Files:")
-            for file_id, file_path in pending_files.items():
+            # Limit display to first 25 files
+            file_items = list(pending_files.items())
+            for i, (file_id, file_path) in enumerate(file_items):
+                if i >= 25:
+                    break
                 print(f"  {file_path}")
+            
+            # Show a message if there are more files than displayed
+            if pending_count > 25:
+                print(f"  ... and {pending_count - 25} more files (showing first 25 of {pending_count} total)")
     else:
         print("\n✅ No pending files found - all files have been identified.")
     

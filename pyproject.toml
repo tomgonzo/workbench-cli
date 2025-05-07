@@ -3,13 +3,11 @@ requires = ["setuptools>=42"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "workbench-agent"
+name = "workbench-cli"
 version = "1.0.0"
 description = "A CLI for interacting with scans and results in FossID Workbench via the Workbench API."
 license = "MIT"
 authors = [
-  { name="Cristian Pana", email="cristian.pana@fossid.com" },
-  { name="Alexandru-Cristian Zănogeanu", email="alexandru.zanogeanu@fossid.com" },
   { name="Tomas Gonzalez", email="tomas@fossid.com" }
 ]
 
@@ -21,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-workbench-agent = "workbench_agent.main:main"
+workbench-cli = "workbench_cli.main:main"
 
 [project.optional-dependencies]
 dev = [
@@ -35,5 +33,5 @@ dev = [
 where = ["src"] 
 
 [project.urls]
-"Homepage" = "https://github.com/tomgonzo/workbench-agent"
-"Bug Tracker" = "https://github.com/tomgonzo/workbench-agent/issues"
+"Homepage" = "https://github.com/tomgonzo/workbench-cli"
+"Bug Tracker" = "https://github.com/tomgonzo/workbench-cli/issues"

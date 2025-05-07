@@ -1,11 +1,12 @@
 # tests/handlers/test_show_results_handler.py
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
+import json
 
 # Import handler and dependencies
-from workbench_agent import handlers
-from workbench_agent.exceptions import (
+from workbench_cli import handlers
+from workbench_cli.exceptions import (
     ProjectNotFoundError,
     ScanNotFoundError,
     ProcessError

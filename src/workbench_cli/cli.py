@@ -1,12 +1,12 @@
-# workbench_agent/cli.py
+# workbench_cli/cli.py
 
 import argparse
 import os
 import logging
 from argparse import RawTextHelpFormatter
 
-# Import Workbench to access report type constants
-from .api import Workbench
+# Import WorkbenchAPI to access report type constants
+from .api import WorkbenchAPI
 from .exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,9 @@ def add_common_scan_options(subparser):
                                 "Required when --id-reuse-type is 'project' or 'scan'.", 
                                 metavar="NAME")
     scan_options_args.add_argument("--run-dependency-analysis", help="Run dependency analysis after KB scan.", action="store_true", default=False)
+    scan_options_args.add_argument("--dependency-analysis-only", help="Run dependency analysis without performing a KB scan. Mutually exclusive with --run-dependency-analysis.", action="store_true", default=False)
+    scan_options_args.add_argument("--no-wait", help="Exit after confirming scan has started instead of waiting for completion.", action="store_true", default=False)
+
 
 def add_common_monitoring_options(subparser):
     monitor_args = subparser.add_argument_group("Scan Monitoring Options")
@@ -63,7 +66,7 @@ def parse_cmdline_args():
         ValidationError: If required arguments are missing or invalid
     """
     parser = argparse.ArgumentParser(
-        description="FossID Workbench Agent - A command-line tool for interacting with FossID Workbench.",
+        description="FossID Workbench CLI - A command-line tool for interacting with FossID Workbench.",
         formatter_class=RawTextHelpFormatter,
         epilog="""
 Environment Variables for Credentials:
@@ -73,35 +76,39 @@ Environment Variables for Credentials:
 
 Example Usage:
   # Full scan uploading a directory, show results
-  workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     scan --project-name MYPROJ --scan-name MYSCAN01 --path ./src --run-dependency-analysis --show-components --show-licenses
 
   # Scan using identification reuse from a specific project
-  workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     scan --project-name MYPROJ --scan-name MYSCAN02 --path ./src --id-reuse --id-reuse-type project --id-reuse-source "MyBaseProject"
 
   # Import DA results only
-  workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     import-da --project-name MYPROJ --scan-name MYSCAN03 --path ./ort-test-data/analyzer-result.json
 
   # Show results for an existing scan
-  workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     show-results --project-name MYPROJ --scan-name MYSCAN01 --show-licenses --show-components
 
   # Evaluate gates for a scan
-  workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     evaluate-gates --project-name MYPROJ --scan-name MYSCAN01 --policy-check --show-pending-files
 
   # Scan a Git repository
-  workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     scan-git --project-name MYGITPROJ --scan-name MYGITSCAN01 --git-url https://github.com/owner/repo.git --git-branch develop
 
   # Download reports for a project
-  workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     download-reports --project-name MYPROJ --report-scope project --report-type xlsx,spdx --report-save-path reports/
 
+  # Download all available reports for a project
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    download-reports --project-name MYPROJ --report-scope project --report-save-path reports/
+
   # Download reports for a specific scan (globally)
-  workbench-agent.py --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     download-reports --scan-name MYSCAN01 --report-scope scan --report-type html --report-save-path reports/
 """
     )
@@ -236,13 +243,13 @@ Example Usage:
     )
     download_reports_parser.add_argument(
         "--report-type",
-        help=f"""
-             Type of report(s) to download (comma-separated, or ALL). Defaults to ALL. Support varies by Scope:
-             For Scans (Default Scope): {', '.join(sorted(list(Workbench.SCAN_REPORT_TYPES)))}
-             For Projects: {', '.join(sorted(list(Workbench.PROJECT_REPORT_TYPES)))}
-             """,
+        help="Report types to generate and download. Multiple types can be comma-separated.\n"
+             f"For Scans (Default Scope): {', '.join(sorted(list(WorkbenchAPI.SCAN_REPORT_TYPES)))}\n"
+             f"For Projects: {', '.join(sorted(list(WorkbenchAPI.PROJECT_REPORT_TYPES)))}\n"
+             "If not specified, all available report types for the chosen scope will be downloaded.",
+        required=False,
         default="ALL",
-        metavar="TYPE(S)"
+        metavar="TYPE"
     )
     download_reports_parser.add_argument("--report-save-path", help="Output directory for reports (Default: current dir).", default=".", metavar="PATH")
     gen_opts = download_reports_parser.add_argument_group("Report Generation Options")

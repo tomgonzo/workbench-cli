@@ -1,20 +1,21 @@
 # tests/handlers/test_evaluate_gates_handler.py
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 from io import StringIO
 
 # Import handler and dependencies
-from workbench_agent import handlers
-from workbench_agent.exceptions import (
-    ProcessTimeoutError,
+from workbench_cli import handlers
+from workbench_cli.exceptions import (
+    WorkbenchCLIError,
+    ApiError, 
+    NetworkError,
+    ProcessError,
     ProjectNotFoundError,
-    ScanNotFoundError,
-    ApiError, # Added for testing API errors during checks
-    NetworkError # Added for testing Network errors during checks
+    ScanNotFoundError
 )
 # Import Workbench for type hinting
-from workbench_agent.api import Workbench
+from workbench_cli.api import WorkbenchAPI
 
 # Note: mock_workbench and mock_params fixtures are automatically available from conftest.py
 
@@ -265,7 +266,7 @@ def test_handle_evaluate_gates_fail_scan_wait(monkeypatch, mock_workbench, mock_
     
     # Make wait_for_scan_to_finish raise the exception
     def mock_wait_raises(*args, **kwargs):
-        raise ProcessTimeoutError("Scan Timed Out")
+        raise ProcessError("Scan Timed Out")
     
     monkeypatch.setattr(mock_workbench, 'wait_for_scan_to_finish', mock_wait_raises)
     
@@ -364,8 +365,8 @@ def test_handle_evaluate_gates_pass_api_error_pending_fail_on_none(monkeypatch, 
     result = handlers.handle_evaluate_gates(mock_workbench, mock_params)
     assert result is True  # Should PASS because fail_on is not enabled
 
-@patch('workbench_agent.handlers.evaluate_gates._resolve_project', side_effect=ProjectNotFoundError("Project 'ProjA' not found and creation was not requested."))
-@patch('workbench_agent.handlers.evaluate_gates._resolve_scan')
+@patch('workbench_cli.handlers.evaluate_gates._resolve_project', side_effect=ProjectNotFoundError("Project 'ProjA' not found and creation was not requested."))
+@patch('workbench_cli.handlers.evaluate_gates._resolve_scan')
 def test_handle_evaluate_gates_project_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     mock_params.command = 'evaluate-gates'; mock_params.project_name = "ProjA"; mock_params.scan_name = "ScanA"
     with pytest.raises(ProjectNotFoundError, match="Project 'ProjA' not found and creation was not requested."):
@@ -373,8 +374,8 @@ def test_handle_evaluate_gates_project_resolve_fails(mock_resolve_scan, mock_res
     mock_resolve_proj.assert_called_once()
     mock_resolve_scan.assert_not_called()
 
-@patch('workbench_agent.handlers.evaluate_gates._resolve_project')
-@patch('workbench_agent.handlers.evaluate_gates._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
+@patch('workbench_cli.handlers.evaluate_gates._resolve_project')
+@patch('workbench_cli.handlers.evaluate_gates._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
 def test_handle_evaluate_gates_scan_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     mock_params.command = 'evaluate-gates'; mock_params.project_name = "ProjA"; mock_params.scan_name = "ScanA"
     mock_resolve_proj.return_value = "PROJ_A_CODE"

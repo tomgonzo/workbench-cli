@@ -1,4 +1,4 @@
-# workbench_agent/handlers/download_reports.py
+# workbench_cli/handlers/download_reports.py
 
 import os
 import time
@@ -6,15 +6,16 @@ import logging
 import argparse
 from typing import Dict, List, Optional, Union, Any, Set
 
-from ..api import Workbench
+from ..api import WorkbenchAPI
 from ..utils import (
     _resolve_project,
     _resolve_scan,
     _save_report_content,
+    _wait_for_scan_completion,
     handler_error_wrapper
 )
 from ..exceptions import (
-    WorkbenchAgentError,
+    WorkbenchCLIError,
     ApiError,
     NetworkError,
     FileSystemError,
@@ -27,10 +28,10 @@ from ..exceptions import (
 )
 
 # Get logger
-logger = logging.getLogger("log")
+logger = logging.getLogger("workbench-cli")
 
 @handler_error_wrapper
-def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
+def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace):
     """
     Handler for the 'download-reports' command. 
     Downloads reports for a scan or project.
@@ -49,7 +50,7 @@ def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
     
     # Process report_types (comma-separated list or ALL)
     report_types = set()
-    if params.report_type.upper() == "ALL":
+    if not params.report_type or params.report_type.upper() == "ALL":
         if params.report_scope == "scan":
             report_types = workbench.SCAN_REPORT_TYPES
         else:  # project
@@ -110,6 +111,26 @@ def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
     elif not project_code:
         # If project scope but no project_code, that's an error
         raise ValidationError("Project name is required for project scope reports")
+    
+    # Check scan completion status for scan-scope reports
+    if params.report_scope == "scan" and scan_code:
+        print("\nChecking scan completion status...")
+        try:
+            # Wait for scan to complete before generating reports
+            kb_scan_completed, da_completed, _ = _wait_for_scan_completion(workbench, params, scan_code)
+            
+            if not kb_scan_completed:
+                print("\nWarning: The KB scan has not completed successfully. Reports may be incomplete.")
+                logger.warning(f"Generating reports for scan '{scan_code}' that has not completed successfully.")
+            
+            # Dependency analysis might be relevant for certain report types
+            if not da_completed:
+                print("\nNote: Dependency Analysis has not completed. Some reports may have incomplete information.")
+                logger.warning(f"Generating reports for scan '{scan_code}' without completed DA.")
+        except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
+            print(f"\nWarning: Could not verify scan completion status: {e}")
+            print("Proceeding to generate reports anyway, but they may be incomplete.")
+            logger.warning(f"Could not verify scan completion for '{scan_code}': {e}. Proceeding anyway.")
     
     # Generate and download reports based on scope
     print(f"\nGenerating and downloading {len(report_types)} {'project' if params.report_scope == 'project' else 'scan'} report(s)...")
@@ -180,8 +201,8 @@ def handle_download_reports(workbench: Workbench, params: argparse.Namespace):
                         success_values={"FINISHED"},
                         failure_values={"FAILED", "CANCELLED", "ERROR"},
                         max_tries=getattr(params, 'scan_number_of_tries', 60),
-                        # Use a shorter interval for report generation since it typically finishes faster than scans
-                        wait_interval=2,  # 2-second interval instead of using scan_wait_time (default: 30)
+                        # Use a fixed 3-second interval for report generation consistency with other waiters
+                        wait_interval=3,
                         progress_indicator=True
                     )
                     print(f"Report generation complete!")

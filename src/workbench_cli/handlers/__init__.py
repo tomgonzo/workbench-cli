@@ -1,4 +1,4 @@
-# workbench_agent/handlers/__init__.py
+# workbench_cli/handlers/__init__.py
 
 from .scan import handle_scan
 from .scan_git import handle_scan_git

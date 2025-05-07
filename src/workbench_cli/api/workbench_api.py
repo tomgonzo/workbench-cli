@@ -1,17 +1,8 @@
-import os
-import re
-import json
-import time
+from typing import Dict, List, Optional, Union, Any, Generator, Tuple
 import logging
-import requests
-import zipfile
-import tempfile
-import shutil
-import io
-import base64
-from typing import Dict, List, Optional, Union, Any, Callable, Generator, Tuple
-from .exceptions import (
-    WorkbenchAgentError,
+from .workbench_api_helpers import WorkbenchAPIHelpers
+from ..exceptions import (
+    WorkbenchCLIError,
     ApiError,
     NetworkError,
     ConfigurationError,
@@ -26,13 +17,20 @@ from .exceptions import (
     ProjectExistsError,
     ScanExistsError
 )
+import json
+import requests
+import os
+import base64
+import tempfile
+import shutil
 
 # Assume logger is configured in main.py
-logger = logging.getLogger("log")
+logger = logging.getLogger("workbench-cli")
 
-class Workbench:
+class WorkbenchAPI(WorkbenchAPIHelpers):
     """
-    A class to interact with the FossID Workbench API.
+    Workbench API client class for interacting with the FossID Workbench API.
+    Extends WorkbenchAPIHelpers to provide actual API operations.
     """
     # --- Report Types ---
     ASYNC_REPORT_TYPES = {"xlsx", "spdx", "spdx_lite", "cyclone_dx", "basic"}
@@ -40,270 +38,17 @@ class Workbench:
     SCAN_REPORT_TYPES = {"html", "dynamic_top_matched_components", "xlsx", "spdx", "spdx_lite", "cyclone_dx", "string_match"}
 
     def __init__(self, api_url: str, api_user: str, api_token: str):
-        # Ensure the API URL ends with api.php
-        if not api_url.endswith('/api.php'):
-            self.api_url = api_url.rstrip('/') + '/api.php'
-            print(f"Warning: API URL adjusted to: {self.api_url}")
-        else:
-            self.api_url = api_url
-        self.api_user = api_user
-        self.api_token = api_token
-        self.session = requests.Session() # Use a session for potential connection reuse
-
-    def _send_request(self, payload: dict, timeout: int = 1800) -> dict:
         """
-        Sends a POST request to the Workbench API.
-        Handles expected non-JSON responses for synchronous operations.
-        
-        Raises:
-            NetworkError: For connection issues, timeouts, etc.
-            AuthenticationError: For authentication failures
-            ApiError: For API-level errors
-        """
-        headers = {
-            "Accept": "*/*", # Keep broad accept for now
-            "Content-Type": "application/json; charset=utf-8",
-        }
-        payload.setdefault("data", {})
-        payload["data"]["username"] = self.api_user
-        payload["data"]["key"] = self.api_token
-
-        req_body = json.dumps(payload)
-        logger.debug("API URL: %s", self.api_url)
-        logger.debug("Request Headers: %s", headers)
-        logger.debug("Request Body: %s", req_body)
-
-        try:
-            response = self.session.post(
-                self.api_url, headers=headers, data=req_body, timeout=timeout
-            )
-            logger.debug("Response Status Code: %s", response.status_code)
-            logger.debug("Response Headers: %s", response.headers)
-            # Log first part of text regardless of JSON success/failure
-            logger.debug(f"Response Text (first 500 chars): {response.text[:500] if hasattr(response, 'text') else '(No text)'}")
-            
-            # Handle authentication errors
-            if response.status_code == 401:
-                raise AuthenticationError("Invalid credentials or expired token")
-            
-            response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
-
-            content_type = response.headers.get('content-type', '').lower()
-            if 'application/json' in content_type:
-                try:
-                    parsed_json = response.json()
-                    # Check for API-level errors indicated by status='0'
-                    if isinstance(parsed_json, dict) and parsed_json.get("status") == "0":
-                        error_msg = parsed_json.get("error", "Unknown API error")
-                        logger.debug(f"API returned status 0 JSON: {error_msg} | Payload: {payload}")
-
-                        is_invalid_type_probe = False
-                        if (payload.get("action") == "check_status" and
-                            error_msg == "RequestData.Base.issues_while_parsing_request" and
-                            isinstance(parsed_json.get("data"), list) and
-                            len(parsed_json["data"]) > 0 and
-                            isinstance(parsed_json["data"][0], dict) and
-                            parsed_json["data"][0].get("code") == "RequestData.Base.field_not_valid_option" and
-                            parsed_json["data"][0].get("message_parameters", {}).get("fieldname") == "type"):
-                            is_invalid_type_probe = True
-                            logger.debug("Detected 'invalid type option' error during check_status probe.")
-
-                        # Determine if this error is expected and non-fatal
-                        is_existence_check = payload.get("action") == "get_information"
-                        is_create_action = payload.get("action") == "create"
-                        project_not_found = (is_existence_check and payload.get("group") == "projects" and error_msg == "Project does not exist")
-                        scan_not_found = (is_existence_check and payload.get("group") == "scans" and error_msg == "Classes.TableRepository.row_not_found")
-                        project_already_exists = (is_create_action and payload.get("group") == "projects" and "Project code already exists" in error_msg)
-                        scan_already_exists = (is_create_action and payload.get("group") == "scans" and ("Scan code already exists" in error_msg or "Legacy.controller.scans.code_already_exists" in error_msg))
-
-                        # --- Include is_invalid_type_probe in non-fatal check ---
-                        if not (project_not_found or scan_not_found or project_already_exists or scan_already_exists or is_invalid_type_probe):
-                            logger.error(f"Unhandled API Error (status 0 JSON): {error_msg} | Payload: {payload}")
-                            raise ApiError(error_msg, code=parsed_json.get("code"))
-                        # Return the status 0 JSON for expected non-fatal errors
-
-                    return parsed_json # Return successfully parsed JSON (status 1 or expected status 0)
-
-                except json.JSONDecodeError as e:
-                    # Content-Type was JSON but decoding failed - this is an error
-                    logger.error(f"Failed to decode JSON response despite Content-Type being JSON: {response.text[:500]}", exc_info=True)
-                    raise ApiError(f"Invalid JSON received from API: {e.msg}", details={"response_text": response.text[:500]})
-            else:
-                # Content-Type is NOT JSON. Assume it might be a direct synchronous response (like HTML report).
-                # Return the raw response object for the caller (generate_report) to handle.
-                logger.info(f"Received non-JSON Content-Type '{content_type}'. Returning raw response object.")
-                # Use a special key to indicate this isn't a normal parsed response
-                return {"_raw_response": response}
-
-        except requests.exceptions.ConnectionError as e:
-            logger.error("API connection failed: %s", e, exc_info=True)
-            raise NetworkError("Failed to connect to the API server", details={"error": str(e)})
-        except requests.exceptions.Timeout as e:
-            logger.error("API request timed out: %s", e, exc_info=True)
-            raise NetworkError("Request to API server timed out", details={"error": str(e)})
-        except requests.exceptions.RequestException as e:
-            logger.error("API request failed: %s", e, exc_info=True)
-            raise NetworkError(f"API request failed: {str(e)}", details={"error": str(e)})
-
-    def _is_status_check_supported(self, scan_code: str, process_type: str) -> bool:
-        """
-        Checks if the Workbench instance likely supports check_status for a given process type
-        by probing the API and analyzing the response, including specific error codes.
+        Initialize the Workbench API client.
 
         Args:
-            scan_code: The code of the scan to check against.
-            process_type: The process type string (e.g., "EXTRACT_ARCHIVES").
-
-        Returns:
-            True if the check_status call for the type seems supported, False otherwise.
-
-        Raises:
-            ApiError: If the check_status call fails for reasons other than a recognized unsupported type error.
-            NetworkError: If there are network connectivity issues.
+            api_url: URL to the API endpoint (with or without api.php suffix)
+            api_user: API username 
+            api_token: API token/key
         """
-        logger.debug(f"Probing check_status support for type '{process_type}' on scan '{scan_code}'...")
-        payload = {
-            "group": "scans",
-            "action": "check_status",
-            "data": {
-                "scan_code": scan_code,
-                "type": process_type.upper(),
-            },
-        }
-        try:
-            # Short timeout is sufficient for the probe.
-            response = self._send_request(payload, timeout=30)
+        super().__init__(api_url, api_user, api_token)
 
-            # If status is "1", the API understood the request type.
-            if response.get("status") == "1":
-                logger.debug(f"check_status for type '{process_type}' appears to be supported (API status 1).")
-                return True
-
-            # --- Check for specific 'invalid type' error structure ---
-            elif response.get("status") == "0":
-                error_code = response.get("error")
-                data_list = response.get("data")
-
-                # Check for the specific error structure indicating an invalid 'type' option
-                if (error_code == "RequestData.Base.issues_while_parsing_request" and
-                    isinstance(data_list, list) and len(data_list) > 0 and
-                    isinstance(data_list[0], dict) and
-                    data_list[0].get("code") == "RequestData.Base.field_not_valid_option" and
-                    data_list[0].get("message_parameters", {}).get("fieldname") == "type"):
-
-                    logger.warning(f"This version of Workbench does not support check_status for '{process_type}'. ")
-
-                    # Optionally log the valid types listed by the API
-                    valid_options = data_list[0].get("message_parameters", {}).get("options")
-                    if valid_options:
-                        logger.debug(f"API reported valid types are: [{valid_options}]")
-                    return False
-                else:
-                    # It's a different status 0 error (e.g., scan not found), raise it.
-                    logger.error(f"API error during {process_type} support check (but not an invalid type error): {error_code} - {response.get('message')}")
-                    raise ApiError(f"API error during {process_type} support check: {error_code} - {response.get('message', 'No details')}", details=response)
-
-            else:
-                # Unexpected response format (neither status 1 nor 0)
-                logger.warning(f"Unexpected response format during {process_type} support check: {response}")
-                # Assume not supported to be safe
-                return False
-
-        except requests.exceptions.RequestException as e:
-            # This block now primarily catches network errors or unexpected exceptions from _send_request.
-            # We add a fallback check on the exception message just in case _send_request's logic changes.
-            error_msg_lower = str(e).lower()
-            if "requestdata.base.field_not_valid_option" in error_msg_lower and "type" in error_msg_lower:
-                logger.warning(
-                    f"Workbench likely does not support check_status for type '{process_type}'. "
-                    f"Skipping status check. (Detected via exception: {e})"
-                )
-                return False
-            else:
-                # Different error (network, scan not found, etc.), re-raise it.
-                logger.error(f"Unexpected exception during {process_type} support check: {e}", exc_info=False)
-                if isinstance(e, NetworkError):
-                    raise
-                raise ApiError(f"Unexpected error during {process_type} support check", details={"error": str(e)}) from e
-
-    def _wait_for_process(
-        self,
-        process_description: str,
-        check_function: callable,
-        check_args: Dict[str, Any],
-        status_accessor: callable,
-        success_values: set,
-        failure_values: set,
-        max_tries: int,
-        wait_interval: int,
-        progress_indicator: bool = True
-    ):
-        logger.debug(f"Waiting for {process_description}...")
-        last_status = "UNKNOWN"
-
-        for i in range(max_tries):
-            status_data = None
-            current_status = "UNKNOWN"
-
-            try:
-                status_data = check_function(**check_args)
-                try:
-                    current_status_raw = status_accessor(status_data)
-                    current_status = str(current_status_raw).upper()
-                except Exception as access_err:
-                    logger.warning(f"Error executing status_accessor during {process_description} check: {access_err}. Response data: {status_data}", exc_info=True)
-                    current_status = "ACCESS_ERROR" # Treat as failure
-
-            except Exception as e:
-                print()
-                print(f"Attempt {i+1}/{max_tries}: Error checking status for {process_description}: {e}")
-                print(f"Retrying in {wait_interval} seconds...")
-                logger.warning(f"Error calling check_function for {process_description}", exc_info=False)
-                time.sleep(wait_interval)
-                continue
-
-            # Check for Success
-            if current_status in success_values:
-                print()
-                logger.debug(f"{process_description} completed successfully (Status: {current_status}).")
-                return True
-
-            # Check for Failure (includes ACCESS_ERROR)
-            if current_status in failure_values or current_status == "ACCESS_ERROR":
-                print() # Newline after dots/status
-                base_error_msg = f"The {process_description} {current_status}"
-                error_detail = ""
-                if isinstance(status_data, dict):
-                    error_detail = status_data.get("error", status_data.get("message", status_data.get("info", "")))
-                if error_detail:
-                    base_error_msg += f". Detail: {error_detail}"
-                raise ProcessError(base_error_msg, details=status_data)
-
-            # Basic Status Printing
-            if current_status != last_status or i < 2 or i % 10 == 0:
-                print()
-                print(f"{process_description} status: {current_status}. Attempt {i+1}/{max_tries}.", end="", flush=True)
-                last_status = current_status
-            elif progress_indicator:
-                print(".", end="", flush=True)
-
-            time.sleep(wait_interval)
-
-        print()
-        raise ProcessTimeoutError(
-            f"Timeout waiting for {process_description} to complete after {max_tries * wait_interval} seconds (Last Status: {last_status}).",
-            details={"last_status": last_status, "max_tries": max_tries, "wait_interval": wait_interval, "last_data": status_data}
-        )
-    
-    def _read_in_chunks(self, file_object: io.BufferedReader, chunk_size: int = 8 * 1024 * 1024) -> Generator[bytes, None, None]:
-        """Reads a file in chunks."""
-        while True:
-            data = file_object.read(chunk_size)
-            if not data:
-                break
-            yield data
-
-# Project and Scan Essentials
+# Project and Scan Resolving
     def list_projects(self) -> List[Dict[str, Any]]:
         """
         Retrieves a list of all projects.
@@ -580,7 +325,8 @@ class Workbench:
                 logger.debug(f"Scan '{scan_name}' already exists.")
                 raise ScanExistsError(f"Scan '{scan_name}' already exists", details=getattr(e, 'details', None))
             raise
-        
+
+# Scan Ops: File Operations
     def download_content_from_git(self, scan_code: str) -> bool:
         """
         Initiates the Git clone process for a scan.
@@ -595,7 +341,7 @@ class Workbench:
             ApiError: If the API call fails.
             NetworkError: If there's a network issue.
         """
-        logger.info(f"Initiating Git clone for scan '{scan_code}'")
+        logger.debug(f"Initiating Git clone for scan '{scan_code}'")
         
         payload = {
             "group": "scans",
@@ -636,47 +382,20 @@ class Workbench:
         response = self._send_request(payload)
         return response.get("data", "UNKNOWN")
         
-    def wait_for_git_clone(self, scan_code: str, max_tries: int, wait_interval: int) -> None:
-        """
-        Waits for a Git clone operation to complete.
-        
-        Args:
-            scan_code: The code of the scan to wait for.
-            max_tries: Maximum number of status check attempts.
-            wait_interval: Seconds to wait between status checks.
-            
-        Raises:
-            ProcessTimeoutError: If the maximum number of tries is exceeded.
-            ProcessError: If the Git clone process fails.
-            ApiError: If the API call fails.
-            NetworkError: If there's a network issue.
-        """
-        print("\nWaiting for Git Clone to complete...")
-        
-        self._wait_for_process(
-            process_description=f"Git Clone for scan '{scan_code}'",
-            check_function=self._send_request,
-            check_args={
-                "payload": {
-                    "group": "scans",
-                    "action": "check_status_download_content_from_git",
-                    "data": {"scan_code": scan_code}
-                }
-            },
-            status_accessor=lambda response: response.get("data", "UNKNOWN"),
-            success_values={"FINISHED"},
-            failure_values={"FAILED", "ERROR"},
-            max_tries=max_tries,
-            wait_interval=wait_interval,
-            progress_indicator=True
-        )
-        
-        print("Git Clone completed.")
-    
     def upload_files(self, scan_code: str, path: str, is_da_import: bool = False):
         """
         Uploads a file or directory (as zip) to a scan using the direct data
         posting method with custom headers, mimicking the original script's logic.
+        
+        Args:
+            scan_code: Code of the scan to upload to
+            path: Path to the file or directory to upload
+            is_da_import: Whether this is a dependency analysis import
+            
+        Raises:
+            FileSystemError: If the path doesn't exist or can't be archived
+            NetworkError: If there are network issues during upload
+            WorkbenchCLIError: For other unexpected errors
         """
         if not os.path.exists(path):
             raise FileSystemError(f"Path does not exist: {path}")
@@ -684,165 +403,201 @@ class Workbench:
         archive_path = None
         upload_path = path
         original_basename = os.path.basename(path)
-        file_handle = None # Define outside try for finally block
+        file_handle = None
+        temp_dir = None
 
         try:
             # --- Archive Directory if Necessary ---
             if os.path.isdir(path):
                 print("The path provided is a directory. Compressing for upload...")
                 logger.debug(f"Compressing target directory '{path}'...")
-                # Use a temporary directory for the archive to ensure cleanup
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    base_name = os.path.join(temp_dir, f"{original_basename}_temp_archive")
-                    try:
-                        # Ensure root_dir and base_dir are correctly set for shutil.make_archive
-                        # root_dir should be the parent of the directory being archived
-                        # base_dir should be the name of the directory itself
-                        parent_dir = os.path.dirname(path) or '.' # Parent directory
-                        dir_to_archive = os.path.basename(path) # Directory name itself
-                        if not dir_to_archive: # Handle case like path = "/some/dir/"
-                             raise FileSystemError(f"Cannot determine directory name from path: {path}")
-
-                        archive_path = shutil.make_archive(base_name, 'zip', root_dir=parent_dir, base_dir=dir_to_archive)
-                        upload_path = archive_path # Upload the created archive
-                        logger.debug(f"Archive created: {upload_path}")
-
-                        # --- Perform Upload Logic for Archive ---
-                        # This block is now inside the temp dir context if archiving
-                        file_size = os.path.getsize(upload_path)
-                        size_limit = 16 * 1024 * 1024 # Chunking threshold
-                        upload_basename = os.path.basename(upload_path) # e.g., archive_temp.zip
-
-                        # Encode headers (as per old script)
-                        name_b64 = base64.b64encode(upload_basename.encode()).decode("utf-8")
-                        scan_code_b64 = base64.b64encode(scan_code.encode()).decode("utf-8")
-
-                        headers = {
-                            "FOSSID-SCAN-CODE": scan_code_b64,
-                            "FOSSID-FILE-NAME": name_b64,
-                            "Accept": "*/*" # Keep Accept broad
-                        }
-                        if is_da_import:
-                            headers["FOSSID-UPLOAD-TYPE"] = "dependency_analysis"
-                            logger.debug(f"Uploading DA results file '{upload_basename}' ({file_size} bytes)...")
-                        else:
-                            logger.debug(f"Uploading archive '{upload_basename}' ({file_size} bytes)...")
-
-                        logger.debug(f"Upload Request Headers: {headers}")
-
-                        file_handle = open(upload_path, "rb")
-
-                        if file_size > size_limit:
-                            logger.info(f"File size exceeds limit ({size_limit} bytes). Using chunked upload...")
-                            headers['Transfer-Encoding'] = 'chunked'
-                            headers['Content-Type'] = 'application/octet-stream' # Required for chunked
-
-                            for i, chunk in enumerate(self._read_in_chunks(file_handle)):
-                                logger.debug(f"Uploading chunk {i+1}...")
-                                # Send chunk directly using session.post with auth and data
-                                resp_chunk = self.session.post(
-                                    self.api_url,
-                                    headers=headers,
-                                    data=chunk,
-                                    auth=(self.api_user, self.api_token), # Use Basic Auth
-                                    timeout=1800,
-                                )
-                                logger.debug(f"Chunk {i+1} upload response status: {resp_chunk.status_code}")
-                                resp_chunk.raise_for_status() # Check for HTTP errors per chunk
-                            logger.debug("Chunked upload completed successfully.")
-                        else:
-                            # Standard upload for smaller files (send all data at once)
-                            resp = self.session.post(
-                                self.api_url,
-                                headers=headers,
-                                data=file_handle, # Send file handle directly in data
-                                auth=(self.api_user, self.api_token), # Use Basic Auth
-                                timeout=1800,
-                            )
-                            logger.debug(f"Upload Response Status: {resp.status_code}")
-                            logger.debug(f"Upload Response Text (first 500): {resp.text[:500]}")
-                            resp.raise_for_status() # Check for HTTP errors
-
-                            logger.debug(f"Upload for '{upload_basename}' completed.")
-
-                        # Close handle after upload completes inside the context
-                        if file_handle and not file_handle.closed:
-                            file_handle.close()
-                            file_handle = None # Reset handle
-
-                    except Exception as archive_err: 
-                        raise FileSystemError(f"Failed to create zip archive from directory '{path}'", details={"error": str(archive_err)}) # Level 4
-
-            # --- Handle Single File Upload (outside temp dir context) ---
+                
+                # Use the helper method from WorkbenchAPIHelpers to create the zip archive
+                archive_path = self._create_zip_archive(path)
+                upload_path = archive_path
+                
+                # Extract the parent directory of the archive (for cleanup)
+                temp_dir = os.path.dirname(archive_path)
+                
+                # Perform upload for the archive
+                self._perform_upload(scan_code, upload_path, is_da_import)
+                
+                # Clean up the temporary archive
+                if archive_path and os.path.exists(archive_path):
+                    os.remove(archive_path)
+                    logger.debug(f"Deleted temporary archive: {archive_path}")
+                
+                # Clean up the temporary directory
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    logger.debug(f"Removed temporary directory: {temp_dir}")
+                
+            # --- Handle Single File Upload ---
             elif os.path.isfile(path):
-                upload_path = path # Use original path
-                file_size = os.path.getsize(upload_path)
-                size_limit = 16 * 1024 * 1024
-                upload_basename = os.path.basename(upload_path)
-
-                name_b64 = base64.b64encode(upload_basename.encode()).decode("utf-8")
-                scan_code_b64 = base64.b64encode(scan_code.encode()).decode("utf-8")
-
-                headers = {
-                    "FOSSID-SCAN-CODE": scan_code_b64,
-                    "FOSSID-FILE-NAME": name_b64,
-                    "Accept": "*/*"
-                }
-                if is_da_import:
-                    headers["FOSSID-UPLOAD-TYPE"] = "dependency_analysis"
-                    logger.debug(f"Uploading DA results file '{upload_basename}' ({file_size} bytes)...")
-                else:
-                    logger.debug(f"Uploading file '{upload_basename}' ({file_size} bytes)...")
-
-                logger.debug(f"Upload Request Headers: {headers}")
-
-                file_handle = open(upload_path, "rb")
-
-                if file_size > size_limit:
-                    logger.info(f"File size exceeds limit ({size_limit} bytes). Using chunked upload...")
-                    headers['Transfer-Encoding'] = 'chunked'
-                    headers['Content-Type'] = 'application/octet-stream'
-
-                    for i, chunk in enumerate(self._read_in_chunks(file_handle)):
-                        logger.debug(f"Uploading chunk {i+1}...")
-                        resp_chunk = self.session.post(
-                            self.api_url,
-                            headers=headers,
-                            data=chunk,
-                            auth=(self.api_user, self.api_token),
-                            timeout=1800,
-                        )
-                        logger.debug(f"Chunk {i+1} upload response status: {resp_chunk.status_code}")
-                        resp_chunk.raise_for_status()
-                    logger.info("Chunked upload completed successfully.")
-                else:
-                    resp = self.session.post(
-                        self.api_url,
-                        headers=headers,
-                        data=file_handle,
-                        auth=(self.api_user, self.api_token),
-                        timeout=1800,
-                    )
-                    logger.debug(f"Upload Response Status: {resp.status_code}")
-                    logger.debug(f"Upload Response Text (first 500): {resp.text[:500]}")
-                    resp.raise_for_status()
-                    logger.debug(f"Upload for '{upload_basename}' completed.")
-
+                # Directly upload the file
+                self._perform_upload(scan_code, path, is_da_import)
+                
         except FileSystemError as e:
-             logger.error(f"File system error during upload preparation for {path}: {e}", exc_info=True)
-             raise # Re-raise specific error
+            logger.error(f"File system error during upload preparation for {path}: {e}", exc_info=True)
+            raise  # Re-raise specific error
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error during upload for {upload_path}: {e}", exc_info=True)
             raise NetworkError(f"Network error during file upload: {e}") from e
         except Exception as e:
             logger.error(f"Unexpected error during file upload for {path}: {e}", exc_info=True)
             # Wrap in a more specific error if possible, otherwise generic
-            raise WorkbenchAgentError(f"Unexpected error during file upload process for '{path}'", details={"error": str(e)}) from e
+            raise WorkbenchCLIError(f"Unexpected error during file upload process for '{path}'", details={"error": str(e)}) from e
         finally:
-            # Ensure file handle is closed if it was opened
+            # Ensure cleanup in case of exceptions
+            if archive_path and os.path.exists(archive_path):
+                try:
+                    os.remove(archive_path)
+                    logger.debug(f"Cleaned up temporary archive in finally block: {archive_path}")
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean up temporary archive: {cleanup_err}")
+            
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    logger.debug(f"Cleaned up temporary directory in finally block: {temp_dir}")
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean up temporary directory: {cleanup_err}")
+    
+    def _perform_upload(self, scan_code: str, file_path: str, is_da_import: bool = False):
+        """
+        Performs the actual file upload to the API.
+        
+        Args:
+            scan_code: Code of the scan to upload to
+            file_path: Path to the file to upload
+            is_da_import: Whether this is a dependency analysis import
+            
+        Raises:
+            NetworkError: If there are network issues during upload
+        """
+        file_handle = None
+        try:
+            file_size = os.path.getsize(file_path)
+            size_limit = 16 * 1024 * 1024  # Chunking threshold (16MB)
+            upload_basename = os.path.basename(file_path)
+            
+            # Encode headers
+            name_b64 = base64.b64encode(upload_basename.encode()).decode("utf-8")
+            scan_code_b64 = base64.b64encode(scan_code.encode()).decode("utf-8")
+            
+            headers = {
+                "FOSSID-SCAN-CODE": scan_code_b64,
+                "FOSSID-FILE-NAME": name_b64,
+                "Accept": "*/*"  # Keep Accept broad
+            }
+            
+            if is_da_import:
+                headers["FOSSID-UPLOAD-TYPE"] = "dependency_analysis"
+                logger.debug(f"Uploading DA results file '{upload_basename}' ({file_size} bytes)...")
+            else:
+                logger.debug(f"Uploading file '{upload_basename}' ({file_size} bytes)...")
+                
+            logger.debug(f"Upload Request Headers: {headers}")
+            
+            file_handle = open(file_path, "rb")
+            
+            if file_size > size_limit:
+                logger.info(f"File size exceeds limit ({size_limit} bytes). Using chunked upload...")
+                headers['Transfer-Encoding'] = 'chunked'
+                headers['Content-Type'] = 'application/octet-stream'
+                
+                for i, chunk in enumerate(self._read_in_chunks(file_handle)):
+                    logger.debug(f"Uploading chunk {i+1}...")
+                    resp_chunk = self.session.post(
+                        self.api_url,
+                        headers=headers,
+                        data=chunk,
+                        auth=(self.api_user, self.api_token),
+                        timeout=1800,
+                    )
+                    logger.debug(f"Chunk {i+1} upload response status: {resp_chunk.status_code}")
+                    resp_chunk.raise_for_status()
+                logger.info("Chunked upload completed successfully.")
+            else:
+                # Standard upload for smaller files
+                resp = self.session.post(
+                    self.api_url,
+                    headers=headers,
+                    data=file_handle,
+                    auth=(self.api_user, self.api_token),
+                    timeout=1800,
+                )
+                logger.debug(f"Upload Response Status: {resp.status_code}")
+                logger.debug(f"Upload Response Text (first 500): {resp.text[:500]}")
+                resp.raise_for_status()
+                
+                logger.debug(f"Upload for '{upload_basename}' completed.")
+                
+        except requests.exceptions.RequestException as e:
+            raise NetworkError(f"Network error during file upload: {e}") from e
+        finally:
+            # Ensure file handle is closed
             if file_handle and not file_handle.closed:
                 file_handle.close()
-                logger.debug(f"Closed file handle for {upload_path}")
+                logger.debug(f"Closed file handle for {file_path}")
+
+    def remove_uploaded_content(self, scan_code: str, filename: str) -> bool:
+        """
+        Removes uploaded content from a scan, particularly useful for removing files or folders
+        prior to starting a scan.
+
+        Args:
+            scan_code: Code of the scan to remove content from
+            filename: Name/path of the file or directory to remove (e.g., ".git/")
+
+        Returns:
+            bool: True if the operation was successful
+
+        Raises:
+            ApiError: If there are API issues
+            ScanNotFoundError: If the scan doesn't exist
+            NetworkError: If there are network issues
+        """
+        logger.debug(f"Removing '{filename}' from scan '{scan_code}'...")
+        
+        payload = {
+            "group": "scans",
+            "action": "remove_uploaded_content",
+            "data": {
+                "scan_code": scan_code,
+                "filename": filename
+            }
+        }
+        
+        try:
+            response = self._send_request(payload)
+            if response.get("status") == "1":
+                logger.debug(f"Successfully removed '{filename}' from scan '{scan_code}'.")
+                return True
+            else:
+                error_msg = response.get("error", "Unknown error")
+                
+                # Check if this is the specific "file not found" error
+                is_file_not_valid = False
+                if error_msg == "RequestData.Base.issues_while_parsing_request":
+                    data = response.get("data", [])
+                    if isinstance(data, list) and len(data) > 0:
+                        error_code = data[0].get("code", "")
+                        if error_code == "RequestData.Traits.PathTrait.filename_is_not_valid":
+                            logger.warning(f"File or directory '{filename}' does not exist in scan '{scan_code}' or could not be accessed.")
+                            # Return True as this is non-fatal - the file we wanted removed doesn't exist anyway
+                            return True
+                
+                # Handle other types of errors
+                if "Scan not found" in error_msg or "row_not_found" in error_msg:
+                    raise ScanNotFoundError(f"Scan '{scan_code}' not found")
+                
+                raise ApiError(f"Failed to remove '{filename}' from scan '{scan_code}': {error_msg}", details=response)
+        except (ScanNotFoundError, ApiError, NetworkError):
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error removing '{filename}' from scan '{scan_code}': {e}", exc_info=True)
+            raise ApiError(f"Failed to remove '{filename}' from scan '{scan_code}': Unexpected error", details={"error": str(e)})
 
     def extract_archives(
         self,
@@ -887,140 +642,7 @@ class Workbench:
                 details=response
             )
 
-    def wait_for_archive_extraction(
-        self,
-        scan_code: str,
-        scan_number_of_tries: int,
-        scan_wait_time: int,
-    ):
-        """
-        Wait for archive extraction to complete.
-        
-        Args:
-            scan_code: The code of the scan to check
-            scan_number_of_tries: Maximum number of attempts
-            scan_wait_time: Time to wait between attempts
-            
-        Raises:
-            ProcessTimeoutError: If the process times out
-            ProcessError: If the process fails
-            ApiError: If there are API issues
-            NetworkError: If there are network issues
-        """
-        def status_accessor(data):
-            try:
-                # Check if 'is_finished' flag indicates completion
-                is_finished_flag = data.get("is_finished")
-                is_finished = str(is_finished_flag) == "1" or is_finished_flag is True
-
-                # If finished, return "FINISHED" (using the hardcoded success value)
-                if is_finished:
-                    return "FINISHED"
-
-                # Otherwise, return the value of the 'status' key (or UNKNOWN)
-                return data.get("status", "UNKNOWN")
-
-            except (ValueError, TypeError, AttributeError):
-                # Handle errors accessing keys or converting types
-                logger.warning(f"Error accessing status keys in data: {data}", exc_info=True)
-                return "ACCESS_ERROR" # Use the ACCESS_ERROR state
-
-        try:
-            return self._wait_for_process(
-                "Archive extraction",
-                self.get_scan_status,
-                {"scan_type": "EXTRACT_ARCHIVES", "scan_code": scan_code},
-                status_accessor,
-                {"FINISHED"},
-                {"FAILED", "CANCELLED", "ACCESS_ERROR"},
-                scan_number_of_tries,
-                scan_wait_time,
-                progress_indicator=True
-            )
-        except ProcessTimeoutError as e:
-            raise ProcessTimeoutError(f"Timeout waiting for archive extraction on scan {scan_code}", details=e.details)
-        except ProcessError as e:
-            raise ProcessError(f"Archive extraction failed for scan {scan_code}", details=e.details)
-        except Exception as e:
-            raise ApiError(f"Error during archive extraction: {str(e)}", details={"scan_code": scan_code})
-
-# Scan Ops
-    def _standard_scan_status_accessor(self, data: Dict[str, Any]) -> str:
-        """Standard status accessor for SCAN, DEPENDENCY_ANALYSIS, EXTRACT_ARCHIVES."""
-        try:
-            # Check if 'is_finished' flag indicates completion
-            is_finished_flag = data.get("is_finished")
-            is_finished = str(is_finished_flag) == "1" or is_finished_flag is True
-
-            # If finished, return "FINISHED" (using the hardcoded success value)
-            if is_finished:
-                return "FINISHED"
-
-            # Otherwise, return the value of the 'status' key (or UNKNOWN)
-            return data.get("status", "UNKNOWN")
-        except (ValueError, TypeError, AttributeError):
-            logger.warning(f"Error accessing status keys in data: {data}", exc_info=True)
-            return "ACCESS_ERROR" # Use the ACCESS_ERROR state
-
-    def assert_process_can_start(
-        self,
-        process_type: str,
-        scan_code: str,
-        wait_max_tries: int,
-        wait_interval: int
-    ):
-        """
-        Checks if a SCAN or DEPENDENCY_ANALYSIS can be started.
-        If the process is currently QUEUED or RUNNING, it waits for it to finish.
-
-        Args:
-            process_type: Type of process to check (SCAN or DEPENDENCY_ANALYSIS)
-            scan_code: Code of the scan to check
-            wait_max_tries: Max attempts to wait if process is running/queued.
-            wait_interval: Seconds between wait attempts.
-
-        Raises:
-            CompatibilityError: If the process cannot be started due to incompatible state
-            ProcessError: If there are process-related issues
-            ApiError: If there are API issues
-            NetworkError: If there are network issues
-            ScanNotFoundError: If the scan doesn't exist
-        """
-        process_type_upper = process_type.upper()
-        if process_type_upper not in ["SCAN", "DEPENDENCY_ANALYSIS"]:
-             raise ValueError(f"Invalid process_type '{process_type}' provided to assert_process_can_start.")
-
-        try:
-            scan_status = self.get_scan_status(process_type, scan_code)
-            current_status = scan_status.get("status", "UNKNOWN").upper()
-
-            # If queued or running, wait for it to finish first
-            if current_status in ["QUEUED", "RUNNING"]: 
-                print() # Newline before waiting message
-                print(f"Existing {process_type} for '{scan_code}' is {current_status}. Waiting for it to complete...")
-                logger.info(f"Existing {process_type} for '{scan_code}' is {current_status}. Waiting...")
-                try:
-                    self.wait_for_scan_to_finish(process_type, scan_code, wait_max_tries, wait_interval)
-                    print(f"Previous {process_type} for '{scan_code}' finished. Proceeding...")
-                    logger.info(f"Previous {process_type} for '{scan_code}' finished.")
-                    # No need to re-check status, wait_for_scan handles terminal states
-                    return # Allow proceeding
-                except (ProcessTimeoutError, ProcessError) as wait_err:
-                    # If waiting failed, we cannot start the new process
-                    raise ProcessError(f"Could not start {process_type} for '{scan_code}' because waiting for the existing process failed: {wait_err}", details=getattr(wait_err, 'details', None)) from wait_err
-
-            # Allow starting if NEW, FINISHED, FAILED, or CANCELLED
-            allowed_statuses = ["NEW", "FINISHED", "FAILED", "CANCELLED"]
-            if current_status not in allowed_statuses:
-                raise CompatibilityError(
-                    f"Cannot start {process_type.lower()} for '{scan_code}'. Current status is {current_status} (Must be one of {allowed_statuses})."
-                )
-            logger.debug(f"The {process_type} for '{scan_code}' can start (Current status: {current_status}).")
-        except (ApiError, NetworkError, ScanNotFoundError):
-            raise
-        except Exception as e:
-            raise ProcessError(f"Could not verify if {process_type.lower()} can start for '{scan_code}'", details={"error": str(e)})
-
+# Scan Ops: Scanner Operations
     def run_scan(
         self,
         scan_code: str,
@@ -1033,11 +655,35 @@ class Workbench:
         id_reuse: bool,
         id_reuse_type: Optional[str] = None,
         id_reuse_source: Optional[str] = None,
+        run_dependency_analysis: Optional[bool] = None,
     ):
         """
         Run a scan with the specified parameters.
+        
+        Args:
+            scan_code: The code of the scan to run
+            limit: Maximum number of results to consider
+            sensitivity: Scan sensitivity level
+            autoid_file_licenses: Whether to auto-identify file licenses
+            autoid_file_copyrights: Whether to auto-identify file copyrights
+            autoid_pending_ids: Whether to auto-identify pending IDs
+            delta_scan: Whether to run a delta scan
+            id_reuse: Whether to reuse identifications from other scans
+            id_reuse_type: Type of identification reuse (project, scan, only_me, any)
+            id_reuse_source: Source to reuse identifications from (required for project/scan types)
+            run_dependency_analysis: Whether to run dependency analysis along with the scan
+            
+        Notes:
+            For id_reuse parameters, validation should be done prior to calling this method
+            using the _validate_reuse_source function from workbench_cli.utils.
+            If validation fails, id_reuse should be set to False before calling this method.
+            
+        Raises:
+            ApiError: If there are API issues
+            ScanNotFoundError: If the scan doesn't exist
+            ValueError: For invalid parameter values
+            NetworkError: If there are network issues
         """
-
         payload = {
             "group": "scans",
             "action": "run",
@@ -1053,9 +699,6 @@ class Workbench:
         }
 
         if id_reuse:
-            data = payload["data"]
-            data["reuse_identification"] = "1" # Always send this if reuse is enabled
-
             # Determine the value to send to the API based on the user input
             api_reuse_type_value = id_reuse_type
 
@@ -1068,12 +711,23 @@ class Workbench:
             else:
                 api_reuse_type_value = "any" # Default to "any"
 
-            data["identification_reuse_type"] = api_reuse_type_value
-
-            if api_reuse_type_value in ['specific_project', 'specific_scan']:
-                if not id_reuse_source:
-                    raise ValueError(f"--id-reuse-source is required when --id-reuse-type is '{id_reuse_type}'.")
-                data["specific_code"] = id_reuse_source
+            # Safety check: ensure specific_code is provided for project/scan reuse
+            if api_reuse_type_value in ['specific_project', 'specific_scan'] and not id_reuse_source:
+                logger.warning(f"ID reuse disabled because no source was provided for {id_reuse_type} reuse type.")
+                # Skip adding reuse parameters
+            else:
+                # Add ID reuse parameters to the payload
+                data = payload["data"]
+                data["reuse_identification"] = "1"
+                data["identification_reuse_type"] = api_reuse_type_value
+                
+                # Include specific_code for project/scan reuse types
+                if api_reuse_type_value in ['specific_project', 'specific_scan']:
+                    data["specific_code"] = id_reuse_source
+        
+        # Add dependency analysis parameter if requested
+        if run_dependency_analysis:
+            payload["data"]["run_dependency_analysis"] = "1"
 
         # --- Send Request ---
         try:
@@ -1169,49 +823,37 @@ class Workbench:
                 details=response
             )
 
-    def wait_for_scan_to_finish(
-        self,
-        scan_type: str,
-        scan_code: str,
-        scan_number_of_tries: int,
-        scan_wait_time: int,
-    ):
+    def get_scan_information(self, scan_code: str) -> Dict[str, Any]:
         """
-        Wait for a scan to complete.
+        Retrieves detailed information about a scan.
         
         Args:
-            scan_type: Type of scan ("SCAN" or "DEPENDENCY_ANALYSIS")
-            scan_code: Code of the scan to check
-            scan_number_of_tries: Maximum number of attempts
-            scan_wait_time: Time to wait between attempts
+            scan_code: Code of the scan to get information for
+            
+        Returns:
+            Dict[str, Any]: Dictionary containing scan information
             
         Raises:
-            ProcessTimeoutError: If the process times out
-            ProcessError: If the process fails
+            ScanNotFoundError: If the scan doesn't exist
             ApiError: If there are API issues
             NetworkError: If there are network issues
         """
-        try:
-            return self._wait_for_process(
-                f"Operation: {scan_type}",
-                self.get_scan_status,
-                {"scan_type": scan_type, "scan_code": scan_code},
-                self._standard_scan_status_accessor,
-                {"FINISHED"},
-                {"FAILED", "CANCELLED", "ACCESS_ERROR"},
-                scan_number_of_tries,
-                scan_wait_time,
-                progress_indicator=True # Keep True as fallback
-            )
-        except ProcessTimeoutError as e:
-            raise ProcessTimeoutError(f"Timed out waiting for {scan_type} in scan {scan_code} to finish", details=e.details)
-        except ProcessError as e:
-            raise ProcessError(f"{scan_type} failed for {scan_code}", details=e.details)
-        except Exception as e:
-            # Catch any other unexpected errors from _wait_for_process or status_accessor
-            raise ApiError(f"Error during {scan_type} operation: {str(e)}", details={"scan_code": scan_code})
+        logger.debug(f"Fetching information for scan '{scan_code}'...")
+        payload = {
+            "group": "scans",
+            "action": "get_information",
+            "data": {"scan_code": scan_code}
+        }
+        response = self._send_request(payload)
+        if response.get("status") == "1" and "data" in response:
+            return response["data"]
+        else:
+            error_msg = response.get("error", "Unknown error")
+            if "row_not_found" in error_msg or "Scan not found" in error_msg:
+                raise ScanNotFoundError(f"Scan '{scan_code}' not found")
+            raise ApiError(f"Failed to get information for scan '{scan_code}': {error_msg}", details=response)
 
-# Fetching Results from a Scan
+# Scan Ops: Results Operations
     def get_scan_folder_metrics(self, scan_code: str) -> Dict[str, Any]:
         """
         Retrieves scan folder metrics (total files, pending, identified, no match).
@@ -1371,7 +1013,19 @@ class Workbench:
                 )
 
     def get_pending_files(self, scan_code: str) -> Dict[str, str]:
-        """Retrieves pending files for a scan."""
+        """
+        Retrieves pending files for a scan.
+        
+        Args:
+            scan_code: Code of the scan to check
+            
+        Returns:
+            Dict[str, str]: Dictionary of pending files
+            
+        Raises:
+            ApiError: If there are API issues
+            NetworkError: If there are network issues
+        """
         logger.debug(f"Fetching files with Pending IDs for scan '{scan_code}'...")
         payload = {
             "group": "scans", 
@@ -1520,7 +1174,7 @@ class Workbench:
         logger.debug(f"Successfully fetched all {len(all_vulnerabilities)} vulnerabilities for scan '{scan_code}'")
         return all_vulnerabilities
 
-# Reporting
+# Scan Ops:Reporting
     def generate_report(
         self,
         scope: str,

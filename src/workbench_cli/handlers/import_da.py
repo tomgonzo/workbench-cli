@@ -1,4 +1,4 @@
-# workbench_agent/handlers/import_da.py
+# workbench_cli/handlers/import_da.py
 
 import os
 import time
@@ -6,15 +6,20 @@ import logging
 import argparse
 from typing import Dict, List, Optional, Union, Any, Tuple
 
-from ..api import Workbench
+# Import from API module
+from ..api import WorkbenchAPI
 from ..utils import (
     _resolve_project,
     _resolve_scan,
+    _wait_for_scan_completion,
+    _assert_scan_is_idle,
     _fetch_display_save_results,
-    handler_error_wrapper
+    handler_error_wrapper,
+    _ensure_scan_compatibility,
+    _print_operation_summary
 )
 from ..exceptions import (
-    WorkbenchAgentError,
+    WorkbenchCLIError,
     ApiError,
     NetworkError,
     FileSystemError,
@@ -27,11 +32,10 @@ from ..exceptions import (
 )
 
 # Get logger
-logger = logging.getLogger("log")
-
+logger = logging.getLogger("workbench-cli")
 
 @handler_error_wrapper
-def handle_import_da(workbench: Workbench, params: argparse.Namespace) -> bool:
+def handle_import_da(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
     """
     Handler for the 'import-da' command. Imports Dependency Analysis results from a file.
     
@@ -43,6 +47,11 @@ def handle_import_da(workbench: Workbench, params: argparse.Namespace) -> bool:
         bool: True if the operation completed successfully
     """
     print(f"\n--- Running {params.command.upper()} Command ---")
+    
+    # Initialize timing dictionary
+    durations = {
+        "dependency_analysis": 0.0
+    }
     
     # Validate scan parameters
     if not params.path:
@@ -63,29 +72,51 @@ def handle_import_da(workbench: Workbench, params: argparse.Namespace) -> bool:
         params=params
     )
 
-    # Assert scan is idle before uploading code to a file that will be marked as DA file
+    # Explicitly check scan compatibility
+    print("\nChecking if the Scan is compatible with the current operation...")
+    _ensure_scan_compatibility(workbench, params, scan_code)
+
+    # Assert scan is idle before uploading
+    print("\nEnsuring the Scan is idle before uploading DA file...")
+    _assert_scan_is_idle(workbench, scan_code, params, ["DEPENDENCY_ANALYSIS"])
+
+    # Upload DA file
     print("\nUploading DA Results to Workbench...")
     workbench.upload_files(scan_code, params.path, is_da_import=True)
     print(f"Successfully uploaded {params.path} to Workbench.")
 
     # Import DA results
     print("\nImporting Dependency Analysis Results...")
+    
+    # Verify DA import can start
+    workbench.assert_process_can_start(
+        "DEPENDENCY_ANALYSIS",
+        scan_code,
+        params.scan_number_of_tries,
+        params.scan_wait_time
+    )
+    
+    # Start the DA import
     workbench.start_dependency_analysis(scan_code, import_only=True)
     print("Import started. Waiting for import to complete...")
     
-    # Wait for DA to finish
-    workbench.wait_for_scan_to_finish(
+    # Wait for DA to finish - use 2-second wait interval for import-only mode as it finishes faster
+    da_status_data, da_duration = workbench.wait_for_scan_to_finish(
         "DEPENDENCY_ANALYSIS", 
         scan_code, 
         params.scan_number_of_tries, 
-        # Use a shorter interval for dependency analysis import since it typically
-        # finishes much faster than regular scans (2s instead of default 30s)
-        2
+        2  # Use 2-second wait interval for import-only mode as it finishes faster
     )
-    print("Dependency Analysis import has completed.")
+    
+    # Store the DA import duration
+    durations["dependency_analysis"] = da_duration
+    
+    print("Dependency Analysis import has completed successfully.")
+    
+    # Print operation summary
+    _print_operation_summary(params, True, project_code, scan_code, durations)
     
     # Fetch and display results
-    print("\nFetching and displaying results...")
     _fetch_display_save_results(workbench, params, scan_code)
     
     return True

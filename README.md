@@ -1,5 +1,5 @@
-# FossID Workbench Agent (Experimental)
-A prototype CLI inspired by the official [Workbench Agent](https://github.com/fossid-ab/workbench-agent) that interacts with the Workbench API to:
+# FossID Workbench CLI (Experimental)
+A prototype CLI inspired by the official [Workbench Agent](https://github.com/fossid-ab/workbench-cli) that interacts with the Workbench API to:
 
 ### Project and Scan Management
 * Create Projects and Scans for first-time scans
@@ -16,10 +16,10 @@ A prototype CLI inspired by the official [Workbench Agent](https://github.com/fo
 *   Generate and download reports (scan or project scope) to consume or save as build artifacts.
 
 # Usage
-Run `workbench-agent` with the desired command and its options.
+Run `workbench-cli` with the desired command and its options.
 
 ```bash
-workbench-agent <COMMAND> [OPTIONS...]
+workbench-cli <COMMAND> [OPTIONS...]
 ```
 
 ### Commands:
@@ -30,7 +30,7 @@ workbench-agent <COMMAND> [OPTIONS...]
 * evaluate-gates: Check pending IDs, policy violations, and vulnerabilities.
 * download-reports: download reports for a scan or project.
 
-Use `workbench-agent --help` to see the main help message and `workbench-agent <COMMAND> --help` for help on a specific command.
+Use `workbench-cli --help` to see the main help message and `workbench-cli <COMMAND> --help` for help on a specific command.
 
 ## Configuration
 Credentials for the Workbench API can be provided via environment variables for convenience:
@@ -43,15 +43,15 @@ Note: You can also provide these using the `--api-url`, `--api-user`, and `--api
 
 ## Running with Docker:
 This repo publishes a public image to GHCR. Run it with:
-`docker run ghcr.io/tomgonzo/workbench-agent:latest --help`
+`docker run ghcr.io/tomgonzo/workbench-cli:latest --help`
 
 ## Running with Python
 Prefer to run without Docker? You'll need at least Python 3.9 installed.
 
 1.  **Clone the Repository:**
     ```bash
-    git clone github.com/fossid-ab/workbench-agent
-    cd workbench-agent
+    git clone github.com/tomgonzo/workbench-cli
+    cd workbench-cli
     ```
 
 2.  **Create and Activate a Virtual Environment (Recommended):**
@@ -77,13 +77,13 @@ Prefer to run without Docker? You'll need at least Python 3.9 installed.
         You should see `(.venv)` appear at the beginning of your terminal prompt.
 
 3.  **Install the Package:**
-    Install `workbench-agent` and its dependencies into your virtual environment.
+    Install `workbench-cli` and its dependencies into your virtual environment.
 
     ```bash
     pip install .
     ```
     
-This makes the `workbench-agent` command available in your terminal while the virtual environment is active.
+This makes the `workbench-cli` command available in your terminal while the virtual environment is active.
 
 # Examples:
 (Ensure environment variables are set or use --api-url, --api-user, --api-token)
@@ -91,20 +91,34 @@ This makes the `workbench-agent` command available in your terminal while the vi
 ## Examples for SCAN command
 Scan takes a Project Name, Scan Name, and Path. It also supports various `show-*` arguments for showing results after the scan is done.
 
+The scan command supports three modes of operation:
+* KB Scan Only (default)
+* Dependency Analysis Only (using `--dependency-analysis-only`)
+* KB Scan + Dependency Analysis (using `--run-dependency-analysis`)
+
 #### Scan by uploading a directory, running Dependency Analysis. After the scan, show Scan Metrics, Identified Components, and Licenses.
 ```bash
-workbench-agent scan \
+workbench-cli scan \
     --project-name MYPROJ --scan-name MYSCAN01 \
     --path ./src \
     --run-dependency-analysis \
     --show-components --show-licenses --show-scan-metrics
 ```
 
+#### Skip KB Scan and run only Dependency Analysis on uploaded code
+```bash
+workbench-cli scan \
+    --project-name MYPROJ --scan-name MYSCAN01 \
+    --path ./src \
+    --dependency-analysis-only \
+    --show-dependencies --show-vulnerabilities
+```
+
 Note: When a directory is passed, it will be compressed as ZIP before uploading.
 
 #### Scan a ZIP file, reusing identifications from a specific project. After the scan, show Dependencies, Policy Warnings, and Vulnerabilities.
 ```bash
-workbench-agent scan \
+workbench-cli scan \
     --project-name MYPROJ --scan-name MYSCAN02 \
     --path ./src.zip \
     --id-reuse --id-reuse-type project --id-reuse-source "MyBaseProject" \
@@ -114,17 +128,31 @@ workbench-agent scan \
 ## Examples for SCAN-GIT Command
 Scan-Git takes a Project Name, Scan Name, Git Repo URL, and either a Branch, Tag, or Commit Ref. It also supports various `show-*` arguments for showing results after the scan is done. 
 
+Like the scan command, scan-git supports three modes of operation:
+* KB Scan Only (default)
+* Dependency Analysis Only (using `--dependency-analysis-only`)
+* KB Scan + Dependency Analysis (using `--run-dependency-analysis`)
+
 #### Scan by Cloning a Branch from a Git repository. After the scan, show Scan Metrics, Policy Warnings, and Vulnerabilities.
 ```bash
-workbench-agent scan-git \
+workbench-cli scan-git \
     --project-name MYGITPROJ --scan-name MYGITSCAN01 \
     --git-url https://github.com/owner/repo --git-branch develop \
     --show-scan-metrics --show-policy-warnings --show-vulnerabilities
 ```
 
+#### Skip KB Scan and run only Dependency Analysis on cloned Git repository
+```bash
+workbench-cli scan-git \
+    --project-name MYGITPROJ --scan-name MYGITSCAN02 \
+    --git-url https://github.com/owner/repo --git-branch main \
+    --dependency-analysis-only \
+    --show-dependencies --show-vulnerabilities
+```
+
 #### Scan by Cloning a Tag from a Git repository:
 ```bash
-workbench-agent scan-git \
+workbench-cli scan-git \
     --project-name MYGITPROJ --scan-name GitTag1.0 \
     --git-url https://github.com/owner/repo --git-tag "1.0" \
     --show-dependencies --show-vulnerabilities
@@ -132,7 +160,7 @@ workbench-agent scan-git \
 
 #### Scan by Cloning a Commit from a Git repository:
 ```bash
-workbench-agent scan-git \
+workbench-cli scan-git \
     --project-name MYGITPROJ --scan-name Commit-ffac537e6cbbf934b08745a378932722df287a53 \
     --git-url https://github.com/owner/repo --git-commit ffac537e6cbbf934b08745a378932722df287a53 \
     --show-policy-warnings
@@ -143,7 +171,7 @@ Import-DA takes a Project Name, Scan Name, and Path to a `analyzer-result.json` 
 
 #### Import an Analyzer JSON from ORT or FossID-DA (does not scan)
 ```bash
-workbench-agent import-da \
+workbench-cli import-da \
     --project-name MYPROJ --scan-name MYSCAN03 \
     --path ./ort-test-data/analyzer-result.json \
     --show-dependencies --show-vulnerabilities
@@ -154,7 +182,7 @@ Show-Results takes a Project Name, Scan Name, and any of the various `show-*` ar
 
 #### Show All Available Results
 ```bash
-workbench-agent show-results \
+workbench-cli show-results \
     --project-name MYPROJ --scan-name MYSCAN01 \
     --show-scan-metrics --show-licenses --show-components --show-dependencies --show-scan-metrics --show-vulnerabilities \
     --results-path ./results.json
@@ -165,21 +193,21 @@ Evaluate-Gates takes a Project Name and Scan Name. To fail a Pipeline, specify o
 
 #### Evaluate Gates, failing if there are Files Pending ID and showing Pending Files:
 ```bash
-workbench-agent evaluate-gates \
+workbench-cli evaluate-gates \
     --project-name MYPROJ --scan-name MYSCAN01 \
     --show-pending-files --fail-on-pending
 ```
 
 #### Evaluate Gates, failing if Policy Warnings or Files Pending ID are present:
 ```bash
-workbench-agent evaluate-gates \
+workbench-cli evaluate-gates \
     --project-name MYPROJ --scan-name MYSCAN01 \
     --fail-on-policy --fail-on-pending
 ```
 
 #### Evaluate Gates, failing if CRITICAL severity vulnerabilities are present:
 ```bash
-workbench-agent evaluate-gates \
+workbench-cli evaluate-gates \
     --project-name MYPROJ --scan-name MYSCAN01 \
     --fail-on-vuln-severity critical
 ```
@@ -191,17 +219,17 @@ Download-Reports takes a Project Name, Scan Name, Report Scope, and Report Path.
 
 #### Download Project-Level XLSX and SPDX reports:
 ```bash
-workbench-agent download-reports \
+workbench-cli download-reports \
     --project-name MYPROJ --report-scope project \
     --report-type xlsx,spdx --report-save-path reports/
 ```
 
 #### Download all Scan-Level reports:
 ```bash
-workbench-agent download-reports \
+workbench-cli download-reports \
     --project-name MYPROJ --report-scope scan \
     --report-save-path reports/
 ```
 
 ## Logging
-The agent creates a log file named log-agent.txt in the directory where it's run. You can control the logging level using the --log argument (DEBUG, INFO, WARNING, ERROR). Console output is generally kept at INFO level unless --log is set higher.
+The CLI creates a log file named workbench-cli-log.txt in the directory where it's run. You can control the logging level using the --log argument (DEBUG, INFO, WARNING, ERROR). Console output is generally kept at INFO level unless --log is set higher.

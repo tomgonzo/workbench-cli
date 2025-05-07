@@ -7,16 +7,16 @@ import os # For mocking os.makedirs
 import functools
 
 # Import handler and dependencies
-from workbench_agent import handlers
-from workbench_agent.exceptions import (
+from workbench_cli import handlers
+from workbench_cli.exceptions import (
     ProcessError,
     ProjectNotFoundError,
     ScanNotFoundError,
     ValidationError, # Added
-    WorkbenchAgentError # Added
+    WorkbenchCLIError # Added
 )
 # Import Workbench for type hinting
-from workbench_agent.api import Workbench
+from workbench_cli.api import WorkbenchAPI
 
 # Note: mock_workbench and mock_params fixtures are automatically available from conftest.py
 
@@ -299,8 +299,8 @@ def test_handle_download_reports_invalid_type(monkeypatch, mock_workbench, mock_
     # Skip this test as it's been replaced with a simpler approach
     pass
 
-@patch('workbench_agent.handlers.download_reports._resolve_project', side_effect=ProjectNotFoundError("Project 'P' not found and creation was not requested."))
-@patch('workbench_agent.utils._resolve_scan')
+@patch('workbench_cli.handlers.download_reports._resolve_project', side_effect=ProjectNotFoundError("Project 'P' not found and creation was not requested."))
+@patch('workbench_cli.utils._resolve_scan')
 def test_handle_download_reports_project_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     mock_params.command = 'download-reports'
     mock_params.project_name = "P"
@@ -321,8 +321,8 @@ def test_handle_download_reports_project_resolve_fails(mock_resolve_scan, mock_r
     with pytest.raises(ProjectNotFoundError, match="Project 'P' not found and creation was not requested."):
         handlers.handle_download_reports(mock_workbench, mock_params)
 
-@patch('workbench_agent.handlers.download_reports._resolve_project')
-@patch('workbench_agent.handlers.download_reports._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
+@patch('workbench_cli.handlers.download_reports._resolve_project')
+@patch('workbench_cli.handlers.download_reports._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
 def test_handle_download_reports_scan_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
     mock_params.command = 'download-reports'
     mock_params.project_name = "P"

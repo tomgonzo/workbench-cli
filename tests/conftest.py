@@ -1,9 +1,10 @@
 import pytest
 from unittest.mock import MagicMock, patch, Mock, call
 import argparse
+import requests
 
 # Import dependencies needed for fixtures
-from workbench_agent.api import Workbench
+from workbench_cli.api import WorkbenchAPI
 
 # Add a fallback mocker fixture for environments where pytest-mock is not installed
 try:
@@ -43,21 +44,43 @@ except ImportError:
         
         return SimpleMocker()
 
-# Fixture for mock Workbench instance
+@pytest.fixture
+def mock_session(mocker):
+    """
+    Create a mock requests.Session that can be used in place of the real session.
+    """
+    mock_session = MagicMock(spec=requests.Session)
+    mock_response = MagicMock(spec=requests.Response)
+    mock_response.status_code = 200
+    mock_response.text = '{"status": "1", "data": {}}'
+    mock_response.json.return_value = {"status": "1", "data": {}}
+    mock_session.post.return_value = mock_response
+    
+    # Mock the raise_for_status method
+    mock_response.raise_for_status.return_value = None
+    
+    return mock_session
+
+@pytest.fixture
+def workbench_inst(mock_session):
+    """
+    Create a WorkbenchAPI instance with a mock session for testing.
+    """
+    # Create a new instance
+    wb = WorkbenchAPI(api_url="http://dummy.com/api.php", api_user="testuser", api_token="testtoken")
+    # Replace the session with our mock
+    wb.session = mock_session
+    return wb
+
 @pytest.fixture
 def mock_workbench(mocker):
-    """Provides a mocked Workbench instance for handler tests."""
-    # Mock methods used across handlers
-    mock = mocker.MagicMock(spec=Workbench)
-    mock._is_status_check_supported.return_value = True # Assume supported by default
-    mock.list_projects.return_value = [
-        {"name": "test_project", "code": "TEST_PROJECT"}
-    ]
-    mock.list_scans.return_value = [
-        {"name": "test_scan", "code": "TEST_SCAN", "id": "123"}
-    ]
-    # Add other commonly mocked methods if needed across multiple handlers
-    return mock
+    """
+    Create a completely mocked WorkbenchAPI instance for testing (no methods are real).
+    """
+    mock_wb = mocker.MagicMock(spec=WorkbenchAPI)
+    # Setup common returns
+    mock_wb._send_request.return_value = {"status": "1", "data": {}}
+    return mock_wb
 
 # Fixture for mock params object (parsed arguments)
 @pytest.fixture
