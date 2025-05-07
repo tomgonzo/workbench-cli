@@ -67,7 +67,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install . pytest pytest-xdist
       - name: Run API tests
-        run: pytest tests/test_workbench.py -v
+        run: pytest tests/api/ -v
 
   cli_tests:
     name: CLI Tests
