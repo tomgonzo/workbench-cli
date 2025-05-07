@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install . pytest pytest-xdist
+          pip install . pytest pytest-xdist pytest-mock
       - name: Run handler tests
         run: pytest tests/handlers/ -v
 
@@ -45,7 +45,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install . pytest pytest-xdist
+          pip install . pytest pytest-xdist pytest-mock
       - name: Run utils tests
         run: pytest tests/test_utils.py -v
 
@@ -65,7 +65,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install . pytest pytest-xdist
+          pip install . pytest pytest-xdist pytest-mock
       - name: Run API tests
         run: pytest tests/api/ -v
 
@@ -85,7 +85,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install . pytest pytest-xdist
+          pip install . pytest pytest-xdist pytest-mock
       - name: Run CLI tests
         run: pytest tests/test_cli.py -v
 
@@ -106,6 +106,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install . pytest pytest-xdist
+          pip install . pytest pytest-xdist pytest-mock
       - name: Run integration tests
         run: pytest tests/integration/ -v
