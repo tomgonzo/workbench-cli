@@ -1,5 +1,11 @@
 # workbench_cli/handlers/__init__.py
 
+import logging
+
+# Common logger for all handlers
+logger = logging.getLogger("workbench-cli")
+
+# Import handlers
 from .scan import handle_scan
 from .scan_git import handle_scan_git
 from .import_da import handle_import_da

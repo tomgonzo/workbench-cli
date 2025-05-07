@@ -1,17 +1,13 @@
 # workbench_cli/handlers/import_da.py
 
 import os
-import time
 import logging
 import argparse
-from typing import Dict, List, Optional, Union, Any, Tuple
 
-# Import from API module
 from ..api import WorkbenchAPI
 from ..utils import (
     _resolve_project,
     _resolve_scan,
-    _wait_for_scan_completion,
     _assert_scan_is_idle,
     _fetch_display_save_results,
     handler_error_wrapper,
@@ -19,20 +15,14 @@ from ..utils import (
     _print_operation_summary
 )
 from ..exceptions import (
-    WorkbenchCLIError,
-    ApiError,
-    NetworkError,
     FileSystemError,
     ValidationError,
-    CompatibilityError,
-    ProjectNotFoundError,
-    ScanNotFoundError,
     ProcessError,
     ProcessTimeoutError
 )
 
-# Get logger
-logger = logging.getLogger("workbench-cli")
+# Get logger from the handlers package
+from . import logger
 
 @handler_error_wrapper
 def handle_import_da(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:

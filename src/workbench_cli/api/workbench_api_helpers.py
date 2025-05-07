@@ -759,7 +759,6 @@ class WorkbenchAPIHelpers:
             ApiError: If there are API issues
             NetworkError: If there are network issues
         """
-        print(f"\nWaiting for {operation_name} to complete...")
         logger.debug(f"Waiting for {scan_type} operation to complete for scan '{scan_code}'...")
         
         # Initialize tracking variables

@@ -1,10 +1,8 @@
 # workbench_cli/handlers/scan_git.py
 
-import os
-import time
 import logging
 import argparse
-from typing import Dict, List, Optional, Union, Any, Tuple
+from typing import Dict
 
 from ..api import WorkbenchAPI
 from ..utils import (
@@ -23,16 +21,12 @@ from ..exceptions import (
     ApiError,
     NetworkError,
     ValidationError,
-    CompatibilityError,
-    ProjectNotFoundError,
-    ScanNotFoundError,
     ProcessError,
-    ProcessTimeoutError,
-    ConfigurationError
+    ProcessTimeoutError
 )
 
-# Get logger
-logger = logging.getLogger("workbench-cli")
+# Get logger from the handlers package
+from . import logger
 
 
 @handler_error_wrapper
@@ -142,7 +136,6 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
                 return True
             
             # Wait for dependency analysis to complete
-            print("\nWaiting for Dependency Analysis to complete...")
             try:
                 da_status_data, da_duration = workbench.wait_for_scan_to_finish(
                     "DEPENDENCY_ANALYSIS", scan_code, params.scan_number_of_tries, params.scan_wait_time

@@ -1,10 +1,9 @@
 # workbench_cli/handlers/download_reports.py
 
 import os
-import time
 import logging
 import argparse
-from typing import Dict, List, Optional, Union, Any, Set
+from typing import Set
 
 from ..api import WorkbenchAPI
 from ..utils import (
@@ -20,15 +19,12 @@ from ..exceptions import (
     NetworkError,
     FileSystemError,
     ValidationError,
-    CompatibilityError,
-    ProjectNotFoundError,
-    ScanNotFoundError,
     ProcessError,
     ProcessTimeoutError
 )
 
-# Get logger
-logger = logging.getLogger("workbench-cli")
+# Get logger from the handlers package
+from . import logger
 
 @handler_error_wrapper
 def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace):

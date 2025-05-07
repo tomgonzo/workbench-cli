@@ -2,7 +2,6 @@
 
 import logging
 import argparse
-from typing import Dict, List, Optional, Union, Any, Tuple
 
 from ..api import WorkbenchAPI
 from ..utils import (
@@ -12,19 +11,15 @@ from ..utils import (
     handler_error_wrapper
 )
 from ..exceptions import (
-    WorkbenchCLIError,
     ApiError,
     NetworkError,
     ProcessError,
     ProcessTimeoutError,
-    ValidationError,
-    CompatibilityError,
-    ProjectNotFoundError,
-    ScanNotFoundError
+    ValidationError
 )
 
-# Get logger
-logger = logging.getLogger("workbench-cli")
+# Get logger from the handlers package
+from . import logger
 
 
 @handler_error_wrapper
