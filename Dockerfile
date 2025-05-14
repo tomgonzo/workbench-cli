@@ -10,4 +10,4 @@ COPY src/ ./src/
 
 RUN pip install . --no-cache-dir
 
-ENTRYPOINT [ "workbench-agent" ]
+ENTRYPOINT [ "workbench-cli" ]
