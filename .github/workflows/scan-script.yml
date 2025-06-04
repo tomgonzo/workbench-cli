@@ -12,13 +12,13 @@ jobs:
       WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
 
     steps:
-      - name: Checkout Workbench Agent
+      - name: Checkout Workbench CLI
         uses: actions/checkout@v4
         with: 
-          repository: tomgonzo/workbench-agent
+          repository: tomgonzo/workbench-cli
           path: fossid-tools
 
-      - name: Install Workbench Agent
+      - name: Install Workbench CLI
         run: pip install ./fossid-tools
 
       - name: Checkout Repo
@@ -37,7 +37,7 @@ jobs:
 
       - name: Scan by Uploading a Zip
         run: |
-          workbench-agent scan \
+          workbench-cli scan \
             --project-name $GITHUB_REPOSITORY \
             --scan-name ZipScan-$GITHUB_REF \
             --path $GITHUB_WORKSPACE/code.zip \
@@ -51,7 +51,7 @@ jobs:
 
       - name: Show Scan Results
         run: |
-          workbench-agent show-results \
+          workbench-cli show-results \
             --project-name $GITHUB_REPOSITORY \
             --scan-name ZipScan-$GITHUB_REF \
             --show-components \
