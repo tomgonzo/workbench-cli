@@ -901,3 +901,22 @@ class WorkbenchAPIHelpers:
             f"{scan_type} timed out for scan '{scan_code}' after {max_tries} attempts",
             details={"last_status": last_status, "max_tries": max_tries, "wait_interval": wait_interval}
         )
+
+    def get_scan_status(self, scan_type: str, scan_code: str) -> dict:
+        """
+        Retrieve scan status. This method should be overridden by subclasses.
+        
+        Args:
+            scan_type: Type of scan operation (SCAN or DEPENDENCY_ANALYSIS)
+            scan_code: Code of the scan to check
+            
+        Returns:
+            dict: The scan status data
+            
+        Raises:
+            ApiError: If there are API issues
+            ScanNotFoundError: If the scan doesn't exist
+            NetworkError: If there are network issues
+            NotImplementedError: If called on the base class
+        """
+        raise NotImplementedError("get_scan_status must be implemented by subclasses")

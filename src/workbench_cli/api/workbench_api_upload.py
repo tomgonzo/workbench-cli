@@ -325,7 +325,7 @@ class WorkbenchAPIUpload(WorkbenchAPIHelpers):
                 # Store for ETA calculation in helper method
                 self._total_file_size = file_size
                 
-                print(f"Uploading {file_size // (1024*1024):.1f}MB in {total_chunks} ({self.CHUNK_SIZE // (1024*1024)}MB chunks)")
+                print(f"Uploading {file_size // (1024*1024):.1f}MB in {total_chunks} {self.CHUNK_SIZE // (1024*1024)}MB chunks.")
                 
                 # Main chunked upload loop - now much cleaner!
                 for i, chunk in enumerate(self._read_in_chunks(file_handle, chunk_size=self.CHUNK_SIZE)):
