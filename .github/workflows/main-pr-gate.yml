@@ -1,0 +1,55 @@
+# This workflow will do a clean install of node dependencies, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+name: Scan PR HEAD and Check Gates
+
+on: 
+  pull_request:
+    branches: main
+
+jobs:
+  workbench-scan:
+    runs-on: ubuntu-latest
+    env:
+      WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
+      WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
+      WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
+    steps:
+    - name: Scan by Cloning from Git
+      run: |
+        docker run ghcr.io/tomgonzo/workbench-cli:latest \
+        --api-url ${{ env.WORKBENCH_URL }} \
+        --api-user ${{ env.WORKBENCH_USER }} \
+        --api-token ${{ env.WORKBENCH_TOKEN }} \
+        scan-git \
+        --project-name $GITHUB_REPOSITORY \
+        --scan-name ScanGit-$GITHUB_HEAD_REF \
+        --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
+        --git-branch $GITHUB_HEAD_REF \
+        --git-depth 1 \
+        --id-reuse \
+        --id-reuse-type project \
+        --id-reuse-source $GITHUB_REPOSITORY \
+        --run-dependency-analysis \
+        --autoid-file-licenses \
+        --autoid-file-copyrights
+        --no-wait
+
+  workbench-gates:
+    runs-on: ubuntu-latest
+    env:
+      WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
+      WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
+      WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
+      GH_PAT: ${{ secrets.TOMAS_GH_PAT }}
+    steps:
+    - name: Evaluate Gates; Fail on Issues
+      run: |
+        docker run ghcr.io/tomgonzo/workbench-cli:latest \
+        --api-url ${{ env.WORKBENCH_URL }} \
+        --api-user ${{ env.WORKBENCH_USER }} \
+        --api-token ${{ env.WORKBENCH_TOKEN }} \
+        evaluate-gates \
+        --project-name $GITHUB_REPOSITORY \
+        --scan-name ScanGit-$GITHUB_HEAD_REF \
+        --fail-on-pending \
+        --fail-on-policy
