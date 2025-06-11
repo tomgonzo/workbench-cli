@@ -503,20 +503,70 @@ class WorkbenchAPI(WorkbenchAPIHelpers):
             
             if file_size > size_limit:
                 logger.info(f"File size exceeds limit ({size_limit} bytes). Using chunked upload...")
+                
                 headers['Transfer-Encoding'] = 'chunked'
                 headers['Content-Type'] = 'application/octet-stream'
                 
-                for i, chunk in enumerate(self._read_in_chunks(file_handle)):
-                    logger.debug(f"Uploading chunk {i+1}...")
-                    resp_chunk = self.session.post(
+                # Calculate chunked upload details for progress display
+                chunk_size = 5 * 1024 * 1024  # 5MB chunks
+                total_chunks = (file_size + chunk_size - 1) // chunk_size  # Ceiling division
+                bytes_uploaded = 0
+                
+                print(f"Uploading {total_chunks} chunks of ~{chunk_size // (1024*1024)}MB each...")
+                
+                for i, chunk in enumerate(self._read_in_chunks(file_handle, chunk_size=chunk_size)):
+                    chunk_number = i + 1
+                    chunk_actual_size = len(chunk)
+                    bytes_uploaded += chunk_actual_size
+                    progress_percent = min(100, (bytes_uploaded * 100) // file_size)
+                    
+                    print(f"Uploading chunk {chunk_number}/{total_chunks} ({progress_percent}%)")
+                    logger.debug(f"Uploading chunk {chunk_number}/{total_chunks}: {chunk_actual_size} bytes")
+                    
+                    # Add data integrity check
+                    if chunk_actual_size == 0:
+                        logger.error(f"Chunk {chunk_number} has zero size! This will corrupt the upload.")
+                        raise NetworkError(f"Chunk {chunk_number} has zero size")
+                    
+                    # Create request manually to remove Content-Length header
+                    req = requests.Request(
+                        'POST',
                         self.api_url,
                         headers=headers,
                         data=chunk,
                         auth=(self.api_user, self.api_token),
-                        timeout=1800,
                     )
-                    logger.debug(f"Chunk {i+1} upload response status: {resp_chunk.status_code}")
-                    resp_chunk.raise_for_status()
+                    
+                    # Create a new session for each chunk
+                    chunk_session = requests.Session()
+                    prepped = chunk_session.prepare_request(req)
+                    if 'Content-Length' in prepped.headers:
+                        del prepped.headers['Content-Length']
+                        logger.debug(f"Removed Content-Length header for chunk {chunk_number}")
+                    
+                    # Send the prepared request with the fresh session
+                    resp_chunk = chunk_session.send(prepped, timeout=1800)
+                    
+                    # Show status like workbench-agent does
+                    print(f"Chunk {chunk_number} HTTP Status Code: {resp_chunk.status_code}")
+                    logger.debug(f"Chunk {chunk_number} upload response status: {resp_chunk.status_code}")
+                    
+                    # Check for errors
+                    if resp_chunk.status_code != 200:
+                        logger.error(f"Chunk {chunk_number} upload failed with status {resp_chunk.status_code}: {resp_chunk.text}")
+                        print(f"Chunk {chunk_number} upload failed with status {resp_chunk.status_code}")
+                        resp_chunk.raise_for_status()
+                    
+                    # Verify JSON response (like workbench-agent does)
+                    try:
+                        resp_chunk.json()
+                        logger.debug(f"Chunk {chunk_number} response JSON parsed successfully")
+                    except json.JSONDecodeError:
+                        logger.error(f"Chunk {chunk_number} upload: Failed to decode JSON response: {resp_chunk.text}")
+                        print(f"Chunk {chunk_number} upload: Failed to decode JSON response")
+                        raise NetworkError(f"Invalid JSON response from server for chunk {chunk_number}")
+                
+                print(f"Chunked upload completed successfully! Uploaded {bytes_uploaded // (1024*1024)}MB in {total_chunks} chunks.")
                 logger.info("Chunked upload completed successfully.")
             else:
                 # Standard upload for smaller files
@@ -578,7 +628,6 @@ class WorkbenchAPI(WorkbenchAPIHelpers):
                 error_msg = response.get("error", "Unknown error")
                 
                 # Check if this is the specific "file not found" error
-                is_file_not_valid = False
                 if error_msg == "RequestData.Base.issues_while_parsing_request":
                     data = response.get("data", [])
                     if isinstance(data, list) and len(data) > 0:

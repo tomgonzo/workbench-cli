@@ -156,8 +156,8 @@ class WorkbenchAPIHelpers:
                                             details=issue.get("message_parameters", {})
                                         )
                             
-                            # If no specific error was detected, raise the generic API error
-                            raise ApiError(error_msg, code=parsed_json.get("code"))
+                        # If no specific error was detected, raise the generic API error
+                        raise ApiError(error_msg, code=parsed_json.get("code"))
                         # Return the status 0 JSON for expected non-fatal errors
 
                     return parsed_json # Return successfully parsed JSON (status 1 or expected status 0)
@@ -183,7 +183,7 @@ class WorkbenchAPIHelpers:
             logger.error("API request failed: %s", e, exc_info=True)
             raise NetworkError(f"API request failed: {str(e)}", details={"error": str(e)})
 
-    def _read_in_chunks(self, file_object: io.BufferedReader, chunk_size: int = 8 * 1024 * 1024) -> Generator[bytes, None, None]:
+    def _read_in_chunks(self, file_object: io.BufferedReader, chunk_size: int = 5 * 1024 * 1024) -> Generator[bytes, None, None]:
         """
         Reads a file in chunks to support efficient file upload.
         
@@ -948,6 +948,39 @@ class WorkbenchAPIHelpers:
             logger.warning(f"Error parsing .gitignore file: {e}")
             return []
     
+    def _get_file_type_description(self, file_path: str) -> str:
+        """
+        Get a description of the file type for logging purposes.
+        
+        Args:
+            file_path: Path to the file to describe
+            
+        Returns:
+            str: Description of the file type
+        """
+        try:
+            if os.path.islink(file_path):
+                return "symlink"
+            elif os.path.isdir(file_path):
+                return "directory"
+            elif os.path.isfile(file_path):
+                return "regular file"
+            else:
+                import stat
+                mode = os.stat(file_path).st_mode
+                if stat.S_ISFIFO(mode):
+                    return "named pipe (FIFO)"
+                elif stat.S_ISSOCK(mode):
+                    return "socket"
+                elif stat.S_ISCHR(mode):
+                    return "character device"
+                elif stat.S_ISBLK(mode):
+                    return "block device"
+                else:
+                    return "unknown file type"
+        except Exception:
+            return "unknown"
+    
     def _is_excluded_by_gitignore(self, path: str, gitignore_patterns: list, is_dir: bool = False) -> bool:
         """
         Determines if a path should be excluded based on gitignore patterns.
@@ -1102,9 +1135,44 @@ class WorkbenchAPIHelpers:
                             excluded_count += 1
                             continue
                         
-                        # Add file to archive
-                        zipf.write(file_path, os.path.relpath(file_path, parent_dir))
-                        file_count += 1
+                        # Validate file before adding to archive
+                        try:
+                            # Check if file exists and is accessible
+                            if not os.path.exists(file_path):
+                                logger.warning(f"Skipping non-existent file: {rel_file_path}")
+                                excluded_count += 1
+                                continue
+                            
+                            # Check if it's a symbolic link pointing to non-existent target
+                            if os.path.islink(file_path) and not os.path.exists(os.path.realpath(file_path)):
+                                logger.warning(f"Skipping broken symlink: {rel_file_path}")
+                                excluded_count += 1
+                                continue
+                            
+                            # Check if it's a regular file or symlink to regular file
+                            if not (os.path.isfile(file_path) or (os.path.islink(file_path) and os.path.isfile(os.path.realpath(file_path)))):
+                                logger.warning(f"Skipping non-regular file: {rel_file_path} (type: {self._get_file_type_description(file_path)})")
+                                excluded_count += 1
+                                continue
+                            
+                            # Try to access the file to ensure it's readable
+                            try:
+                                with open(file_path, 'rb') as test_file:
+                                    # Just check that we can open it
+                                    pass
+                            except (OSError, IOError, PermissionError) as read_err:
+                                logger.warning(f"Skipping unreadable file: {rel_file_path} - {read_err}")
+                                excluded_count += 1
+                                continue
+                        
+                            # Add file to archive
+                            zipf.write(file_path, os.path.relpath(file_path, parent_dir))
+                            file_count += 1
+                            
+                        except Exception as file_err:
+                            logger.warning(f"Skipping problematic file: {rel_file_path} - {file_err}")
+                            excluded_count += 1
+                            continue
                 
                 print(f"Added {file_count} files to archive (excluded {excluded_count} files/directories)")
             
