@@ -12,6 +12,7 @@ import zipfile
 from pathlib import Path
 
 from workbench_cli.api.workbench_api_helpers import WorkbenchAPIHelpers
+from workbench_cli.utilities.prep_upload_archive import UploadArchivePrep
 from workbench_cli.exceptions import (
     WorkbenchCLIError,
     ApiError,
@@ -379,15 +380,15 @@ def test_parse_gitignore_file_exists(helpers_inst, mocker):
     
     # Apply mocks with safer approach that works in both pytest-mock and our fallback
     open_patch = mocker.patch("builtins.open", mock_open_func)
-    isfile_patch = mocker.patch("os.path.isfile", return_value=True)
+    isfile_patch = mocker.patch("os.path.exists", return_value=True)
     
     try:
         # Ensure mocks are applied
         assert open_patch is not None, "Failed to mock 'open' function"
         assert isfile_patch is not None, "Failed to mock 'os.path.isfile' function"
         
-        # Get gitignore patterns
-        patterns = helpers_inst._parse_gitignore("/fake/path")
+        # Get gitignore patterns - now using UploadArchivePrep static method
+        patterns = UploadArchivePrep._parse_gitignore("/fake/path")
         
         # More detailed assertions with diagnostic output
         if len(patterns) != len(expected_patterns):
@@ -411,10 +412,10 @@ def test_parse_gitignore_file_exists(helpers_inst, mocker):
         raise
 
 def test_parse_gitignore_file_not_exists(helpers_inst, mocker):
-    # Mock os.path.isfile to return False
-    mocker.patch("os.path.isfile", return_value=False)
+    # Mock os.path.exists to return False
+    mocker.patch("os.path.exists", return_value=False)
     
-    patterns = helpers_inst._parse_gitignore("/fake/path")
+    patterns = UploadArchivePrep._parse_gitignore("/fake/path")
     
     # Should return empty list
     assert patterns == []
@@ -423,21 +424,21 @@ def test_is_excluded_by_gitignore_exact_match(helpers_inst):
     patterns = ["node_modules/", "*.log", "build/"]
     
     # Test exact matches
-    assert helpers_inst._is_excluded_by_gitignore("node_modules", patterns, is_dir=True)
-    assert helpers_inst._is_excluded_by_gitignore("build", patterns, is_dir=True)
+    assert UploadArchivePrep._is_excluded_by_gitignore("node_modules", patterns, is_dir=True)
+    assert UploadArchivePrep._is_excluded_by_gitignore("build", patterns, is_dir=True)
     
     # Test file match
-    assert helpers_inst._is_excluded_by_gitignore("error.log", patterns) is True
-    assert helpers_inst._is_excluded_by_gitignore("logs/debug.log", patterns) is True
+    assert UploadArchivePrep._is_excluded_by_gitignore("error.log", patterns) is True
+    assert UploadArchivePrep._is_excluded_by_gitignore("logs/debug.log", patterns) is True
     
     # Test non-match
-    assert helpers_inst._is_excluded_by_gitignore("src/app.js", patterns) is False
-    assert helpers_inst._is_excluded_by_gitignore("package.json", patterns) is False
+    assert UploadArchivePrep._is_excluded_by_gitignore("src/app.js", patterns) is False
+    assert UploadArchivePrep._is_excluded_by_gitignore("package.json", patterns) is False
 
 def test_is_excluded_by_gitignore_empty_patterns(helpers_inst):
     # Should return False for any path if patterns is empty
-    assert helpers_inst._is_excluded_by_gitignore("node_modules", []) is False
-    assert helpers_inst._is_excluded_by_gitignore("any/path", []) is False
+    assert UploadArchivePrep._is_excluded_by_gitignore("node_modules", []) is False
+    assert UploadArchivePrep._is_excluded_by_gitignore("any/path", []) is False
 
 # --- Tests for file operations ---
 def test_create_zip_archive(helpers_inst, mocker):
@@ -475,7 +476,7 @@ def test_create_zip_archive(helpers_inst, mocker):
             
             # Call the method to create a zip archive - capture any exceptions for better diagnostics
             try:
-                zip_path = helpers_inst._create_zip_archive(str(temp_dir))
+                zip_path = UploadArchivePrep.create_zip_archive(str(temp_dir))
                 print(f"Debug - Created ZIP archive at: {zip_path}")
             except Exception as e:
                 print(f"Debug - Error creating ZIP: {str(e)}")
@@ -509,38 +510,36 @@ def test_create_zip_archive(helpers_inst, mocker):
                 
                 print(f"Debug - Extracted files: {extracted_files}")
                 
-                # Normalize test directory name for comparison
-                temp_dir_name = os.path.basename(temp_dir)
-                
-                # Check included files
+                # Check included files - archives contain relative paths from source directory
                 included_files = [
-                    f"{temp_dir_name}/src/main.py",
-                    f"{temp_dir_name}/docs/readme.md",
+                    "src/main.py",
+                    "docs/readme.md",
+                    ".gitignore"  # .gitignore should be included
                 ]
                 for file_path in included_files:
                     norm_path = file_path.replace('/', os.sep)
                     assert norm_path in extracted_files or file_path in extracted_files, \
-                        f"Expected file {file_path} not found in ZIP contents"
+                        f"Expected file {file_path} not found in ZIP contents: {extracted_files}"
                 
                 # Check excluded files/directories (by .gitignore)
                 excluded_gitignore = [
-                    f"{temp_dir_name}/debug.log",
-                    f"{temp_dir_name}/build/output.txt",
+                    "debug.log",          # *.log pattern
+                    "build/output.txt",   # build/ pattern
                 ]
                 for file_path in excluded_gitignore:
                     norm_path = file_path.replace('/', os.sep)
                     assert norm_path not in extracted_files and file_path not in extracted_files, \
-                        f"Gitignore-excluded file {file_path} found in ZIP contents"
+                        f"Gitignore-excluded file {file_path} found in ZIP contents: {extracted_files}"
                 
                 # Check excluded directories (always excluded)
                 excluded_dirs = [".git", "__pycache__"]
                 for dir_name in excluded_dirs:
-                    prefix = f"{temp_dir_name}/{dir_name}/"
+                    prefix = f"{dir_name}/"
                     has_excluded = any(f.startswith(prefix) or f.startswith(prefix.replace('/', os.sep)) 
                                      for f in extracted_files)
                     assert not has_excluded, \
-                        f"Always-excluded directory content from {dir_name} found in ZIP"
-                        
+                        f"Always-excluded directory content from {dir_name} found in ZIP: {extracted_files}"
+                    
     except Exception as e:
         print(f"Test failed with error: {str(e)}")
         # Print additional debug information
