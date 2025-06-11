@@ -31,10 +31,11 @@ jobs:
         --id-reuse-source $GITHUB_REPOSITORY \
         --run-dependency-analysis \
         --autoid-file-licenses \
-        --autoid-file-copyrights
+        --autoid-file-copyrights \
         --no-wait
 
   workbench-gates:
+    needs: workbench-scan
     runs-on: ubuntu-latest
     env:
       WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
