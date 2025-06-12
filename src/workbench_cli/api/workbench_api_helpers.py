@@ -156,8 +156,8 @@ class WorkbenchAPIHelpers:
                                             details=issue.get("message_parameters", {})
                                         )
                             
-                            # If no specific error was detected, raise the generic API error
-                            raise ApiError(error_msg, code=parsed_json.get("code"))
+                        # If no specific error was detected, raise the generic API error
+                        raise ApiError(error_msg, code=parsed_json.get("code"))
                         # Return the status 0 JSON for expected non-fatal errors
 
                     return parsed_json # Return successfully parsed JSON (status 1 or expected status 0)
@@ -182,23 +182,6 @@ class WorkbenchAPIHelpers:
         except requests.exceptions.RequestException as e:
             logger.error("API request failed: %s", e, exc_info=True)
             raise NetworkError(f"API request failed: {str(e)}", details={"error": str(e)})
-
-    def _read_in_chunks(self, file_object: io.BufferedReader, chunk_size: int = 8 * 1024 * 1024) -> Generator[bytes, None, None]:
-        """
-        Reads a file in chunks to support efficient file upload.
-        
-        Args:
-            file_object: File object to read
-            chunk_size: Size of each chunk in bytes
-            
-        Yields:
-            Bytes chunks from the file
-        """
-        while True:
-            data = file_object.read(chunk_size)
-            if not data:
-                break
-            yield data
 
 ## Scan Ops: Check Scan Status
     def _is_status_check_supported(self, scan_code: str, process_type: str) -> bool:
@@ -919,200 +902,21 @@ class WorkbenchAPIHelpers:
             details={"last_status": last_status, "max_tries": max_tries, "wait_interval": wait_interval}
         )
 
-## File Ops - Preparing ZIP for Upload
-    def _parse_gitignore(self, directory_path: str) -> list:
+    def get_scan_status(self, scan_type: str, scan_code: str) -> dict:
         """
-        Parses a .gitignore file into a list of patterns.
+        Retrieve scan status. This method should be overridden by subclasses.
         
         Args:
-            directory_path: Path to the directory containing .gitignore
+            scan_type: Type of scan operation (SCAN or DEPENDENCY_ANALYSIS)
+            scan_code: Code of the scan to check
             
         Returns:
-            list: List of gitignore patterns
-        """
-        gitignore_path = os.path.join(directory_path, '.gitignore')
-        if not os.path.isfile(gitignore_path):
-            return []
-            
-        patterns = []
-        try:
-            with open(gitignore_path, 'r') as f:
-                for line in f:
-                    line = line.split('#')[0].strip()
-                    if line:
-                        patterns.append(line)
-                        
-            logger.debug(f"Parsed {len(patterns)} patterns from .gitignore: {patterns}")
-            return patterns
-        except Exception as e:
-            logger.warning(f"Error parsing .gitignore file: {e}")
-            return []
-    
-    def _is_excluded_by_gitignore(self, path: str, gitignore_patterns: list, is_dir: bool = False) -> bool:
-        """
-        Determines if a path should be excluded based on gitignore patterns.
-        
-        Args:
-            path: Relative path from project root
-            gitignore_patterns: List of patterns from .gitignore
-            is_dir: Whether the path is a directory
-            
-        Returns:
-            bool: True if the path should be excluded
-        """
-        if not gitignore_patterns:
-            return False
-            
-        # Normalize path (replace backslashes with forward slashes)
-        path = path.replace(os.sep, '/')
-        basename = os.path.basename(path)
-        
-        # For directories, we'll check with and without trailing slash
-        if is_dir and not path.endswith('/'):
-            dir_path = path + '/'
-        else:
-            dir_path = path
-        
-        # Common directory patterns to check specifically
-        if is_dir and basename in ['build', 'dist'] and any(
-            p in [basename, basename+'/', '/'+basename, '/'+basename+'/'] 
-            for p in gitignore_patterns
-        ):
-            logger.debug(f"✓ Excluded '{path}' - matched common directory pattern")
-            return True
-            
-        for pattern in gitignore_patterns:
-            pattern = pattern.replace(os.sep, '/')
-            
-            # Case 1: Direct matches
-            if path == pattern or (is_dir and dir_path == pattern):
-                return True
-                
-            # Case 2: Pattern with trailing slash (directory only)
-            if is_dir and pattern.endswith('/') and (
-                dir_path.endswith(pattern) or dir_path == pattern[:-1]
-            ):
-                return True
-                
-            # Case 3: Pattern without leading slash (matches anywhere)
-            if not pattern.startswith('/') and (
-                basename == pattern or 
-                path.endswith('/' + pattern) or 
-                (is_dir and pattern.endswith('/') and dir_path.endswith('/' + pattern))
-            ):
-                return True
-                
-            # Case 4: Pattern with leading slash (matches from root)
-            if pattern.startswith('/') and (
-                path == pattern[1:] or (is_dir and dir_path == pattern[1:])
-            ):
-                return True
-                
-            # Case 5: Wildcard patterns (*.xyz)
-            if pattern.startswith('*.') and basename.endswith(pattern[1:]):
-                return True
-                
-        return False
-    
-    def _create_zip_archive(self, directory_path: str) -> str:
-        """
-        Creates a zip archive from a directory, respecting .gitignore and excluding .git directories.
-        
-        Args:
-            directory_path: Path to the directory to be archived
-            
-        Returns:
-            str: Path to the created zip archive file
+            dict: The scan status data
             
         Raises:
-            FileSystemError: If the directory cannot be archived
+            ApiError: If there are API issues
+            ScanNotFoundError: If the scan doesn't exist
+            NetworkError: If there are network issues
+            NotImplementedError: If called on the base class
         """
-        if not os.path.isdir(directory_path):
-            raise FileSystemError(f"Path is not a directory: {directory_path}")
-            
-        original_basename = os.path.basename(directory_path)
-        
-        # Directories and files to always exclude
-        ALWAYS_EXCLUDE_DIRS = [
-            '.git', '__pycache__', '.pytest_cache', 'node_modules', 
-            '.idea', '.vscode', 'build', 'dist'
-        ]
-        VENV_DIRS = ['.venv', 'venv', '.env', 'env', '.virtualenv', 'virtualenv']
-        SYSTEM_FILES = ['.DS_Store', 'Thumbs.db', 'desktop.ini']
-        
-        # Parse gitignore patterns
-        gitignore_patterns = self._parse_gitignore(directory_path)
-        has_gitignore = len(gitignore_patterns) > 0
-        
-        # Use a temporary directory for the archive
-        temp_dir = tempfile.mkdtemp()
-        try:
-            zip_filename = os.path.join(temp_dir, f"{original_basename}_temp_archive.zip")
-            
-            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                abs_path = os.path.abspath(directory_path)
-                parent_dir = os.path.dirname(abs_path)
-                
-                print("Creating zip archive (excluding system files and respecting .gitignore)...")
-                file_count = 0
-                excluded_count = 0
-                
-                for root, dirs, files in os.walk(abs_path):
-                    # Get relative path from source directory
-                    rel_root = os.path.relpath(root, abs_path)
-                    normalized_rel_root = '' if rel_root == '.' else rel_root
-                    
-                    # 1. Remove common excluded directories
-                    dirs_to_remove = []
-                    
-                    # Handle always-excluded dirs
-                    for d in dirs:
-                        # Check if directory should be always excluded
-                        if (d in ALWAYS_EXCLUDE_DIRS or d in VENV_DIRS or
-                            # Check if we're in a subdirectory of an excluded directory
-                            any(normalized_rel_root.startswith(excluded + '/') 
-                                for excluded in ALWAYS_EXCLUDE_DIRS + VENV_DIRS)):
-                            dirs_to_remove.append(d)
-                            excluded_count += 1
-                            continue
-                        
-                        # Check against gitignore patterns
-                        if has_gitignore:
-                            dir_path = os.path.join(normalized_rel_root, d) if normalized_rel_root else d
-                            if self._is_excluded_by_gitignore(dir_path, gitignore_patterns, is_dir=True):
-                                dirs_to_remove.append(d)
-                                excluded_count += 1
-                    
-                    # Remove excluded directories from processing
-                    for d in dirs_to_remove:
-                        dirs.remove(d)
-                    
-                    # 2. Process files
-                    for file in files:
-                        # Skip .gitignore and system files
-                        if file == '.gitignore' or file in SYSTEM_FILES:
-                            excluded_count += 1
-                            continue
-                        
-                        file_path = os.path.join(root, file)
-                        rel_file_path = os.path.relpath(file_path, abs_path)
-                        
-                        # Check against gitignore patterns
-                        if has_gitignore and self._is_excluded_by_gitignore(rel_file_path, gitignore_patterns):
-                            excluded_count += 1
-                            continue
-                        
-                        # Add file to archive
-                        zipf.write(file_path, os.path.relpath(file_path, parent_dir))
-                        file_count += 1
-                
-                print(f"Added {file_count} files to archive (excluded {excluded_count} files/directories)")
-            
-            return zip_filename
-            
-        except Exception as zip_err:
-            # Clean up temp_dir in case of error
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            raise FileSystemError(f"Failed to create zip archive from directory '{directory_path}'", 
-                                details={"error": str(zip_err)})
+        raise NotImplementedError("get_scan_status must be implemented by subclasses")

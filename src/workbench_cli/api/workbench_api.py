@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Union, Any, Generator, Tuple
 import logging
 from .workbench_api_helpers import WorkbenchAPIHelpers
+from .workbench_api_upload import WorkbenchAPIUpload
 from ..exceptions import (
     WorkbenchCLIError,
     ApiError,
@@ -23,11 +24,12 @@ import os
 import base64
 import tempfile
 import shutil
+import time
 
 # Assume logger is configured in main.py
 logger = logging.getLogger("workbench-cli")
 
-class WorkbenchAPI(WorkbenchAPIHelpers):
+class WorkbenchAPI(WorkbenchAPIUpload):
     """
     Workbench API client class for interacting with the FossID Workbench API.
     Extends WorkbenchAPIHelpers to provide actual API operations.
@@ -382,164 +384,6 @@ class WorkbenchAPI(WorkbenchAPIHelpers):
         response = self._send_request(payload)
         return response.get("data", "UNKNOWN")
         
-    def upload_files(self, scan_code: str, path: str, is_da_import: bool = False):
-        """
-        Uploads a file or directory (as zip) to a scan using the direct data
-        posting method with custom headers, mimicking the original script's logic.
-        
-        Args:
-            scan_code: Code of the scan to upload to
-            path: Path to the file or directory to upload
-            is_da_import: Whether this is a dependency analysis import
-            
-        Raises:
-            FileSystemError: If the path doesn't exist or can't be archived
-            NetworkError: If there are network issues during upload
-            WorkbenchCLIError: For other unexpected errors
-        """
-        if not os.path.exists(path):
-            raise FileSystemError(f"Path does not exist: {path}")
-
-        archive_path = None
-        upload_path = path
-        original_basename = os.path.basename(path)
-        file_handle = None
-        temp_dir = None
-
-        try:
-            # --- Archive Directory if Necessary ---
-            if os.path.isdir(path):
-                print("The path provided is a directory. Compressing for upload...")
-                logger.debug(f"Compressing target directory '{path}'...")
-                
-                # Use the helper method from WorkbenchAPIHelpers to create the zip archive
-                archive_path = self._create_zip_archive(path)
-                upload_path = archive_path
-                
-                # Extract the parent directory of the archive (for cleanup)
-                temp_dir = os.path.dirname(archive_path)
-                
-                # Perform upload for the archive
-                self._perform_upload(scan_code, upload_path, is_da_import)
-                
-                # Clean up the temporary archive
-                if archive_path and os.path.exists(archive_path):
-                    os.remove(archive_path)
-                    logger.debug(f"Deleted temporary archive: {archive_path}")
-                
-                # Clean up the temporary directory
-                if temp_dir and os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    logger.debug(f"Removed temporary directory: {temp_dir}")
-                
-            # --- Handle Single File Upload ---
-            elif os.path.isfile(path):
-                # Directly upload the file
-                self._perform_upload(scan_code, path, is_da_import)
-                
-        except FileSystemError as e:
-            logger.error(f"File system error during upload preparation for {path}: {e}", exc_info=True)
-            raise  # Re-raise specific error
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error during upload for {upload_path}: {e}", exc_info=True)
-            raise NetworkError(f"Network error during file upload: {e}") from e
-        except Exception as e:
-            logger.error(f"Unexpected error during file upload for {path}: {e}", exc_info=True)
-            # Wrap in a more specific error if possible, otherwise generic
-            raise WorkbenchCLIError(f"Unexpected error during file upload process for '{path}'", details={"error": str(e)}) from e
-        finally:
-            # Ensure cleanup in case of exceptions
-            if archive_path and os.path.exists(archive_path):
-                try:
-                    os.remove(archive_path)
-                    logger.debug(f"Cleaned up temporary archive in finally block: {archive_path}")
-                except Exception as cleanup_err:
-                    logger.warning(f"Failed to clean up temporary archive: {cleanup_err}")
-            
-            if temp_dir and os.path.exists(temp_dir):
-                try:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    logger.debug(f"Cleaned up temporary directory in finally block: {temp_dir}")
-                except Exception as cleanup_err:
-                    logger.warning(f"Failed to clean up temporary directory: {cleanup_err}")
-    
-    def _perform_upload(self, scan_code: str, file_path: str, is_da_import: bool = False):
-        """
-        Performs the actual file upload to the API.
-        
-        Args:
-            scan_code: Code of the scan to upload to
-            file_path: Path to the file to upload
-            is_da_import: Whether this is a dependency analysis import
-            
-        Raises:
-            NetworkError: If there are network issues during upload
-        """
-        file_handle = None
-        try:
-            file_size = os.path.getsize(file_path)
-            size_limit = 16 * 1024 * 1024  # Chunking threshold (16MB)
-            upload_basename = os.path.basename(file_path)
-            
-            # Encode headers
-            name_b64 = base64.b64encode(upload_basename.encode()).decode("utf-8")
-            scan_code_b64 = base64.b64encode(scan_code.encode()).decode("utf-8")
-            
-            headers = {
-                "FOSSID-SCAN-CODE": scan_code_b64,
-                "FOSSID-FILE-NAME": name_b64,
-                "Accept": "*/*"  # Keep Accept broad
-            }
-            
-            if is_da_import:
-                headers["FOSSID-UPLOAD-TYPE"] = "dependency_analysis"
-                logger.debug(f"Uploading DA results file '{upload_basename}' ({file_size} bytes)...")
-            else:
-                logger.debug(f"Uploading file '{upload_basename}' ({file_size} bytes)...")
-                
-            logger.debug(f"Upload Request Headers: {headers}")
-            
-            file_handle = open(file_path, "rb")
-            
-            if file_size > size_limit:
-                logger.info(f"File size exceeds limit ({size_limit} bytes). Using chunked upload...")
-                headers['Transfer-Encoding'] = 'chunked'
-                headers['Content-Type'] = 'application/octet-stream'
-                
-                for i, chunk in enumerate(self._read_in_chunks(file_handle)):
-                    logger.debug(f"Uploading chunk {i+1}...")
-                    resp_chunk = self.session.post(
-                        self.api_url,
-                        headers=headers,
-                        data=chunk,
-                        auth=(self.api_user, self.api_token),
-                        timeout=1800,
-                    )
-                    logger.debug(f"Chunk {i+1} upload response status: {resp_chunk.status_code}")
-                    resp_chunk.raise_for_status()
-                logger.info("Chunked upload completed successfully.")
-            else:
-                # Standard upload for smaller files
-                resp = self.session.post(
-                    self.api_url,
-                    headers=headers,
-                    data=file_handle,
-                    auth=(self.api_user, self.api_token),
-                    timeout=1800,
-                )
-                logger.debug(f"Upload Response Status: {resp.status_code}")
-                logger.debug(f"Upload Response Text (first 500): {resp.text[:500]}")
-                resp.raise_for_status()
-                
-                logger.debug(f"Upload for '{upload_basename}' completed.")
-                
-        except requests.exceptions.RequestException as e:
-            raise NetworkError(f"Network error during file upload: {e}") from e
-        finally:
-            # Ensure file handle is closed
-            if file_handle and not file_handle.closed:
-                file_handle.close()
-                logger.debug(f"Closed file handle for {file_path}")
 
     def remove_uploaded_content(self, scan_code: str, filename: str) -> bool:
         """
@@ -578,7 +422,6 @@ class WorkbenchAPI(WorkbenchAPIHelpers):
                 error_msg = response.get("error", "Unknown error")
                 
                 # Check if this is the specific "file not found" error
-                is_file_not_valid = False
                 if error_msg == "RequestData.Base.issues_while_parsing_request":
                     data = response.get("data", [])
                     if isinstance(data, list) and len(data) > 0:
