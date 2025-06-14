@@ -7,8 +7,6 @@ from typing import Set
 
 from ..api import WorkbenchAPI
 from ..utils import (
-    _resolve_project,
-    _resolve_scan,
     _save_report_content,
     _wait_for_scan_completion,
     handler_error_wrapper
@@ -79,24 +77,22 @@ def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace)
     scan_code = None
     
     if params.project_name:
-        project_code = _resolve_project(workbench, params.project_name, create_if_missing=False)
+        project_code = workbench.resolve_project(params.project_name, create_if_missing=False)
     
     if params.report_scope == "scan":
         # If scan scope, we need a scan code
         if params.scan_name:
             # Try to resolve using project context first if provided
             if project_code and params.project_name:
-                scan_code, _ = _resolve_scan(
-                    workbench,
-                    scan_name=params.scan_name,
-                    project_name=params.project_name,
-                    create_if_missing=False,
-                    params=params
-                )
+                            scan_code, _ = workbench.resolve_scan(
+                scan_name=params.scan_name,
+                project_name=params.project_name,
+                create_if_missing=False,
+                params=params
+            )
             else:
                 # Try to resolve globally if project not provided
-                scan_code, _ = _resolve_scan(
-                    workbench,
+                scan_code, _ = workbench.resolve_scan(
                     scan_name=params.scan_name,
                     project_name=None,
                     create_if_missing=False,

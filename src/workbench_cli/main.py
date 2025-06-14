@@ -2,6 +2,7 @@ import sys
 import time
 import logging
 import argparse
+import traceback
 from typing import Optional
 
 # Import from other modules in the package
@@ -123,22 +124,36 @@ def main() -> int:
     # --- Unified Exception Handling ---
     except (ConfigurationError, ValidationError, CompatibilityError) as e:
         # Errors typically due to user input/setup, less need for full traceback in log
-        print(f"\nConfiguration/Validation Error: {e.message}")
+        print(f"\nDetailed Error Information:")
+        print(f"Runtime Error: {e.message}")
         if logger: logger.error("%s: %s", type(e).__name__, e.message, exc_info=False)
         exit_code = 1
     except (ApiError, NetworkError, ProcessError, ProcessTimeoutError, FileSystemError) as e:
         # Errors during runtime interaction, traceback can be useful
-        print(f"\nRuntime Error: {e.message}")
+        print(f"\nDetailed Error Information:")
+        print(f"Runtime Error: {e.message}")
+        if logger: logger.error("%s: %s", type(e).__name__, e.message, exc_info=True)
+        exit_code = 1
+    except (ProjectNotFoundError, ScanNotFoundError) as e:
+        # These are expected errors that have already been formatted nicely by the handler wrapper
+        print(f"\nDetailed Error Information:")
+        print(f"Runtime Error: {e.message}")
+        print(f"ERROR: {type(e).__name__}: {e.message}")
+        # Format and print the traceback under detailed information
+        tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
+        print("".join(tb_lines).rstrip())
         if logger: logger.error("%s: %s", type(e).__name__, e.message, exc_info=True)
         exit_code = 1
     except WorkbenchCLIError as e:
         # Catch any other specific CLI errors that might be missed above
-        print(f"\nWorkbench CLI Error: {e.message}")
+        print(f"\nDetailed Error Information:")
+        print(f"Workbench CLI Error: {e.message}")
         if logger: logger.error("Unhandled WorkbenchCLIError: %s", e.message, exc_info=True)
         exit_code = 1
     except Exception as e:
         # Catch truly unexpected errors
-        print(f"\nUnexpected Error: {e}")
+        print(f"\nDetailed Error Information:")
+        print(f"Unexpected Error: {e}")
         if logger: logger.critical("Unexpected error occurred", exc_info=True)
         exit_code = 1
     finally:

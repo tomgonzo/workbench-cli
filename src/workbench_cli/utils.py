@@ -59,77 +59,133 @@ def _format_and_print_error(error: Exception, handler_name: str, params: argpars
     error_code = getattr(error, 'code', None)
     error_details = getattr(error, 'details', {})
     
-    # Print a clear main error message
-    print(f"\n❌ Error executing '{command}' command: {error_message}")
+    # Determine if this is a read-only operation
+    read_only_commands = {'show-results', 'evaluate-gates', 'download-reports'}
+    is_read_only = command in read_only_commands
     
     # Add context-specific help based on error type
     if isinstance(error, ProjectNotFoundError):
-        print(f"  → Project '{getattr(params, 'project_name', 'unknown')}' was not found")
-        print(f"  → Check the project name or use --create-project to create it")
+        if is_read_only:
+            print(f"\n❌ Cannot continue: The requested project does not exist")
+            print(f"   Project '{getattr(params, 'project_name', 'unknown')}' was not found in your Workbench instance.")
+            print(f"\n💡 Please check:")
+            print(f"   • The project name is spelled correctly")
+            print(f"   • The project exists in your Workbench instance")
+            print(f"   • You have access to the project")
+        else:
+            print(f"\n❌ Error executing '{command}' command: {error_message}")
+            print(f"  → Project '{getattr(params, 'project_name', 'unknown')}' was not found")
+            print(f"  → Check the project name or use --create-project to create it")
     
     elif isinstance(error, ScanNotFoundError):
-        print(f"  → Scan '{getattr(params, 'scan_name', 'unknown')}' was not found")
-        if hasattr(params, 'project_name'):
-            print(f"  → Check the scan name or verify it exists in project '{params.project_name}'")
+        if is_read_only:
+            print(f"\n❌ Cannot continue: The requested scan does not exist")
+            scan_name = getattr(params, 'scan_name', 'unknown')
+            project_name = getattr(params, 'project_name', None)
+            
+            if project_name:
+                print(f"   Scan '{scan_name}' was not found in project '{project_name}'.")
+            else:
+                print(f"   Scan '{scan_name}' was not found in your Workbench instance.")
+            
+            print(f"\n💡 Please check:")
+            print(f"   • The scan name is spelled correctly")
+            if project_name:
+                print(f"   • The scan exists in the '{project_name}' project")
+            else:
+                print(f"   • The scan exists in your Workbench instance")
+                print(f"   • Consider specifying --project-name if the scan is in a specific project")
+            print(f"   • You have access to the scan")
         else:
-            print(f"  → Check the scan name or specify --project-name if it exists in a specific project")
+            print(f"\n❌ Error executing '{command}' command: {error_message}")
+            print(f"  → Scan '{getattr(params, 'scan_name', 'unknown')}' was not found")
+            if hasattr(params, 'project_name'):
+                print(f"  → Check the scan name or verify it exists in project '{params.project_name}'")
+            else:
+                print(f"  → Check the scan name or specify --project-name if it exists in a specific project")
     
     elif isinstance(error, NetworkError):
-        print(f"  → Network issue: {error_message}")
-        print(f"  → Check your network connectivity and that the Workbench server is accessible")
-        print(f"  → Verify the API URL is correct: {getattr(params, 'api_url', '<not specified>')}")
+        print(f"\n❌ Network connectivity issue")
+        print(f"   {error_message}")
+        print(f"\n💡 Please check:")
+        print(f"   • The Workbench server is accessible")
+        print(f"   • The API URL is correct: {getattr(params, 'api_url', '<not specified>')}")
     
     elif isinstance(error, ApiError):
-        print(f"  → API error: {error_message}")
+        print(f"\n❌ Workbench API error")
+        print(f"   {error_message}")
+        
         if error_code:
-            print(f"  → Error code: {error_code}")
+            print(f"   Error code: {error_code}")
             
             # Special handling for Git repository access errors
             if error_code == "git_repository_access_error":
-                print(f"  → The Git repository could not be accessed by the Workbench server")
-                print(f"  → Check that the Git URL is correct and accessible from the Workbench server")
-                print(f"  → Ensure any required authentication is properly configured")
+                print(f"\n💡 Git repository access issue:")
+                print(f"   • Check that the Git URL is correct and accessible from the Workbench server")
+                print(f"   • Ensure any required authentication is properly configured")
             else:
-                print(f"  → The Workbench API reported an error with your request")
+                print(f"\n💡 The Workbench API reported an issue with your request")
     
     elif isinstance(error, ProcessTimeoutError):
-        print(f"  → Operation timed out: {error_message}")
-        print(f"  → Consider increasing --scan-number-of-tries or --scan-wait-time")
+        print(f"\n❌ Operation timed out")
+        print(f"   {error_message}")
+        print(f"\n💡 Consider increasing the timeout values:")
+        print(f"   • --scan-number-of-tries (current: {getattr(params, 'scan_number_of_tries', 'default')})")
+        print(f"   • --scan-wait-time (current: {getattr(params, 'scan_wait_time', 'default')})")
     
     elif isinstance(error, ProcessError):
-        print(f"  → Process error: {error_message}")
-        print(f"  → A Workbench process failed to complete successfully")
+        print(f"\n❌ Workbench process error")
+        print(f"   {error_message}")
+        print(f"\n💡 A Workbench process failed to complete successfully")
     
     elif isinstance(error, FileSystemError):
-        print(f"  → Filesystem error: {error_message}")
-        print(f"  → Check file permissions and that paths exist")
+        print(f"\n❌ File system error")
+        print(f"   {error_message}")
+        print(f"\n💡 Please check:")
+        print(f"   • File permissions are correct")
+        print(f"   • All specified paths exist")
         if hasattr(params, 'path'):
-            print(f"  → Path specified: {params.path}")
+            print(f"   • Path specified: {params.path}")
     
     elif isinstance(error, ValidationError):
-        print(f"  → Validation error: {error_message}")
-        print(f"  → The provided parameters or input files do not meet requirements")
+        print(f"\n❌ Invalid input or configuration")
+        print(f"   {error_message}")
+        print(f"\n💡 Please check your command-line arguments and input files")
     
     elif isinstance(error, ConfigurationError):
-        print(f"  → Configuration error: {error_message}")
-        print(f"  → Check your command-line arguments and configuration")
+        print(f"\n❌ Configuration error")
+        print(f"   {error_message}")
+        print(f"\n💡 Please check your command-line arguments and configuration")
     
     elif isinstance(error, CompatibilityError):
-        print(f"  → Compatibility error: {error_message}")
-        print(f"  → The requested operation is not compatible with the scan's current state")
+        print(f"\n❌ Compatibility issue")
+        print(f"   {error_message}")
+        print(f"\n💡 The requested operation is not compatible with the scan's current state")
     
-    # Show error code if available
-    if error_code and not isinstance(error, ApiError):  # Already shown for ApiError
+    elif isinstance(error, AuthenticationError):
+        print(f"\n❌ Authentication failed")
+        print(f"   {error_message}")
+        print(f"\n💡 Please check:")
+        print(f"   • Your API credentials are correct")
+        print(f"   • You have the necessary permissions")
+    
+    else:
+        # Generic error formatting for unexpected errors
+        print(f"\n❌ Error executing '{command}' command: {error_message}")
+    
+    # Show error code if available (and not already shown)
+    if error_code and not isinstance(error, (ApiError, ProcessTimeoutError)):
         print(f"\nError code: {error_code}")
     
     # Show details in verbose mode
     if getattr(params, 'verbose', False) and error_details:
         print("\nDetailed error information:")
         for key, value in error_details.items():
-            print(f"  - {key}: {value}")
+            print(f"  • {key}: {value}")
     
-    # Add general help text
-    print("\nFor more details, check the log file or run with --log DEBUG for verbose output")
+    # Add help text only for non-read-only operations or when in verbose mode
+    if not is_read_only or getattr(params, 'verbose', False):
+        print(f"\nFor more details, run with --log DEBUG for verbose output")
 
 def handler_error_wrapper(handler_func: Callable) -> Callable:
     """
@@ -191,390 +247,6 @@ def handler_error_wrapper(handler_func: Callable) -> Callable:
             raise cli_error
             
     return wrapper
-
-# --- Project and Scan Resolution ---
-def _resolve_project(workbench: 'Workbench', project_name: str, create_if_missing: bool = False) -> str:
-    """
-    Resolve project name to project code.
-
-    Args:
-        workbench: The Workbench API client instance
-        project_name: Name of the project
-        create_if_missing: Whether to create the project if it doesn't exist
-
-    Returns:
-        str: Project code
-
-    Raises:
-        ProjectNotFoundError: If the project doesn't exist and create_if_missing is False
-        ProjectExistsError: If the project exists and create_if_missing is True
-        ApiError: If there are API-related errors
-        NetworkError: If there are network-related errors
-    """
-    try:
-        # List all projects
-        projects = workbench.list_projects()
-
-        # Find project by name
-        project = next((p for p in projects if p.get("project_name") == project_name), None)
-
-        if project:
-            project_code = project.get("project_code")
-            if not project_code:
-                 raise ApiError(f"Found project '{project_name}' but it is missing the 'code' attribute.", details=project)
-            logger.debug(f"Found existing project '{project_name}' with code '{project_code}'.")
-            return project_code
-        else:
-            # Project not found
-            if create_if_missing:
-                print(f"A Project called '{project_name}' was not found. Creating it...")
-                try:
-                    project_code = workbench.create_project(project_name)
-                    logger.debug(f"Created new project '{project_name}' with code '{project_code}'.")
-                    return project_code
-                except ProjectExistsError:
-                    logger.warning(f"Project '{project_name}' was not found initially, but creation failed because it exists. Re-fetching.")
-                    projects = workbench.list_projects()
-                    project = next((p for p in projects if p.get("project_name") == project_name), None)
-                    if project and project.get("project_code"):
-                        return project["project_code"]
-                    else:
-                        raise ApiError(f"Failed to resolve project '{project_name}' after creation conflict.")
-                except (ApiError, NetworkError) as e:
-                    raise ApiError(f"Failed to create project '{project_name}': {e}", details=getattr(e, 'details', None))
-
-            else:
-                # Not found and not creating
-                raise ProjectNotFoundError(f"Project '{project_name}' not found and creation was not requested.")
-
-    except (ProjectNotFoundError, ProjectExistsError, ApiError, NetworkError):
-         raise
-    except Exception as e:
-        logger.error(f"Unexpected error resolving project '{project_name}': {e}", exc_info=True)
-        raise WorkbenchCLIError(f"Unexpected error while resolving project '{project_name}': {e}",
-                                details={"error": str(e)})
-
-def _resolve_scan(workbench: 'Workbench', scan_name: str, project_name: Optional[str], create_if_missing: bool, params: argparse.Namespace) -> Tuple[str, int]:
-    """
-    Finds a scan by name, optionally creating it, handling both global and project scopes.
-    (Docstring omitted for brevity in this example, but should be kept)
-    """
-    project_code: Optional[str] = None
-    scan_list: List[Dict[str, Any]] = []
-    search_context = ""
-
-    if project_name:
-        search_context = f"in the '{project_name}' project"
-        logger.debug(f"Looking for a scan called '{scan_name}' in the '{project_name}' project. (Create if missing: {create_if_missing})...")
-        project_code = _resolve_project(workbench, project_name, create_if_missing=create_if_missing)
-        try:
-            scan_list = workbench.get_project_scans(project_code)
-        except Exception as e:
-            raise ApiError(f"Failed to list scans {search_context} while resolving '{scan_name}': {e}") from e
-    else:
-        search_context = "globally"
-        print(f"Resolving scan '{scan_name}' globally (Create if missing: {create_if_missing})...")
-        if create_if_missing:
-            raise ConfigurationError("Cannot create a scan (create_if_missing=True) without specifying a --project-name.")
-        try:
-            # list_scans already returns a list of dictionaries (handled by the API class)
-            scan_list = workbench.list_scans()
-            logger.debug(f"Retrieved {len(scan_list)} scans from global list")
-        except Exception as e:
-            raise ApiError(f"Failed to list all scans while resolving '{scan_name}' globally: {e}") from e
-
-    # Log all scan names to help debugging
-    logger.debug(f"All scan names in response: {[s.get('name') for s in scan_list]}")
-    
-    # Create possible variants of the scan name to handle formatting differences
-    scan_name_variants = [scan_name]
-    
-    # If we're searching globally, try more name variants to increase chances of finding the scan
-    if not project_name:
-        # Create variants with spaces or underscores
-        if '_' in scan_name:
-            # If name has underscores, also try with spaces
-            scan_name_variants.append(scan_name.replace('_', ' '))
-        elif ' ' in scan_name:
-            # If name has spaces, also try with underscores
-            scan_name_variants.append(scan_name.replace(' ', '_'))
-        
-        logger.debug(f"Searching for scan name variants: {scan_name_variants}")
-    
-    # When searching in a project context, only consider scans in that project
-    if project_name:
-        found_scans = [s for s in scan_list if s.get('name') in scan_name_variants]
-    else:
-        # When searching globally, consider all scans with matching name regardless of project_code
-        found_scans = [s for s in scan_list if s.get('name') in scan_name_variants]
-        # Log scan data to help debugging
-        for scan in found_scans:
-            logger.debug(f"Found global scan: name='{scan.get('name')}', code='{scan.get('code')}', project_code='{scan.get('project_code')}'")
-
-    if len(found_scans) == 1:
-        scan_info = found_scans[0]
-        scan_code = scan_info.get('code')
-        scan_id_str = scan_info.get('id')
-        resolved_project_code = scan_info.get('project_code', project_code)
-
-        if not scan_code or scan_id_str is None:
-            raise ValidationError(f"Found scan '{scan_name}' {search_context} but it's missing required 'code' or 'id' fields.")
-
-        try:
-            scan_id = int(scan_id_str)
-            if project_name:
-                print(f"Successfully found the '{scan_name}' scan in the '{project_name}' project!")
-            else:
-                found_name = scan_info.get('name')
-                if found_name != scan_name:
-                    print(f"Successfully found the scan globally as '{found_name}' (requested as '{scan_name}')!")
-                else:
-                    print(f"Successfully found the '{scan_name}' scan globally!")
-                if resolved_project_code:
-                    logger.debug(f"Note: The scan is associated with project code '{resolved_project_code}'")
-                logger.debug(f"'{scan_name}' has code '{scan_code}' and ID {scan_id} (Project Code: {resolved_project_code}).")
-            return scan_code, scan_id
-        except (ValueError, TypeError):
-            raise ValidationError(f"Found scan '{scan_name}' {search_context} but its ID '{scan_id_str}' is not a valid integer.")
-        except CompatibilityError:
-            raise
-
-    elif len(found_scans) > 1:
-        project_codes = sorted(list(set(s.get('project_code', 'UnknownProject') for s in found_scans)))
-        raise ValidationError(
-            f"Multiple scans found globally with the name '{scan_name}' in projects: {', '.join(project_codes)}. "
-            f"Please specify the --project-name to disambiguate."
-        )
-    else:
-        if create_if_missing:
-            print(f"A Scan called '{scan_name}' was not found {search_context}. Creating it...")
-            if not project_code:
-                 raise ConfigurationError("Internal Error: project_code not resolved before scan creation attempt.")
-            try:
-                create_git_url = getattr(params, 'git_url', None) if params.command == 'scan-git' else None
-                create_git_branch = getattr(params, 'git_branch', None) if params.command == 'scan-git' else None
-                create_git_tag = getattr(params, 'git_tag', None) if params.command == 'scan-git' else None
-                create_git_depth = getattr(params, 'git_depth', None) if params.command == 'scan-git' else None
-
-                workbench.create_webapp_scan(
-                    project_code=project_code,
-                    scan_name=scan_name,
-                    git_url=create_git_url,
-                    git_branch=create_git_branch,
-                    git_tag=create_git_tag,
-                    git_depth=create_git_depth
-                )
-                print(f"A new scan called '{scan_name}' was created successfully.")
-                time.sleep(2)
-
-                scan_list = workbench.get_project_scans(project_code)
-                new_scan = next((s for s in scan_list if s.get('name') == scan_name), None)
-                if not new_scan:
-                    raise ApiError(f"Failed to retrieve details of newly created scan '{scan_name}' {search_context}.")
-
-                scan_code = new_scan.get('code')
-                scan_id_str = new_scan.get('id')
-                if not scan_code or scan_id_str is None:
-                    raise ValidationError(f"Newly created scan '{scan_name}' is missing required 'code' or 'id' fields.")
-
-                try:
-                    scan_id = int(scan_id_str)
-                    logger.debug(f"Successfully retrieved details for new scan '{scan_name}': Code '{scan_code}', ID {scan_id_str} (Project: {project_code}).")
-                    return scan_code, scan_id
-                except (ValueError, TypeError):
-                    raise ValidationError(f"Newly created scan '{scan_name}' has invalid ID '{scan_id_str}'")
-
-            except ScanExistsError:
-                 logger.warning(f"Scan '{scan_name}' not found initially, but creation failed because it exists. Re-resolving.")
-                 return _resolve_scan(workbench, scan_name, project_name, False, params)
-            except (ApiError, NetworkError, ValidationError) as e:
-                 raise ApiError(f"Failed during creation or retrieval of scan '{scan_name}' {search_context}: {e}") from e
-            except Exception as e:
-                 logger.error(f"Unexpected error creating scan '{scan_name}' {search_context}: {e}", exc_info=True)
-                 raise WorkbenchCLIError(f"Unexpected error creating scan '{scan_name}' {search_context}: {e}", details={"error": str(e)}) from e
-        else:
-            raise ScanNotFoundError(f"Scan '{scan_name}' not found {search_context}")
-
-def _ensure_scan_compatibility(workbench: 'WorkbenchAPI', params: argparse.Namespace, scan_code: str):
-    """
-    Checks if the existing scan configuration is compatible with the current command.
-    Fetches scan information directly from the API.
-    
-    Args:
-        workbench: WorkbenchAPI instance to fetch scan information
-        params: Command line parameters
-        scan_code: Code of the scan to check
-        
-    Raises:
-        CompatibilityError: If the scan is incompatible with the requested operation
-    """
-    logger.debug(f"\nVerifying if the '{scan_code}' scan is compatible with the current operation...")
-    
-    try:
-        # Fetch scan information from the API
-        existing_scan_info = workbench.get_scan_information(scan_code)
-    except ScanNotFoundError:
-        logger.warning(f"Scan '{scan_code}' not found during compatibility check.")
-        return
-    except (ApiError, NetworkError) as e:
-        logger.warning(f"Error fetching scan information during compatibility check: {e}")
-        print(f"Warning: Could not verify scan compatibility due to API error: {e}")
-        return
-
-    # --- Read existing scan info ---
-    existing_git_repo = existing_scan_info.get("git_repo_url", existing_scan_info.get("git_url"))
-    # The API puts both branch and tag *values* in the 'git_branch' field
-    existing_git_ref_value = existing_scan_info.get("git_branch")
-    existing_git_ref_type = existing_scan_info.get("git_ref_type") # Directly get the type ('tag' or 'branch')
-
-    # --- Read current command info ---
-    current_command = params.command
-    current_uses_git = current_command == 'scan-git'
-    current_git_url = getattr(params, 'git_url', None)
-    current_git_branch = getattr(params, 'git_branch', None)
-    current_git_tag = getattr(params, 'git_tag', None)
-    # Determine requested type and value based on flags
-    current_git_ref_type = "tag" if current_git_tag else ("branch" if current_git_branch else None)
-    current_git_ref_value = current_git_tag if current_git_tag else current_git_branch
-
-    error_message = None
-
-    # --- Compatibility Checks ---
-    if current_command == 'scan':
-        if existing_git_repo:
-            error_message = f"Scan '{scan_code}' was created for Git scanning (Repo: {existing_git_repo}) and cannot be reused for code upload via --path."
-    elif current_command == 'scan-git':
-        if not existing_git_repo:
-             error_message = f"Scan '{scan_code}' was created for code upload (using --path) and cannot be reused for Git scanning."
-        elif existing_git_repo != current_git_url:
-            error_message = (f"Scan '{scan_code}' already exists but is configured for a different Git repository "
-                             f"(Existing: '{existing_git_repo}', Requested: '{current_git_url}'). "
-                             f"Please use a different --scan-name to create a new scan.")
-        # --- Comparison using corrected existing_git_ref_type ---
-        elif current_git_ref_type and existing_git_ref_type and existing_git_ref_type.lower() != current_git_ref_type.lower(): # Compare ignoring case
-             error_message = (f"Scan '{scan_code}' exists with ref type '{existing_git_ref_type}', but current command specified ref type '{current_git_ref_type}'. "
-                              f"Please use a different --scan-name or use a matching ref type.")
-        # --- Comparison using corrected existing_git_ref_value ---
-        elif existing_git_ref_value != current_git_ref_value:
-             error_message = (f"Scan '{scan_code}' already exists for {existing_git_ref_type or 'ref'} '{existing_git_ref_value}', "
-                              f"but current command specified {current_git_ref_type or 'ref'} '{current_git_ref_value}'. "
-                              f"Please use a different --scan-name or use the matching ref.")
-    elif current_command == 'import-da':
-        # DA import doesn't care about the original scan type.
-        pass
-
-    # --- Error Handling ---
-    if error_message:
-        print(f"\nError: Incompatible scan usage detected.")
-        logger.error(f"Compatibility check failed for scan '{scan_code}': {error_message}")
-        raise CompatibilityError(f"Incompatible usage for existing scan '{scan_code}': {error_message}")
-    else:
-        print("Compatibility check passed! Proceeding...")
-        # Log reuse notes
-        if current_uses_git and existing_git_repo:
-             ref_display = f"{existing_git_ref_type or 'ref'} '{existing_git_ref_value}'" # Use corrected values
-             logger.debug(f"Reusing existing scan '{scan_code}' configured for Git repository '{existing_git_repo}' ({ref_display}).")
-        elif current_command == 'scan' and not existing_git_repo:
-             logger.debug(f"Reusing existing scan '{scan_code}' configured for code upload.")
-        elif current_command == 'import-da':
-             logger.debug(f"Reusing existing scan '{scan_code}' for DA import.")
-
-def _validate_reuse_source(workbench: 'Workbench', params: argparse.Namespace) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Validates ID reuse source (project or scan) before uploading code or 
-    starting a scan to prevent unnecessary work if the source doesn't exist.
-    
-    Args:
-        workbench: The Workbench API client
-        params: Command line parameters with id_reuse settings
-        
-    Returns:
-        Tuple[Optional[str], Optional[str]]: (api_reuse_type, resolved_specific_code_for_reuse)
-        
-    Raises:
-        ValidationError: If the reuse source specified does not exist
-        ConfigurationError: If required parameters are missing
-    """
-    # Return immediately if ID reuse is not enabled
-    if not getattr(params, 'id_reuse', False):
-        return None, None
-        
-    api_reuse_type = None
-    resolved_specific_code_for_reuse = None
-    
-    user_provided_name_for_reuse = params.id_reuse_source
-    user_reuse_type = params.id_reuse_type
-    
-    if user_reuse_type == "project":
-        if not user_provided_name_for_reuse:
-            raise ConfigurationError("Missing project name in --id-reuse-source for ID reuse type 'project'.")
-        
-        logger.debug(f"Validating project for ID reuse: '{user_provided_name_for_reuse}'...")
-        logger.debug(f"Resolving project code for ID reuse source project: '{user_provided_name_for_reuse}'...")
-        try:
-            resolved_specific_code_for_reuse = _resolve_project(workbench, user_provided_name_for_reuse, create_if_missing=False)
-            logger.debug(f"Found project code for reuse: '{resolved_specific_code_for_reuse}'")
-            api_reuse_type = "specific_project"
-            print(f"Successfully validated ID reuse project '{user_provided_name_for_reuse}'")
-        except ProjectNotFoundError:
-            logger.error(f"Project not found for ID reuse: '{user_provided_name_for_reuse}'")
-            raise ValidationError(f"The project specified as an identification reuse source '{user_provided_name_for_reuse}' does not exist in Workbench. "
-                                 f"Please verify the project name is correct and try again.")
-        except (ApiError, NetworkError) as e:
-            raise ApiError(f"Error looking up project code for reuse: {e}") from e
-        except Exception as e:
-            logger.error(f"Unexpected error looking up project code for reuse: {e}", exc_info=True)
-            raise WorkbenchCLIError(f"Unexpected error looking up project code for reuse: {e}", details={"error": str(e)}) from e
-            
-    elif user_reuse_type == "scan":
-        if not user_provided_name_for_reuse:
-            raise ConfigurationError("Missing scan name in --id-reuse-source for ID reuse type 'scan'.")
-        
-        logger.debug(f"Validating scan for ID reuse: '{user_provided_name_for_reuse}'...")
-        try:
-            # Step 1: Try to find the reuse source scan within the CURRENT project first
-            logger.debug(f"Searching for the reuse source scan '{user_provided_name_for_reuse}' within the current project '{params.project_name}'...")
-            resolved_specific_code_for_reuse, _ = _resolve_scan(
-                workbench,
-                user_provided_name_for_reuse,
-                project_name=params.project_name, # Use current project name
-                create_if_missing=False,
-                params=params # Pass params for logging context if needed
-            )
-            logger.debug(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' within the current project.")
-            api_reuse_type = "specific_scan" # API expects this value
-            logger.debug(f"Successfully validated ID reuse scan '{user_provided_name_for_reuse}' in project '{params.project_name}'")
-            
-        except (ScanNotFoundError, ValidationError) as e: # Catch if not found in current project
-            # Step 2: If not found in the current project, try a global search.
-            logger.warning(f"The reuse source scan '{user_provided_name_for_reuse}' cannot be found in the '{params.project_name}' project. Attempting global search...")
-            try:
-                resolved_specific_code_for_reuse, _ = _resolve_scan(
-                    workbench,
-                    user_provided_name_for_reuse,
-                    project_name=None, # Perform global search; no project name provided.
-                    create_if_missing=False,
-                    params=params
-                )
-                logger.debug(f"Found reuse source scan '{user_provided_name_for_reuse}' with code '{resolved_specific_code_for_reuse}' globally.")
-                api_reuse_type = "specific_scan" # API expects this value
-                print(f"Successfully validated ID reuse scan '{user_provided_name_for_reuse}' globally")
-            except (ScanNotFoundError, ValidationError, ApiError) as global_e:
-                # If global search also fails (not found or ambiguous globally), raise an error.
-                err_msg = (f"The scan specified as an identification reuse source '{user_provided_name_for_reuse}' does not exist in Workbench. "
-                          f"Please verify the scan name is correct and try again.")
-                logger.error(f"Error looking up scan code '{user_provided_name_for_reuse}' for reuse: "
-                           f"Not found in project '{params.project_name}' and global search failed: {global_e}")
-                # Raise ValidationError as it's an input/setup issue
-                raise ValidationError(err_msg) from global_e
-        except (ApiError, NetworkError) as e:
-            # Catch other potential errors during the initial local lookup
-            raise ApiError(f"Error looking up scan code for reuse within project: {e}") from e
-        except Exception as e:
-            logger.error(f"Unexpected error looking up scan code for reuse: {e}", exc_info=True)
-            raise WorkbenchCLIError(f"Unexpected error looking up scan code for reuse: {e}", details={"error": str(e)}) from e
-    
-    return api_reuse_type, resolved_specific_code_for_reuse
 
 # --- Standard Scan Flow ---
 def _assert_scan_is_idle(
