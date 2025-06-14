@@ -8,16 +8,14 @@ from typing import Dict, Any
 
 from ..api import WorkbenchAPI
 from ..utils import (
-    _resolve_project,
-    _resolve_scan,
     _fetch_display_save_results,
     _assert_scan_is_idle,
-    _validate_reuse_source,
+    _wait_for_scan_completion,
     _print_operation_summary,
     handler_error_wrapper,
-    _ensure_scan_compatibility,
     determine_scans_to_run
 )
+from ..utilities.scan_target_validators import ensure_scan_compatibility, validate_reuse_source
 from ..exceptions import (
     WorkbenchCLIError,
     ApiError,
@@ -65,31 +63,26 @@ def handle_scan(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
     if getattr(params, 'id_reuse', False):
         print("\nValidating ID reuse source before proceeding...")
         try:
-            api_reuse_type, resolved_specific_code_for_reuse = _validate_reuse_source(workbench, params)
+            api_reuse_type, resolved_specific_code_for_reuse = validate_reuse_source(workbench, params)
             print(f"Successfully validated ID reuse source.")
         except Exception as e:
-            # Handle all validation exceptions the same way - log, warn, and continue without ID reuse
-            error_type = type(e).__name__
-            logger.warning(f"ID reuse validation failed ({error_type}): {e}. Continuing without ID reuse.")
-            print(f"\nWARNING: ID reuse validation failed: {e}")
-            print("Continuing scan without ID reuse...")
+            # Log the error but don't show additional warnings since validate_reuse_source already shows them
+            logger.warning(f"ID reuse validation failed ({type(e).__name__}): {e}. Continuing without ID reuse.")
             # Disable ID reuse for this scan
             params.id_reuse = False
 
     # Resolve project and scan (find or create)
     print("\nChecking if the Project and Scan exist or need to be created...")
-    project_code = _resolve_project(workbench, params.project_name, create_if_missing=True)
-    scan_code, scan_id = _resolve_scan(
-        workbench,
+    project_code = workbench.resolve_project(params.project_name, create_if_missing=True)
+    scan_code, scan_id = workbench.resolve_scan(
         scan_name=params.scan_name,
         project_name=params.project_name,
         create_if_missing=True,
         params=params
     )
 
-    # Explicitly check scan compatibility
-    print("\nChecking if the Scan is compatible with the current operation...")
-    _ensure_scan_compatibility(workbench, params, scan_code)
+    # Ensure scan is compatible with the current operation
+    ensure_scan_compatibility(workbench, params, scan_code)
 
     # Assert scan is idle before uploading code
     print("\nEnsuring the Scan is idle before uploading code...")

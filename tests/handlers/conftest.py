@@ -29,6 +29,7 @@ def mock_workbench(mocker):
     """Provides a mocked WorkbenchAPI instance for handler tests."""
     # Mock methods used across handlers
     mock = mocker.MagicMock(spec=WorkbenchAPI)
+    mock.assert_process_can_start = mocker.MagicMock()
     mock._is_status_check_supported.return_value = True # Assume supported by default
     mock.list_projects.return_value = [
         {"name": "test_project", "code": "TEST_PROJECT"}

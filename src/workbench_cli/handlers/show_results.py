@@ -5,8 +5,6 @@ import argparse
 
 from ..api import WorkbenchAPI
 from ..utils import (
-    _resolve_project,
-    _resolve_scan,
     _fetch_display_save_results,
     _wait_for_scan_completion,
     handler_error_wrapper
@@ -47,9 +45,8 @@ def handle_show_results(workbench: WorkbenchAPI, params: argparse.Namespace) -> 
     
     # Resolve project and scan (find only)
     print("\nResolving scan for results display...")
-    project_code = _resolve_project(workbench, params.project_name, create_if_missing=False)
-    scan_code, scan_id = _resolve_scan(
-        workbench,
+    project_code = workbench.resolve_project(params.project_name, create_if_missing=False)
+    scan_code, scan_id = workbench.resolve_scan(
         scan_name=params.scan_name,
         project_name=params.project_name,
         create_if_missing=False,

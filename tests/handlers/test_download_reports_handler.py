@@ -40,8 +40,8 @@ def test_handle_download_reports_scan_sync(monkeypatch, mock_workbench, mock_par
     mock_workbench.ASYNC_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'basic'}
     
     # Setup _resolve functions to return expected values
-    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
-    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    mock_workbench.resolve_project.return_value = "PC"
+    mock_workbench.resolve_scan.return_value = ("SC", 1)
     
     # Mock makedirs to avoid file system operations
     monkeypatch.setattr(os, 'makedirs', lambda *args, **kwargs: None)
@@ -84,8 +84,8 @@ def test_handle_download_reports_scan_incomplete(monkeypatch, mock_workbench, mo
     mock_workbench.ASYNC_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'basic'}
     
     # Setup _resolve functions to return expected values
-    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
-    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda wb, **kwargs: ("SC", 1))
+    mock_workbench.resolve_project.return_value = "PC"
+    mock_workbench.resolve_scan.return_value = ("SC", 1)
     
     # Mock makedirs to avoid file system operations
     monkeypatch.setattr(os, 'makedirs', lambda *args, **kwargs: None)
@@ -128,7 +128,7 @@ def test_handle_download_reports_project_async(monkeypatch, mock_workbench, mock
     mock_workbench.ASYNC_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'basic'}
     
     # Mock resolution functions
-    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
+    mock_workbench.resolve_project.return_value = "PC"
     
     # Mock generate_report to return an async process ID
     monkeypatch.setattr(mock_workbench, 'generate_report', lambda **kwargs: 12345)
@@ -179,8 +179,8 @@ def test_handle_download_reports_multiple_one_fails(monkeypatch, mock_workbench,
     mock_workbench.ASYNC_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'basic'}
     
     # Mock resolution functions
-    monkeypatch.setattr(handlers.download_reports, '_resolve_project', lambda wb, pn, **kwargs: "PC")
-    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda *args, **kwargs: ("SC", 1))
+    mock_workbench.resolve_project.return_value = "PC"
+    mock_workbench.resolve_scan.return_value = ("SC", 1)
     
     # Mock generate_report to return different responses for HTML (sync) and XLSX (async)
     html_response = MagicMock(spec=requests.Response)
@@ -234,7 +234,7 @@ def test_handle_download_reports_scan_global_resolve(monkeypatch, mock_workbench
     mock_workbench.ASYNC_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'basic'}
     
     # Special mock for global scan resolve - don't need project_code
-    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda wb, **kwargs: ("GSC", 789))
+    mock_workbench.resolve_scan.return_value = ("GSC", 789)
     
     # Mock makedirs to avoid file system operations
     monkeypatch.setattr(os, 'makedirs', lambda *args, **kwargs: None)
@@ -277,7 +277,7 @@ def test_handle_download_reports_scan_global_resolve_project_fail(monkeypatch, m
     mock_workbench.ASYNC_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'basic'}
     
     # Special mock for global scan resolve - don't need project_code
-    monkeypatch.setattr(handlers.download_reports, '_resolve_scan', lambda wb, **kwargs: ("GSC", 789))
+    mock_workbench.resolve_scan.return_value = ("GSC", 789)
     
     # Mock makedirs to avoid file system operations
     monkeypatch.setattr(os, 'makedirs', lambda *args, **kwargs: None)
@@ -299,53 +299,45 @@ def test_handle_download_reports_invalid_type(monkeypatch, mock_workbench, mock_
     # Skip this test as it's been replaced with a simpler approach
     pass
 
-@patch('workbench_cli.handlers.download_reports._resolve_project', side_effect=ProjectNotFoundError("Project 'P' not found and creation was not requested."))
-@patch('workbench_cli.utils._resolve_scan')
-def test_handle_download_reports_project_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'download-reports'
-    mock_params.project_name = "P"
-    mock_params.scan_name = "S"
-    mock_params.report_scope = 'scan'
-    mock_params.report_type = 'html'
-    mock_params.report_save_path = "reports"
+def test_handle_download_reports_project_resolve_fails(mock_workbench, mock_params):
+    """Tests that ProjectNotFoundError is raised when project resolution fails."""
+    mock_params.command = "download-reports"
+    mock_params.project_name = "non-existent"
+    mock_params.scan_name = None
+    mock_params.report_type = "xlsx"
+    mock_params.report_scope = "project"
+    mock_params.report_save_path = "."
     mock_params.selection_type = None
     mock_params.selection_view = None
     mock_params.disclaimer = None
     mock_params.include_vex = True
-    
-    # Setup mock responses with correct report types
-    mock_workbench.SCAN_REPORT_TYPES = {'html', 'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'string_match', 'dynamic_top_matched_components'}
-    mock_workbench.PROJECT_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx'}
-    mock_workbench.ASYNC_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'basic'}
-    
-    with pytest.raises(ProjectNotFoundError, match="Project 'P' not found and creation was not requested."):
+    mock_workbench.PROJECT_REPORT_TYPES = {'xlsx'}  # Ensure 'xlsx' is a valid type for the mock
+    mock_workbench.resolve_project.side_effect = ProjectNotFoundError("Project not found")
+
+    with pytest.raises(ProjectNotFoundError):
         handlers.handle_download_reports(mock_workbench, mock_params)
 
-@patch('workbench_cli.handlers.download_reports._resolve_project')
-@patch('workbench_cli.handlers.download_reports._resolve_scan', side_effect=ScanNotFoundError("Scan Not Found"))
-def test_handle_download_reports_scan_resolve_fails(mock_resolve_scan, mock_resolve_proj, mock_workbench, mock_params):
-    mock_params.command = 'download-reports'
+def test_handle_download_reports_scan_resolve_fails(mock_workbench, mock_params):
+    """Tests that ScanNotFoundError is raised when scan resolution fails."""
+    mock_params.command = "download-reports"
     mock_params.project_name = "P"
-    mock_params.scan_name = "S"
-    mock_params.report_scope = 'scan'
-    mock_params.report_type = 'html'
-    mock_params.report_save_path = "reports"
+    mock_params.scan_name = "non-existent"
+    mock_params.report_type = "html"
+    mock_params.report_scope = "scan"
+    mock_params.report_save_path = "."
     mock_params.selection_type = None
     mock_params.selection_view = None
     mock_params.disclaimer = None
     mock_params.include_vex = True
-    
-    # Setup mock responses with correct report types
-    mock_workbench.SCAN_REPORT_TYPES = {'html', 'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'string_match', 'dynamic_top_matched_components'}
-    mock_workbench.PROJECT_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx'}
-    mock_workbench.ASYNC_REPORT_TYPES = {'xlsx', 'spdx', 'spdx_lite', 'cyclone_dx', 'basic'}
-    
-    mock_resolve_proj.return_value = "PROJECT_CODE"
-    with pytest.raises(ScanNotFoundError, match="Scan Not Found"):
+    mock_workbench.SCAN_REPORT_TYPES = {'html'}  # Ensure 'html' is a valid type for the mock
+    mock_workbench.resolve_project.return_value = "PC"
+    mock_workbench.resolve_scan.side_effect = ScanNotFoundError("Scan not found")
+
+    with pytest.raises(ScanNotFoundError):
         handlers.handle_download_reports(mock_workbench, mock_params)
 
 def test_validate_report_params_invalid_scope():
-    """Tests validation of 'invalid' report scope."""
+    """Tests validation error for an invalid report scope."""
     # Define a non-existent scope
     test_scope = "invalid"
     

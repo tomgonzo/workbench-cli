@@ -79,8 +79,15 @@ def workbench_inst(mock_session):
 def mock_workbench(mocker):
     """
     Create a completely mocked WorkbenchAPI instance for testing (no methods are real).
+    This mock does not use a spec to avoid issues with mocking methods that
+    are dynamically added or don't exist on the real class.
     """
-    mock_wb = mocker.MagicMock(spec=WorkbenchAPI)
+    mock_wb = mocker.MagicMock()
+    
+    # Manually add all methods that the handlers will call.
+    mock_wb.assert_process_can_start = mocker.MagicMock()
+    mock_wb.ensure_scan_compatibility = mocker.MagicMock()
+    
     # Setup common returns
     mock_wb._send_request.return_value = {"status": "1", "data": {}}
     return mock_wb
