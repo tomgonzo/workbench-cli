@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Union, Any, Generator, Tuple
 import logging
 from .workbench_api_helpers import WorkbenchAPIHelpers
 from .workbench_api_upload import WorkbenchAPIUpload
+from .helpers.project_scan_resolvers import ResolveWorkbenchProjectScan
 from ..exceptions import (
     WorkbenchCLIError,
     ApiError,
@@ -29,7 +30,7 @@ import time
 # Assume logger is configured in main.py
 logger = logging.getLogger("workbench-cli")
 
-class WorkbenchAPI(WorkbenchAPIUpload):
+class WorkbenchAPI(WorkbenchAPIUpload, ResolveWorkbenchProjectScan):
     """
     Workbench API client class for interacting with the FossID Workbench API.
     Extends WorkbenchAPIHelpers to provide actual API operations.
