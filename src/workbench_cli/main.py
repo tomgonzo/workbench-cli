@@ -6,12 +6,12 @@ import traceback
 from typing import Optional
 
 # Import from other modules in the package
-from .cli import parse_cmdline_args
 from .api import WorkbenchAPI
+from .exceptions import WorkbenchCLIError
 from . import handlers
-from .utils import format_duration, _format_and_print_error
+from .cli import parse_cmdline_args
+from .utilities.scan_workflows import format_duration
 from .exceptions import (
-    WorkbenchCLIError,
     ApiError,
     NetworkError,
     ConfigurationError,

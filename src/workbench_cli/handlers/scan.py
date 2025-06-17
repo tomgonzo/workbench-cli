@@ -4,15 +4,12 @@ import os
 import time
 import logging
 import argparse
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING
 
-from ..api import WorkbenchAPI
-from ..utils import (
-    _fetch_display_save_results,
-    _assert_scan_is_idle,
-    _wait_for_scan_completion,
-    _print_operation_summary,
-    handler_error_wrapper,
+from ..utilities.error_handling import handler_error_wrapper
+from ..utilities.scan_workflows import (
+    fetch_display_save_results,
+    print_operation_summary,
     determine_scans_to_run
 )
 from ..utilities.scan_target_validators import ensure_scan_compatibility, validate_reuse_source
@@ -26,12 +23,14 @@ from ..exceptions import (
     ProcessTimeoutError
 )
 
-# Get logger from the handlers package
-from . import logger
+if TYPE_CHECKING:
+    from ..api import WorkbenchAPI
+
+logger = logging.getLogger("workbench-cli")
 
 
 @handler_error_wrapper
-def handle_scan(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
+def handle_scan(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bool:
     """
     Handler for the 'scan' command. Uploads code, runs KB scan, optional DA, shows/saves results.
     
@@ -86,7 +85,8 @@ def handle_scan(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
 
     # Assert scan is idle before uploading code
     print("\nEnsuring the Scan is idle before uploading code...")
-    _assert_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS"])
+    workbench.assert_process_can_start("SCAN", scan_code, wait_max_tries=60, wait_interval=30)
+    workbench.assert_process_can_start("DEPENDENCY_ANALYSIS", scan_code, wait_max_tries=60, wait_interval=30)
 
     # Clear existing scan content
     print("\nClearing existing scan content...")
@@ -100,7 +100,7 @@ def handle_scan(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
 
     # Upload code to scan
     print("\nUploading Code to Workbench...")
-    workbench.upload_files(scan_code, params.path, is_da_import=False)
+    workbench.upload_scan_target(scan_code, params.path)
     print(f"Successfully uploaded {params.path} to Workbench.")
 
     # Handle archive extraction
@@ -166,12 +166,12 @@ def handle_scan(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
             da_completed = True
             
             # Show scan summary and operation details
-            _print_operation_summary(params, da_completed, project_code, scan_code, durations)
+            print_operation_summary(params, da_completed, project_code, scan_code, durations)
             
             # Show scan results if any were requested
             if any([params.show_licenses, params.show_components, params.show_dependencies,
                     params.show_scan_metrics, params.show_policy_warnings, params.show_vulnerabilities]):
-                _fetch_display_save_results(workbench, params, scan_code)
+                fetch_display_save_results(workbench, params, scan_code)
             
             return True
             
@@ -234,11 +234,11 @@ def handle_scan(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
                     da_completed = False
         
         # Show scan summary and operation details
-        _print_operation_summary(params, da_completed, project_code, scan_code, durations)
+        print_operation_summary(params, da_completed, project_code, scan_code, durations)
         
         # Show scan results if any were requested
         if any([params.show_licenses, params.show_components, params.show_dependencies,
                 params.show_scan_metrics, params.show_policy_warnings, params.show_vulnerabilities]):
-            _fetch_display_save_results(workbench, params, scan_code)
+            fetch_display_save_results(workbench, params, scan_code)
         
         return True

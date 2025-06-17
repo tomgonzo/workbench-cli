@@ -2,12 +2,10 @@
 
 import logging
 import argparse
+from typing import TYPE_CHECKING
 
 from ..api import WorkbenchAPI
-from ..utils import (
-    _wait_for_scan_completion,
-    handler_error_wrapper
-)
+from ..utilities.error_handling import handler_error_wrapper
 from ..exceptions import (
     ApiError,
     NetworkError,
@@ -15,13 +13,16 @@ from ..exceptions import (
     ProcessTimeoutError,
     ValidationError
 )
+from ..utilities.scan_workflows import wait_for_scan_completion
 
 # Get logger from the handlers package
 from . import logger
 
+if TYPE_CHECKING:
+    from ..api import WorkbenchAPI
 
 @handler_error_wrapper
-def handle_evaluate_gates(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
+def handle_evaluate_gates(workbench: "WorkbenchAPI", params: "argparse.Namespace") -> bool:
     """
     Handler for the 'evaluate-gates' command. 
     Checks scan status and evaluates policy warnings.
@@ -50,7 +51,7 @@ def handle_evaluate_gates(workbench: WorkbenchAPI, params: argparse.Namespace) -
     
     # Wait for scan and dependency analysis to complete
     print("\nVerifying scan completion...")
-    scan_completed, da_completed, _ = _wait_for_scan_completion(workbench, params, scan_code)
+    scan_completed, da_completed, _ = wait_for_scan_completion(workbench, params, scan_code)
     
     if not scan_completed:
         print("\n❌ Gate Evaluation Failed: KB Scan has not completed successfully.")
