@@ -2,6 +2,7 @@
 
 import logging
 import argparse
+import os
 from typing import TYPE_CHECKING, Dict
 from ..utilities.error_handling import handler_error_wrapper
 from ..exceptions import (
@@ -13,6 +14,7 @@ from ..exceptions import (
     ProcessTimeoutError,
     ProjectNotFoundError,
     ScanNotFoundError,
+    FileSystemError,
 )
 from ..utilities.scan_workflows import (
     assert_scan_is_idle, 
@@ -61,6 +63,14 @@ def handle_import_da(workbench: "WorkbenchAPI", params: argparse.Namespace) -> b
         "dependency_analysis": 0.0
     }
     
+    # Validate scan parameters - CRITICAL: Match old implementation
+    if not params.path:
+        raise ValidationError("A path must be provided for the import-da command.")
+    if not os.path.exists(params.path):
+        raise FileSystemError(f"The provided path does not exist: {params.path}")
+    if not os.path.isfile(params.path):
+        raise ValidationError(f"The provided path must be a file: {params.path}")
+    
     # Resolve project and scan (find or create)
     print("\nChecking if the Project and Scan exist or need to be created...")
     project_code, scan_code = _get_project_and_scan_codes(workbench, params)
@@ -86,6 +96,20 @@ def handle_import_da(workbench: "WorkbenchAPI", params: argparse.Namespace) -> b
 
     # Start dependency analysis import
     print("\n--- Starting Dependency Analysis Import ---")
+    
+    # Verify DA import can start - CRITICAL: Match old implementation  
+    print("Verifying Dependency Analysis can start...")
+    try:
+        workbench.assert_process_can_start(
+            "DEPENDENCY_ANALYSIS",
+            scan_code,
+            params.scan_number_of_tries,
+            params.scan_wait_time
+        )
+    except Exception as e:
+        logger.error(f"Cannot start dependency analysis import for '{scan_code}': {e}", exc_info=True)
+        raise WorkbenchCLIError(f"Cannot start dependency analysis import: {e}", details={"error": str(e)}) from e
+        
     try:
         workbench.start_dependency_analysis(scan_code=scan_code, import_only=True)
         print("Dependency analysis import initiated successfully.")
@@ -103,16 +127,23 @@ def handle_import_da(workbench: "WorkbenchAPI", params: argparse.Namespace) -> b
         print_operation_summary(params, True, project_code, scan_code, durations)
         return True
 
-    # Wait for dependency analysis to complete
+    # Wait for dependency analysis to complete  
     da_completed = False
     try:
         print("\nWaiting for Dependency Analysis import to complete...")
-        _, da_completed, durations = wait_for_scan_completion(workbench, params, scan_code)
+        # Use optimized 2-second wait interval for import-only mode (matches old implementation)
+        da_status_data, da_duration = workbench.wait_for_scan_to_finish(
+            "DEPENDENCY_ANALYSIS", 
+            scan_code, 
+            params.scan_number_of_tries, 
+            2  # Use 2-second wait interval for import-only mode as it finishes faster
+        )
         
-        if da_completed:
-            print("Dependency Analysis import completed successfully.")
-        else:
-            print("Warning: Dependency Analysis import may not have completed successfully.")
+        # Store the DA import duration
+        durations["dependency_analysis"] = da_duration
+        da_completed = True
+        
+        print("Dependency Analysis import completed successfully.")
             
     except (ProcessTimeoutError, ProcessError) as e:
         logger.error(f"Error during dependency analysis import for '{scan_code}': {e}", exc_info=True)
@@ -124,19 +155,13 @@ def handle_import_da(workbench: "WorkbenchAPI", params: argparse.Namespace) -> b
     # Print operation summary
     print_operation_summary(params, da_completed, project_code, scan_code, durations)
 
-    # Fetch and display results if requested
-    if da_completed and any(getattr(params, flag, False) for flag in [
-        'show_licenses', 'show_components', 'show_dependencies', 
-        'show_scan_metrics', 'show_policy_warnings', 'show_vulnerabilities'
-    ]):
+    # Fetch and display results - CRITICAL: Match old implementation behavior
+    if da_completed:
         print("\n--- Fetching Results ---")
         try:
             fetch_display_save_results(workbench, params, scan_code)
         except Exception as e:
             logger.warning(f"Failed to fetch and display results: {e}")
             print(f"Warning: Failed to fetch and display results: {e}")
-    elif da_completed:
-        print("\nDependency Analysis import completed successfully.")
-        print("Use --show-dependencies, --show-licenses, or other --show-* flags to display results.")
     
     return da_completed

@@ -125,7 +125,7 @@ class ScansAPI(APIBase, ReportHelper):
         response = self._send_request(payload)
 
         if response.get("status") == "1" and "data" in response and isinstance(response["data"], dict):
-            logger.info(f"Successfully fetched folder metrics for scan '{scan_code}'.")
+            logger.debug(f"Successfully fetched folder metrics for scan '{scan_code}'.")
             return response["data"]
         elif response.get("status") == "1": # Status 1 but no data or wrong format
              logger.warning(f"Folder metrics API returned success but unexpected data format for scan '{scan_code}': {response.get('data')}")
