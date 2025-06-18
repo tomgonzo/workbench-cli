@@ -1,3 +1,6 @@
+Because why not. It's a snippet finder anyway.
+
+
 func Execute() {
 	regionPtr := flag.String("region", "", "region of termination group")
 	stackPtr := flag.String("stack", "", "stack of termination group")
