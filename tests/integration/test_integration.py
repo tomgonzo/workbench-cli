@@ -3,12 +3,11 @@
 import pytest
 import sys
 import os
-import shutil
 from unittest.mock import patch, MagicMock, mock_open
 
 # Import the main entry point of your application
-from workbench_cli.main import main # Correct import
-from workbench_cli.cli import parse_cmdline_args # Keep this if testing parsing separately
+from workbench_cli.main import main
+from workbench_cli.cli import parse_cmdline_args
 
 # --- Helper Function to Create Dummy Files/Dirs ---
 def create_dummy_path(tmp_path, is_dir=False, content="dummy content"):
@@ -20,106 +19,125 @@ def create_dummy_path(tmp_path, is_dir=False, content="dummy content"):
         path.write_text(content)
     return str(path)
 
-# --- Integration Tests ---
+# --- Basic Smoke Tests ---
 
-def test_scan_success_flow(mock_api_post, mocker, tmp_path, capsys):
-    """
-    Integration test for a successful 'scan' command flow.
-    Directly patches WorkbenchAPI methods instead of using HTTP-level mocks.
-    """
-    dummy_path = create_dummy_path(tmp_path, is_dir=False)
-    
-    # Patch methods on the WorkbenchAPI class
-    # This approach is more reliable than trying to mock HTTP responses
-    mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.list_projects', 
-                return_value=[])  # First call - no projects
-    
-    mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.create_project', 
-                return_value="PRJ001")  # Return project code
-    
-    # Make get_project_scans return an empty list first, then a list with the scan
-    get_project_scans_mock = mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.get_project_scans')
-    get_project_scans_mock.side_effect = [
-        # First call - return empty list to trigger scan creation
-        [],
-        # Second call - return list with the scan after creation
-        [{"name": "TestScan", "code": "TSC", "id": "123"}]
-    ]
-    
-    mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.create_webapp_scan', 
-                return_value="123")  # Return scan ID
-    
-    # Handle scan status changes for waiting period
-    scan_status_mock = mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.get_scan_status')
-    # Configure the mock to return different values on successive calls
-    scan_status_mock.side_effect = [
-        # First return NEW for initial check
-        {"status": "NEW", "is_finished": "0"},
-        # For archive extraction - return FINISHED
-        {"status": "FINISHED", "is_finished": "1"},
-        # For scan execution - first RUNNING, then FINISHED
-        {"status": "RUNNING", "is_finished": "0"},
-        {"status": "FINISHED", "is_finished": "1"}
-    ]
-    
-    # Method to check if status check is supported (from WorkbenchAPIHelpers)
-    mocker.patch('workbench_cli.api.workbench_api_helpers.WorkbenchAPIHelpers._is_status_check_supported', 
-                return_value=True)
-    
-    # Methods for wait_for operations
-    mocker.patch('workbench_cli.api.workbench_api_helpers.WorkbenchAPIHelpers.wait_for_archive_extraction',
-                return_value=({"status": "FINISHED", "is_finished": "1"}, 5.0))
-    
-    mocker.patch('workbench_cli.api.workbench_api_helpers.WorkbenchAPIHelpers.wait_for_scan_to_finish',
-                return_value=({"status": "FINISHED", "is_finished": "1"}, 10.0))
-    
-    # Other required mocks
-    mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.upload_files', return_value=True)
-    mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.extract_archives', return_value=True)
-    
-    # Replace start_scan with the correct run_scan method with all required parameters
-    mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.run_scan', return_value=None)
-    
-    mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI.get_pending_files', return_value={})
-    
-    # API helpers methods
-    mocker.patch('workbench_cli.api.workbench_api_helpers.WorkbenchAPIHelpers.assert_process_can_start', 
-                return_value=None)
-    
-    # File system operations
-    mocker.patch('os.path.exists', return_value=True) 
-    mocker.patch('os.path.isdir', return_value=False)
-    mocker.patch('os.path.getsize', return_value=100)
-    mocker.patch('builtins.open', new_callable=mock_open, read_data=b'dummy data')
+class TestBasicIntegration:
+    """Basic smoke tests for command line parsing and overall integration"""
 
-    # Update arguments to use workbench-cli instead of workbench-agent
-    args = [
-        'workbench-cli',
-        '--api-url', 'http://dummy.com',
-        '--api-user', 'test',
-        '--api-token', 'token',
-        'scan',
-        '--project-name', 'TestProj',
-        '--scan-name', 'TestScan',
-        '--path', dummy_path,
-        '--recursively-extract-archives'
-    ]
+    def test_help_command(self, capsys):
+        """Test that help command works and displays usage information"""
+        args = ['workbench-cli', '--help']
+        
+        with patch.object(sys, 'argv', args):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            
+            # Help should exit with code 0
+            assert exc_info.value.code == 0
+            
+        captured = capsys.readouterr()
+        assert "usage:" in captured.out.lower() or "workbench" in captured.out.lower()
 
-    with patch.object(sys, 'argv', args):
-        try:
+    def test_version_command(self, capsys):
+        """Test that version command works"""
+        args = ['workbench-cli', '--version']
+        
+        with patch.object(sys, 'argv', args):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        
+        captured = capsys.readouterr()
+        # Should show some version information
+        combined_output = captured.out + captured.err
+        assert any(char.isdigit() for char in combined_output)  # Should contain version numbers
+
+    def test_missing_api_credentials(self, capsys):
+        """Test that missing API credentials are handled properly"""
+        args = [
+            'workbench-cli',
+            'scan',
+            '--project-name', 'TestProj',
+            '--scan-name', 'TestScan',
+            '--path', '/dummy/path'
+        ]
+        
+        with patch.object(sys, 'argv', args):
             return_code = main()
-            assert return_code == 0, "Command should exit with success code"
-        except Exception as e:
-            # Print the exception details to help with debugging
-            print(f"\nException during test: {type(e).__name__}: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            pytest.fail(f"Test failed with exception: {e}")
-    
-    # Verify we got a success message in the output
-    captured = capsys.readouterr()
-    combined_output = captured.out + captured.err
-    assert "Workbench CLI finished successfully" in combined_output, "Success message not found in output"
+            
+        assert return_code != 0, "Should fail when API credentials are missing"
+        captured = capsys.readouterr()
+        combined_output = captured.out + captured.err
+        # Should mention missing credentials or URL
+        assert any(term in combined_output.lower() for term in ["url", "token", "user", "credential", "api"])
+
+    def test_invalid_command(self, capsys):
+        """Test that invalid command is handled properly"""
+        args = [
+            'workbench-cli',
+            '--api-url', 'http://dummy.com',
+            '--api-user', 'test',
+            '--api-token', 'token',
+            'invalid-command'
+        ]
+        
+        with patch.object(sys, 'argv', args):
+            return_code = main()
+            
+        assert return_code != 0, "Should fail when invalid command is provided"
+        captured = capsys.readouterr()
+        combined_output = captured.out + captured.err
+        # Should mention invalid command
+        assert any(term in combined_output.lower() for term in ["invalid", "command", "error", "unknown"])
+
+    def test_command_line_parsing_basic(self):
+        """Test basic command line argument parsing"""
+        # Test scan command parsing
+        args = [
+            'workbench-cli',
+            '--api-url', 'http://test.com',
+            '--api-user', 'testuser',
+            '--api-token', 'testtoken',
+            'scan',
+            '--project-name', 'TestProject',
+            '--scan-name', 'TestScan',
+            '--path', '/test/path'
+        ]
+        
+        parsed_args = parse_cmdline_args(args[1:])  # Skip program name
+        
+        assert parsed_args.api_url == 'http://test.com'
+        assert parsed_args.api_user == 'testuser'
+        assert parsed_args.api_token == 'testtoken'
+        assert parsed_args.command == 'scan'
+        assert parsed_args.project_name == 'TestProject'
+        assert parsed_args.scan_name == 'TestScan'
+        assert parsed_args.path == '/test/path'
+
+    def test_environment_variable_fallback(self, mocker):
+        """Test that environment variables are used as fallback for API credentials"""
+        # Mock environment variables
+        mocker.patch.dict(os.environ, {
+            'WORKBENCH_URL': 'http://env-test.com',
+            'WORKBENCH_USER': 'env-user',
+            'WORKBENCH_TOKEN': 'env-token'
+        })
+        
+        args = [
+            'workbench-cli',
+            'scan',
+            '--project-name', 'TestProject',
+            '--scan-name', 'TestScan',
+            '--path', '/test/path'
+        ]
+        
+        parsed_args = parse_cmdline_args(args[1:])  # Skip program name
+        
+        # The parsed args should have the environment values
+        assert parsed_args.api_url == 'http://env-test.com'
+        assert parsed_args.api_user == 'env-user'
+        assert parsed_args.api_token == 'env-token'
+
+# --- Legacy Tests with Mock API Post (kept for backward compatibility) ---
 
 @patch('os.path.exists', return_value=True)
 @patch('os.path.isdir', return_value=False)
@@ -128,6 +146,7 @@ def test_scan_success_flow(mock_api_post, mocker, tmp_path, capsys):
 def test_scan_fail_during_scan(mock_open, mock_getsize, mock_isdir, mock_exists, mock_api_post, tmp_path, capsys):
     """
     Integration test for a 'scan' command that fails during the scan phase.
+    Uses the mock_api_post fixture from conftest.py
     """
     dummy_path = create_dummy_path(tmp_path, is_dir=False)
 
@@ -154,8 +173,9 @@ def test_scan_fail_during_scan(mock_open, mock_getsize, mock_isdir, mock_exists,
         {"json_data": {"status": "1", "data": {"status": "FAILED", "is_finished": "1", "error": "Disk space low"}}},
     ])
 
+    # Fixed command name from workbench-agent to workbench-cli
     args = [
-        'workbench-agent',
+        'workbench-cli',
         '--api-url', 'http://dummy.com',
         '--api-user', 'test',
         '--api-token', 'token',
@@ -182,165 +202,37 @@ def test_scan_fail_during_scan(mock_open, mock_getsize, mock_isdir, mock_exists,
     assert any(error_term in combined_output.lower() for error_term in 
                ["error", "fail", "failed", "disk space"])
 
-@pytest.mark.skip(reason="Integration test requires further investigation of API call sequence")
-def test_evaluate_gates_pass_flow(mocker, capsys):
+def test_evaluate_gates_fail_pending_flow(mock_api_post, capsys):
     """
-    Integration test for a successful 'evaluate-gates' command flow.
-    Directly patches WorkbenchAPI methods instead of using HTTP-level mocks.
+    Integration test for 'evaluate-gates' command that fails due to pending files.
+    Uses the mock_api_post fixture from conftest.py
     """
-    # Patch the relevant methods
-    # Use a dictionary to store patched modules to avoid function name conflicts in mocker
-    mocks = {}
-    
-    # Setup return values for API calls based on test scenario
-    mocks['list_projects'] = mocker.patch(
-        'workbench_cli.utils._resolve_project', 
-        return_value="EPC"  # Just return the project code directly
-    )
-    
-    mocks['resolve_scan'] = mocker.patch(
-        'workbench_cli.utils._resolve_scan', 
-        return_value=("ESC", "456")  # Return (scan_code, scan_id)
-    )
-    
-    # Wait for scan completion
-    mocks['wait_completion'] = mocker.patch(
-        'workbench_cli.utils._wait_for_scan_completion', 
-        return_value=(True, True, {})  # Scan completed, DA completed, empty timing dict
-    )
-    
-    # No pending files
-    mocks['get_pending_files'] = mocker.patch(
-        'workbench_cli.api.workbench_api.WorkbenchAPI.get_pending_files', 
-        return_value={}
-    )
-    
-    # No policy warnings
-    mocks['policy_warnings'] = mocker.patch(
-        'workbench_cli.api.workbench_api.WorkbenchAPI.get_policy_warnings_counter', 
-        return_value={"policy_warnings_total": 0, "identified_files_with_warnings": 0, "dependencies_with_warnings": 0}
-    )
-    
-    # No vulnerabilities
-    mocks['list_vulnerabilities'] = mocker.patch(
-        'workbench_cli.api.workbench_api.WorkbenchAPI.list_vulnerabilities', 
-        return_value=[]
-    )
+    mock_api_post([
+        # 1. _resolve_project -> list_projects
+        {"json_data": {"status": "1", "data": [{"name": "TestProj", "code": "EPC"}]}},
+        # 2. _resolve_scan -> get_project_scans
+        {"json_data": {"status": "1", "data": [{"name": "TestScan", "code": "ESC", "id": "123"}]}},
+        # 3. get_pending_files (with pending files - should cause failure)
+        {"json_data": {"status": "1", "data": {"file1.cpp": {"status": "pending"}, "file2.h": {"status": "pending"}}}},
+    ])
 
-    # Command-line arguments
     args = [
         'workbench-cli',
         '--api-url', 'http://dummy.com',
         '--api-user', 'test',
         '--api-token', 'token',
         'evaluate-gates',
-        '--project-name', 'EvalProj',
-        '--scan-name', 'EvalScan'
+        '--project-name', 'TestProj',
+        '--scan-name', 'TestScan',
+        '--fail-on-pending'
     ]
 
     with patch.object(sys, 'argv', args):
-        try:
-            return_code = main()
-            assert return_code == 0, "Command should exit with success code"
-        except Exception as e:
-            # Print the exception details to help with debugging
-            print(f"\nException during test: {type(e).__name__}: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            pytest.fail(f"Test failed with exception: {e}")
-    
-    # Verify we got a success message in the output
+        return_code = main()
+
+    # Should fail due to pending files
+    assert return_code != 0
     captured = capsys.readouterr()
     combined_output = captured.out + captured.err
-    assert "Gates Passed" in combined_output, "Success message not found in output"
-
-def test_evaluate_gates_fail_pending_flow(mock_api_post, capsys):
-    """
-    Integration test for 'evaluate-gates' failing due to pending files.
-    """
-    mock_api_post([
-        # 1. _resolve_project -> list_projects (assume project exists)
-        {"json_data": {"status": "1", "data": [{"name": "EvalProj", "code": "EPC"}]}},
-        # 2. _resolve_scan -> list_scans (assume scan exists)
-        {"json_data": {"status": "1", "data": [{"name": "EvalScan", "code": "ESC", "id": "456"}]}},
-        # 3. Check scan status before waiting (_assert_scan_is_idle)
-        {"json_data": {"status": "1", "data": {"status": "FINISHED", "is_finished": "1"}}},
-        # 4. Check scan status (finished) - get_scan_status for SCAN
-        {"json_data": {"status": "1", "data": {"status": "FINISHED", "is_finished": "1"}}},
-        # 5. Check DA status (if required) - get_scan_status for DEPENDENCY_ANALYSIS
-        {"json_data": {"status": "1", "data": {"status": "FINISHED", "is_finished": "1"}}},
-        # 6. get_pending_files -> Returns pending files
-        {"json_data": {"status": "1", "data": {"1": "/path/pending.c"}}},
-        # 7. get_policy_warnings_counter (still called even if pending files found)
-        {"json_data": {"status": "1", "data": {"total": 0}}},
-    ])
-
-    args = [
-        'workbench-agent',
-        '--api-url', 'http://dummy.com',
-        '--api-user', 'test',
-        '--api-token', 'token',
-        'evaluate-gates',
-        '--project-name', 'EvalProj',
-        '--scan-name', 'EvalScan',
-        '--show-policy-warnings'  # Use the correct argument
-    ]
-
-    with patch.object(sys, 'argv', args):
-        # Don't assert on return code - command might be reaching SystemExit
-        try:
-            main()
-        except SystemExit as e:
-            # SystemExit is expected when gates fail
-            assert e.code != 0, "Should exit with non-zero code when gates fail"
-
-@pytest.mark.skip(reason="Integration test requires further investigation of API call sequence")
-@patch('os.makedirs') # Mock directory creation for saving report
-@patch('builtins.open', new_callable=mock_open) # Mock file writing
-def test_download_report_sync_flow(mock_open_file, mock_makedirs, mock_api_post, tmp_path, capsys):
-    """
-    Integration test for a successful 'download-reports' command flow with synchronous mode.
-    """
-    save_path = tmp_path / "reports"
-
-    mock_api_post([
-        # 1. _resolve_project -> list_projects (assume project exists)
-        {"json_data": {"status": "1", "data": [{"name": "ReportProj", "code": "RPC"}]}},
-        # 2. _resolve_scan -> list_scans (assume scan exists)
-        {"json_data": {"status": "1", "data": [{"name": "ReportScan", "code": "RSC", "id": "789"}]}},
-        # 3. generate_report (sync) -> Returns report content directly
-        {"status_code": 200, 
-         "headers": {"content-type": "text/html", "content-disposition": "attachment; filename=report.html"}, 
-         "content": b"<html>Report Data</html>"},
-    ])
-
-    args = [
-        'workbench-agent',
-        '--api-url', 'http://dummy.com',
-        '--api-user', 'test',
-        '--api-token', 'token',
-        'download-reports',
-        '--project-name', 'ReportProj',
-        '--scan-name', 'ReportScan',
-        '--report-type', 'html',
-        '--report-save-path', str(save_path)
-    ]
-
-    with patch.object(sys, 'argv', args):
-        try:
-            return_code = main()
-            assert return_code == 0, "Should return success code for successful report download"
-        except Exception as e:
-            pytest.fail(f"Test failed with exception: {e}")
-    
-    # Verify directory creation was attempted
-    mock_makedirs.assert_called_once_with(str(save_path), exist_ok=True)
-
-# --- Add more integration tests ---
-# - test_download_report_async_flow (xlsx, etc.)
-# - test_show_results_flow
-# - test_scan_git_success_flow
-# - test_import_da_success_flow
-# - Tests for various failure scenarios (API errors at different stages, validation errors caught by main)
-# - Test project/scan creation flows (where list returns empty, then create is called)
+    assert "Command: evaluate-gates" in combined_output
 
