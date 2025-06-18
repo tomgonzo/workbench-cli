@@ -21,7 +21,7 @@ jobs:
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         scan-git \
         --project-name $GITHUB_REPOSITORY \
-        --scan-name ScanGit-Container-$GITHUB_REF \
+        --scan-name $GITHUB_REF_NAME \
         --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
         --git-branch $GITHUB_REF_NAME \
         --git-depth 1 \
@@ -41,7 +41,7 @@ jobs:
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         show-results \
         --project-name $GITHUB_REPOSITORY \
-        --scan-name ScanGit-Container-$GITHUB_REF \
+        --scan-name $GITHUB_REF_NAME \
         --show-components \
         --show-dependencies \
         --show-licenses \
