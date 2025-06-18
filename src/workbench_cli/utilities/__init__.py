@@ -22,6 +22,8 @@ from .scan_target_validators import (
     validate_reuse_source,
 )
 from .prep_upload_archive import UploadArchivePrep
+from .git_diff_utils import get_git_repo_root, get_changed_files, create_diff_archive
+from .ref_autodetection import autodetect_git_refs
 
 __all__ = [
     # Error handling
@@ -42,4 +44,9 @@ __all__ = [
     'validate_reuse_source',
     # Archive preparation
     'UploadArchivePrep',
+    # Git Diff Scanning
+    'get_git_repo_root',
+    'get_changed_files',
+    'create_diff_archive',
+    'autodetect_git_refs',
 ] 

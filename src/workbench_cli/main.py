@@ -8,7 +8,6 @@ from typing import Optional
 # Import from other modules in the package
 from .api import WorkbenchAPI
 from .exceptions import WorkbenchCLIError
-from . import handlers
 from .cli import parse_cmdline_args
 from .utilities.scan_workflows import format_duration
 from .exceptions import (
@@ -23,6 +22,15 @@ from .exceptions import (
     CompatibilityError,
     ProjectNotFoundError,
     ScanNotFoundError
+)
+from .handlers import (
+    handle_scan,
+    handle_import_da,
+    handle_show_results,
+    handle_evaluate_gates,
+    handle_download_reports,
+    handle_scan_git,
+    handle_scan_git_diff
 )
 
 
@@ -87,12 +95,13 @@ def main() -> int:
 
         # --- Command Dispatch ---
         COMMAND_HANDLERS = {
-            "scan": handlers.handle_scan,
-            "import-da": handlers.handle_import_da,
-            "show-results": handlers.handle_show_results,
-            "evaluate-gates": handlers.handle_evaluate_gates,
-            "download-reports": handlers.handle_download_reports,
-            "scan-git": handlers.handle_scan_git,
+            "scan": handle_scan,
+            "scan-git-diff": handle_scan_git_diff,
+            "import-da": handle_import_da,
+            "show-results": handle_show_results,
+            "evaluate-gates": handle_evaluate_gates,
+            "download-reports": handle_download_reports,
+            "scan-git": handle_scan_git,
         }
 
         handler = COMMAND_HANDLERS.get(params.command)
