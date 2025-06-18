@@ -2,6 +2,8 @@
 # It will scan the incoming HEAD branch with Workbench.
 # If Pending IDs or Policy Violations are found, the PR will be blocked.
 
+name: Scan Incoming PRs and Check Gates
+
 on: 
   pull_request:
     branches: main
