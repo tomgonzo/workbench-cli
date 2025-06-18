@@ -1,5 +1,4 @@
 import pytest
-import subprocess
 import zipfile
 from unittest.mock import patch, MagicMock, call
 from workbench_cli.utilities import git_diff_utils
@@ -11,23 +10,22 @@ def test_get_git_repo_root_success():
     """
     Should return the correct repo root path on success.
     """
-    with patch('subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(
-            stdout='/path/to/repo\n',
-            check=True
-        )
+    with patch('workbench_cli.utilities.git_diff_utils.Repo') as mock_repo_class:
+        mock_repo = MagicMock()
+        mock_repo.working_dir = '/path/to/repo'
+        mock_repo_class.return_value = mock_repo
+        
         assert git_diff_utils.get_git_repo_root() == '/path/to/repo'
-        mock_run.assert_called_once_with(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, check=True
-        )
+        mock_repo_class.assert_called_once_with(search_parent_directories=True)
 
 def test_get_git_repo_root_failure():
     """
-    Should raise ValidationError if git command fails.
+    Should raise ValidationError if not in a git repository.
     """
-    with patch('subprocess.run') as mock_run:
-        mock_run.side_effect = subprocess.CalledProcessError(1, 'git')
+    with patch('workbench_cli.utilities.git_diff_utils.Repo') as mock_repo_class:
+        from git import InvalidGitRepositoryError
+        mock_repo_class.side_effect = InvalidGitRepositoryError("Not a git repo")
+        
         with pytest.raises(ValidationError, match="must be run from within a git repository"):
             git_diff_utils.get_git_repo_root()
 
@@ -35,38 +33,108 @@ def test_get_git_repo_root_failure():
 
 def test_get_changed_files_success():
     """
-    Should return a list of changed files.
+    Should return a list of changed files using GitPython diff.
     """
-    with patch('subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(
-            stdout='file1.py\npath/to/file2.txt\n',
-            check=True
-        )
+    with patch('workbench_cli.utilities.git_diff_utils.Repo') as mock_repo_class:
+        # Setup mock repository
+        mock_repo = MagicMock()
+        mock_repo_class.return_value = mock_repo
+        
+        # Setup mock commits
+        mock_base_commit = MagicMock()
+        mock_compare_commit = MagicMock()
+        mock_repo.commit.side_effect = [mock_base_commit, mock_compare_commit]
+        
+        # Setup mock diff items
+        mock_diff_item1 = MagicMock()
+        mock_diff_item1.change_type = 'M'  # Modified
+        mock_diff_item1.b_path = 'file1.py'
+        mock_diff_item1.a_path = 'file1.py'
+        
+        mock_diff_item2 = MagicMock()
+        mock_diff_item2.change_type = 'A'  # Added
+        mock_diff_item2.b_path = 'path/to/file2.txt'
+        mock_diff_item2.a_path = None
+        
+        # Mock the diff method
+        mock_base_commit.diff.return_value = [mock_diff_item1, mock_diff_item2]
+        
         changed_files = git_diff_utils.get_changed_files('main', 'HEAD')
         assert changed_files == ['file1.py', 'path/to/file2.txt']
-        mock_run.assert_called_once_with(
-            ["git", "diff", "--name-only", "--diff-filter=d", "main", "HEAD"],
-            capture_output=True, text=True, check=True
-        )
 
 def test_get_changed_files_no_changes():
     """
     Should return an empty list when there are no changes.
     """
-    with patch('subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(stdout='\n', check=True)
+    with patch('workbench_cli.utilities.git_diff_utils.Repo') as mock_repo_class:
+        mock_repo = MagicMock()
+        mock_repo_class.return_value = mock_repo
+        
+        mock_base_commit = MagicMock()
+        mock_compare_commit = MagicMock()
+        mock_repo.commit.side_effect = [mock_base_commit, mock_compare_commit]
+        
+        # Empty diff
+        mock_base_commit.diff.return_value = []
+        
         assert git_diff_utils.get_changed_files('main', 'HEAD') == []
+
+def test_get_changed_files_excludes_deleted():
+    """
+    Should exclude deleted files from the result.
+    """
+    with patch('workbench_cli.utilities.git_diff_utils.Repo') as mock_repo_class:
+        mock_repo = MagicMock()
+        mock_repo_class.return_value = mock_repo
+        
+        mock_base_commit = MagicMock()
+        mock_compare_commit = MagicMock()
+        mock_repo.commit.side_effect = [mock_base_commit, mock_compare_commit]
+        
+        # Setup diff items with one deleted file
+        mock_modified = MagicMock()
+        mock_modified.change_type = 'M'
+        mock_modified.b_path = 'modified.py'
+        
+        mock_deleted = MagicMock()
+        mock_deleted.change_type = 'D'  # Deleted - should be excluded
+        mock_deleted.b_path = 'deleted.py'
+        
+        mock_base_commit.diff.return_value = [mock_modified, mock_deleted]
+        
+        changed_files = git_diff_utils.get_changed_files('main', 'HEAD')
+        assert changed_files == ['modified.py']
 
 def test_get_changed_files_failure():
     """
-    Should raise ValidationError if git diff command fails.
+    Should raise ValidationError if git operations fail.
     """
-    with patch('subprocess.run') as mock_run:
-        mock_run.side_effect = subprocess.CalledProcessError(
-            1, 'git diff', stderr='fatal: bad object main'
-        )
-        with pytest.raises(ValidationError, match="Could not get git diff"):
+    with patch('workbench_cli.utilities.git_diff_utils.Repo') as mock_repo_class:
+        from git import InvalidGitRepositoryError
+        mock_repo_class.side_effect = InvalidGitRepositoryError("Not a git repo")
+        
+        with pytest.raises(ValidationError, match="must be run from within a git repository"):
             git_diff_utils.get_changed_files('main', 'HEAD')
+
+def test_get_changed_files_bad_refs():
+    """
+    Should raise ValidationError if refs are invalid.
+    """
+    with patch('workbench_cli.utilities.git_diff_utils.Repo') as mock_repo_class:
+        mock_repo = MagicMock()
+        mock_repo_class.return_value = mock_repo
+        
+        # Simulate bad ref by making commit() raise an exception, then git.diff also fails
+        from git import GitCommandError
+        mock_repo.commit.side_effect = GitCommandError("git commit", "bad object main")
+        
+        # Mock the fallback git command to also fail
+        mock_git_cmd = MagicMock()
+        mock_repo.git = mock_git_cmd
+        mock_git_cmd.diff.side_effect = GitCommandError("git diff", "bad object main")
+        
+        with pytest.raises(ValidationError, match="Could not get git diff"):
+            git_diff_utils.get_changed_files('bad-ref', 'HEAD')
 
 # --- Tests for create_diff_archive ---
 
