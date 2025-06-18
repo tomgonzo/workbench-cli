@@ -1,0 +1,60 @@
+# This workflow runs on Pull Requests opened against MAIN.
+# It will scan the incoming HEAD branch with Workbench.
+# If Pending IDs or Policy Violations are found, the PR will be blocked.
+
+name: Scan Diff of Incoming PRs
+
+on: 
+  pull_request:
+    branches: 
+      - main
+
+jobs:
+  workbench-scan:
+    runs-on: ubuntu-latest
+    env:
+      WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
+      WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
+      WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
+    steps:
+    - name: Checkout Code with Full History
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Fetch all history for all branches and tags
+        
+    - name: Scan Git Diff in Container
+      run: |
+        docker run --rm -v $GITHUB_WORKSPACE:/scan_target -w /scan_target ghcr.io/tomgonzo/workbench-cli:latest \
+        --api-url ${{ env.WORKBENCH_URL }} \
+        --api-user ${{ env.WORKBENCH_USER }} \
+        --api-token ${{ env.WORKBENCH_TOKEN }} \
+        scan-git-diff \
+        --project-name $GITHUB_REPOSITORY \
+        --scan-name Diff-$GITHUB_HEAD_REF \
+        --id-reuse \
+        --id-reuse-type project \
+        --id-reuse-source $GITHUB_REPOSITORY \
+        --run-dependency-analysis \
+        --autoid-file-licenses \
+        --autoid-file-copyrights \
+        --no-wait
+
+  workbench-gates:
+    needs: workbench-scan
+    runs-on: ubuntu-latest
+    env:
+      WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
+      WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
+      WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
+    steps:
+    - name: Evaluate Gates; Fail on Issues
+      run: |
+        docker run ghcr.io/tomgonzo/workbench-cli:latest \
+        --api-url ${{ env.WORKBENCH_URL }} \
+        --api-user ${{ env.WORKBENCH_USER }} \
+        --api-token ${{ env.WORKBENCH_TOKEN }} \
+        evaluate-gates \
+        --project-name $GITHUB_REPOSITORY \
+        --scan-name Diff-$GITHUB_HEAD_REF \
+        --fail-on-pending \
+        --fail-on-policy
