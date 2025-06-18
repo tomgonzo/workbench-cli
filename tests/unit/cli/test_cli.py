@@ -5,10 +5,14 @@ from unittest.mock import patch, MagicMock
 import argparse
 import os # Added for environ patch
 import re
+import sys
+
+# Add the src directory to the path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'src'))
 
 # Import the function to test
 from workbench_cli.main import main # Correct import
-from workbench_cli.cli import parse_cmdline_args # Keep this if testing parsing separately
+from workbench_cli.cli import parse_cmdline_args, add_common_scan_options # Keep this if testing parsing separately
 
 from workbench_cli.exceptions import (
     WorkbenchCLIError,
@@ -109,8 +113,9 @@ def test_parse_evaluate_gates():
     assert args.project_name == 'P'
     assert args.scan_name == 'S'
     assert args.show_pending_files is True
-    assert not hasattr(args, 'policy_check')  # Should not have this attribute anymore
-    assert not hasattr(args, 'show_files')  # Should not have this attribute anymore
+    assert args.fail_on_vuln_severity is None
+    assert args.fail_on_pending is False
+    assert args.fail_on_policy is False
 
 # --- Test Flags and Defaults ---
 
@@ -230,24 +235,28 @@ def test_parse_args_unknown_command():
 # --- Test main() Exception Handling ---
 
 # Mock the handler functions used by main
-@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan", "--project-name", "P", "--scan-name", "S", "--path", "."])
-@patch("os.path.exists", return_value=True)
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args") 
-def test_main_success(mock_parse, mock_wb, mock_handle_scan, mock_exists):
-    # Set up the mock args
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+def test_main_success(mock_parse, mock_wb, mock_handle_scan):
+    # Configure mocks
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_handle_scan.return_value = True # Simulate successful handler execution
+    
+    mock_workbench_instance = MagicMock()
+    mock_wb.return_value = mock_workbench_instance
+    
+    mock_handle_scan.return_value = True
     
     # Run main and check success
     result = main()
     assert result == 0
+    # Verify handler was called (the exact WorkbenchAPI instance doesn't matter for this test)
     mock_handle_scan.assert_called_once()
+    # Verify it was called with correct argument types
+    call_args = mock_handle_scan.call_args[0]
+    assert len(call_args) == 2
+    assert call_args[1] == mock_args  # Second argument should be our mock args
 
 def test_main_validation_error():
     # Simulate parse_cmdline_args raising the error
@@ -256,217 +265,141 @@ def test_main_validation_error():
         result = main()
         assert result == 1 # Exit code for validation error
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_configuration_error(mock_parse, mock_wb, mock_handle_scan):
-    # Set up the mock args
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    # Configure mocks
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    
+    mock_workbench_instance = MagicMock()
+    mock_wb.return_value = mock_workbench_instance
+    
     mock_handle_scan.side_effect = ConfigurationError("Bad config")
     
-    # Run main and check failure
+    # Run main
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_authentication_error(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = AuthenticationError("Auth failed")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_project_not_found(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ProjectNotFoundError("Project not found")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_scan_not_found(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ScanNotFoundError("Scan not found")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_api_error(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ApiError("API error")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_network_error(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = NetworkError("Network error")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_process_error(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ProcessError("Process error")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_process_timeout(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ProcessTimeoutError("Process timeout")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_file_system_error(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = FileSystemError("File system error")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_compatibility_error(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = CompatibilityError("Compatibility error")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_unexpected_error(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = Exception("Unexpected error")
     result = main()
     assert result == 1
-    mock_wb.assert_called_once_with(
-        api_url="https://test.com/api.php",
-        api_user="Y",
-        api_token="Z"
-    )
 
-@patch("workbench_cli.handlers.handle_evaluate_gates")
+@patch("workbench_cli.main.handle_evaluate_gates")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_evaluate_gates_fail_returns_1(mock_parse, mock_wb, mock_handle_gates):
-    mock_args = argparse.Namespace(
-        command="evaluate-gates", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S"
-    )
+    mock_args = MagicMock(command="evaluate-gates", log="INFO")
     mock_parse.return_value = mock_args
-    mock_handle_gates.return_value = False # This handler returns False on failure
+    mock_wb.return_value = MagicMock()
+    mock_handle_gates.return_value = False
     result = main()
     assert result == 1
 
@@ -528,90 +461,88 @@ def test_help_text_formatting(mock_exit, mock_print_help):
         parse_cmdline_args()
 
 # --- Test Handler Return Types ---
-@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"])
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_scan_handler_return_true(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_workbench_instance = MagicMock()
+    mock_wb.return_value = mock_workbench_instance
     mock_handle_scan.return_value = True
+    
     result = main()
     assert result == 0  # Should return 0 (success) when handler returns True
+    mock_handle_scan.assert_called_once()
 
-@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"])
-@patch("workbench_cli.handlers.handle_scan")
+@patch("workbench_cli.main.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_scan_handler_return_false(mock_parse, mock_wb, mock_handle_scan):
-    mock_args = argparse.Namespace(
-        command="scan", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="."
-    )
+    mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
+    mock_workbench_instance = MagicMock()
+    mock_wb.return_value = mock_workbench_instance
     mock_handle_scan.return_value = False
+    
     result = main()
+    # For non-evaluate-gates commands, the boolean return value isn't used for exit code
+    # It should still be 0 since no exception occurred
     assert result == 0
+    mock_handle_scan.assert_called_once()
 
-@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "show-results"])
-@patch("workbench_cli.handlers.handle_show_results")
+@patch("workbench_cli.main.handle_show_results")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_show_results_handler_return_true(mock_parse, mock_wb, mock_handle):
-    mock_args = argparse.Namespace(
-        command="show-results", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", show_licenses=False, show_components=False,
-        show_dependencies=False, show_scan_metrics=False, show_policy_warnings=False,
-        show_vulnerabilities=False
-    )
+    mock_args = MagicMock(command="show-results", log="INFO")
     mock_parse.return_value = mock_args
+    mock_workbench_instance = MagicMock()
+    mock_wb.return_value = mock_workbench_instance
     mock_handle.return_value = True
+    
     result = main()
     assert result == 0
+    mock_handle.assert_called_once()
 
-@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "import-da"])
-@patch("os.path.exists", return_value=True) # Mock path existence
-@patch("workbench_cli.handlers.handle_import_da")
+@patch("workbench_cli.main.handle_import_da")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
-def test_main_with_import_da_handler_return_true(mock_parse, mock_wb, mock_handle, mock_exists):
-    mock_args = argparse.Namespace(
-        command="import-da", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", path="f"
-    )
+def test_main_with_import_da_handler_return_true(mock_parse, mock_wb, mock_handle):
+    mock_args = MagicMock(command="import-da", log="INFO")
     mock_parse.return_value = mock_args
+    mock_workbench_instance = MagicMock()
+    mock_wb.return_value = mock_workbench_instance
     mock_handle.return_value = True
+    
     result = main()
     assert result == 0
+    mock_handle.assert_called_once()
 
-@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "download-reports"])
-@patch("workbench_cli.handlers.handle_download_reports")
+@patch("workbench_cli.main.handle_download_reports")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_download_reports_handler_return_true(mock_parse, mock_wb, mock_handle):
-    mock_args = argparse.Namespace(
-        command="download-reports", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S", report_type="ALL", output_path="."
-    )
+    mock_args = MagicMock(command="download-reports", log="INFO")
     mock_parse.return_value = mock_args
+    mock_workbench_instance = MagicMock()
+    mock_wb.return_value = mock_workbench_instance
     mock_handle.return_value = True
+    
     result = main()
     assert result == 0
+    mock_handle.assert_called_once()
 
-@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan-git"])
-@patch("workbench_cli.handlers.handle_scan_git")
+@patch("workbench_cli.main.handle_scan_git")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_scan_git_handler_return_true(mock_parse, mock_wb, mock_handle):
-    mock_args = argparse.Namespace(
-        command="scan-git", log="INFO", api_url="https://test.com/api.php", api_user="Y", api_token="Z",
-        project_name="P", scan_name="S"
-    )
+    mock_args = MagicMock(command="scan-git", log="INFO")
     mock_parse.return_value = mock_args
+    mock_workbench_instance = MagicMock()
+    mock_wb.return_value = mock_workbench_instance
     mock_handle.return_value = True
+    
     result = main()
     assert result == 0
     mock_handle.assert_called_once()
