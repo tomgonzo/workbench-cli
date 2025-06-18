@@ -32,7 +32,7 @@ jobs:
         --project-name $GITHUB_REPOSITORY \
         --scan-name Diff-$GITHUB_HEAD_REF \
         --base-ref $GITHUB_BASE_REF \
-        --head-ref $GITHUB_HEAD_REF \
+        --compare-ref $GITHUB_HEAD_REF \
         --id-reuse \
         --id-reuse-type project \
         --id-reuse-source $GITHUB_REPOSITORY \
