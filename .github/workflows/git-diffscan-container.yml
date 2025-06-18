@@ -71,11 +71,11 @@ jobs:
           --show-scan-metrics
 
       - name: No Changes Detected
-        if: steps.creatediff-archive.outputs.has_changes == 'false'
+        if: steps.create-diff-archive.outputs.has_changes == 'false'
         run: echo "✅ No changed files detected - skipping scan"
     
       - name: Evaluate Gates
-        if: steps.creatediff-archive.outputs.has_changes == 'true'
+        if: steps.create-diff-archive.outputs.has_changes == 'true'
         run: |
           docker run --rm \
           ghcr.io/tomgonzo/workbench-cli:latest \
