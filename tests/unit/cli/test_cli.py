@@ -29,7 +29,7 @@ from workbench_cli.exceptions import (
 
 # --- Basic Command Parsing ---
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.'])
 @patch('os.path.exists', return_value=True) # Mock path validation
 def test_parse_scan_command(mock_exists):
     args = parse_cmdline_args()
@@ -43,7 +43,7 @@ def test_parse_scan_command(mock_exists):
     assert args.limit == 10 # Check default
     assert args.log == 'INFO' # Check default log level
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--scan-name', 'S1', '--report-save-path', '/tmp/reports'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--scan-name', 'S1', '--report-save-path', '/tmp/reports'])
 def test_parse_download_reports_scan_scope():
     args = parse_cmdline_args()
     assert args.command == 'download-reports'
@@ -53,7 +53,7 @@ def test_parse_download_reports_scan_scope():
     assert args.report_type == 'ALL' # Check default type
     assert args.report_save_path == '/tmp/reports' # Check non-default path
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--project-name', 'P1', '--report-scope', 'project', '--report-type', 'xlsx'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--project-name', 'P1', '--report-scope', 'project', '--report-type', 'xlsx'])
 def test_parse_download_reports_project_scope():
     args = parse_cmdline_args()
     assert args.command == 'download-reports'
@@ -63,7 +63,7 @@ def test_parse_download_reports_project_scope():
     assert args.report_type == 'xlsx'
     assert args.report_save_path == '.' # Check default path
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-branch', 'dev'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-branch', 'dev'])
 def test_parse_scan_git_branch():
     args = parse_cmdline_args()
     assert args.command == 'scan-git'
@@ -74,7 +74,7 @@ def test_parse_scan_git_branch():
     assert args.git_tag is None
     assert args.git_commit is None  # Verify git_commit is None
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-tag', 'v1.0'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-tag', 'v1.0'])
 def test_parse_scan_git_tag():
     args = parse_cmdline_args()
     assert args.command == 'scan-git'
@@ -82,7 +82,7 @@ def test_parse_scan_git_tag():
     assert args.git_branch is None
     assert args.git_commit is None  # Verify git_commit is None
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-commit', 'abc123'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-commit', 'abc123'])
 def test_parse_scan_git_commit():
     args = parse_cmdline_args()
     assert args.command == 'scan-git'
@@ -93,7 +93,7 @@ def test_parse_scan_git_commit():
     assert args.git_branch is None  # Verify git_branch is None
     assert args.git_tag is None  # Verify git_tag is None
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'import-da', '--project-name', 'P', '--scan-name', 'S', '--path', 'results.json'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'import-da', '--project-name', 'P', '--scan-name', 'S', '--path', 'results.json'])
 @patch('os.path.exists', return_value=True) # Mock path validation
 def test_parse_import_da(mock_exists):
     args = parse_cmdline_args()
@@ -102,7 +102,7 @@ def test_parse_import_da(mock_exists):
     assert args.scan_name == 'S'
     assert args.path == 'results.json'
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'evaluate-gates', '--project-name', 'P', '--scan-name', 'S', '--show-pending-files'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'evaluate-gates', '--project-name', 'P', '--scan-name', 'S', '--show-pending-files'])
 def test_parse_evaluate_gates():
     args = parse_cmdline_args()
     assert args.command == 'evaluate-gates'
@@ -114,7 +114,7 @@ def test_parse_evaluate_gates():
 
 # --- Test Flags and Defaults ---
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', '--log', 'DEBUG', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--delta-scan', '--autoid-pending-ids'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', '--log', 'DEBUG', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--delta-scan', '--autoid-pending-ids'])
 @patch('os.path.exists', return_value=True) # Mock path validation
 def test_parse_flags_and_log_level(mock_exists):
     args = parse_cmdline_args()
@@ -129,48 +129,48 @@ def test_parse_flags_and_log_level(mock_exists):
 # Use ValidationError where the custom validation logic raises it directly
 # Use SystemExit where argparse itself is expected to exit
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'project'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'project'])
 @patch('os.path.exists', return_value=True)
 def test_parse_validation_id_reuse_missing_source(mock_exists):
     with pytest.raises(ValidationError, match="ID reuse source project/scan name is required"):
          parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--report-scope', 'project'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--report-scope', 'project'])
 def test_parse_validation_download_missing_project():
     with pytest.raises(ValidationError, match="Project name is required for project scope report"):
          parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--report-scope', 'scan'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'download-reports', '--report-scope', 'scan'])
 def test_parse_validation_download_missing_scan():
     with pytest.raises(ValidationError, match="Scan name is required for scan scope report"):
          parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'show-results', '--project-name', 'P', '--scan-name', 'S'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'show-results', '--project-name', 'P', '--scan-name', 'S'])
 def test_parse_validation_show_results_missing_show_flag():
     with pytest.raises(ValidationError, match=re.escape("At least one '--show-*' flag must be provided")):
          parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-branch', 'dev', '--git-tag', 'v1'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-branch', 'dev', '--git-tag', 'v1'])
 def test_parse_validation_scan_git_branch_and_tag():
     with pytest.raises(SystemExit):
          parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-branch', 'dev', '--git-commit', 'abc123'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-branch', 'dev', '--git-commit', 'abc123'])
 def test_parse_validation_scan_git_branch_and_commit():
     with pytest.raises(SystemExit):  # Argparse handles this validation, raising SystemExit
          parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-tag', 'v1.0', '--git-commit', 'abc123'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com', '--git-tag', 'v1.0', '--git-commit', 'abc123'])
 def test_parse_validation_scan_git_tag_and_commit():
     with pytest.raises(SystemExit):  # Argparse handles this validation, raising SystemExit
          parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'PG', '--scan-name', 'SG', '--git-url', 'http://git.com'])
 def test_parse_validation_scan_git_missing_ref():
     with pytest.raises(SystemExit):  # Argparse handles this validation, raising SystemExit
          parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '/non/existent/path'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '/non/existent/path'])
 @patch('os.path.exists', return_value=False) # Mock os.path.exists
 def test_parse_validation_scan_non_existent_path(mock_exists):
     with pytest.raises(ValidationError, match=re.escape("Path does not exist: /non/existent/path")):
@@ -179,7 +179,7 @@ def test_parse_validation_scan_non_existent_path(mock_exists):
 
 # Test missing credentials (if not provided by env vars)
 @patch.dict(os.environ, {"WORKBENCH_URL": "", "WORKBENCH_USER": "", "WORKBENCH_TOKEN": ""}, clear=True)
-@patch('sys.argv', ['workbench-agent', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.'])
+@patch('sys.argv', ['workbench-cli', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.'])
 @patch('os.path.exists', return_value=True)
 def test_parse_validation_missing_credentials(mock_exists):
     with pytest.raises(SystemExit):
@@ -187,7 +187,7 @@ def test_parse_validation_missing_credentials(mock_exists):
 
 # --- ADDED TEST: Test credentials from environment variables ---
 @patch.dict(os.environ, {"WORKBENCH_URL": "http://env.com", "WORKBENCH_USER": "env_user", "WORKBENCH_TOKEN": "env_token"}, clear=True)
-@patch('sys.argv', ['workbench-agent', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.']) # No credential args
+@patch('sys.argv', ['workbench-cli', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.']) # No credential args
 @patch('os.path.exists', return_value=True) # Assume path exists
 def test_parse_credentials_from_env_vars(mock_exists):
     try:
@@ -200,28 +200,28 @@ def test_parse_credentials_from_env_vars(mock_exists):
 
 # --- More Specific Validation Tests ---
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z']) # No command
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z']) # No command
 def test_parse_args_no_command():
     # Argparse itself might exit or raise, depending on setup.
     with pytest.raises(SystemExit):
         parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S']) # No path
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S']) # No path
 def test_parse_args_scan_no_path():
     with pytest.raises(SystemExit):
         parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'P', '--scan-name', 'S', '--git-branch', 'main']) # No git url
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git', '--project-name', 'P', '--scan-name', 'S', '--git-branch', 'main']) # No git url
 def test_parse_args_scan_git_no_url():
     with pytest.raises(SystemExit):
         parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'import-da', '--project-name', 'P', '--scan-name', 'S']) # No path
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'import-da', '--project-name', 'P', '--scan-name', 'S']) # No path
 def test_parse_args_import_da_no_path():
     with pytest.raises(SystemExit):
         parse_cmdline_args()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'unknown-command'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'unknown-command'])
 def test_parse_args_unknown_command():
     # Argparse usually handles unknown commands with SystemExit
     with pytest.raises(SystemExit):
@@ -230,7 +230,7 @@ def test_parse_args_unknown_command():
 # --- Test main() Exception Handling ---
 
 # Mock the handler functions used by main
-@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan", "--project-name", "P", "--scan-name", "S", "--path", "."])
+@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan", "--project-name", "P", "--scan-name", "S", "--path", "."])
 @patch("os.path.exists", return_value=True)
 @patch("workbench_cli.handlers.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
@@ -251,7 +251,7 @@ def test_main_success(mock_parse, mock_wb, mock_handle_scan, mock_exists):
 
 def test_main_validation_error():
     # Simulate parse_cmdline_args raising the error
-    with patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"]), \
+    with patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"]), \
          patch("workbench_cli.main.parse_cmdline_args", side_effect=ValidationError("Invalid args")):
         result = main()
         assert result == 1 # Exit code for validation error
@@ -471,7 +471,7 @@ def test_main_evaluate_gates_fail_returns_1(mock_parse, mock_wb, mock_handle_gat
     assert result == 1
 
 # Test ID reuse parameters
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'project', '--id-reuse-source', 'ReusePrj'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'project', '--id-reuse-source', 'ReusePrj'])
 @patch('os.path.exists', return_value=True)
 def test_parse_id_reuse_project(mock_exists):
     args = parse_cmdline_args()
@@ -479,7 +479,7 @@ def test_parse_id_reuse_project(mock_exists):
     assert args.id_reuse_type == 'project'
     assert args.id_reuse_source == 'ReusePrj'
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'scan', '--id-reuse-source', 'ReuseScan'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'scan', '--id-reuse-source', 'ReuseScan'])
 @patch('os.path.exists', return_value=True)
 def test_parse_id_reuse_scan(mock_exists):
     args = parse_cmdline_args()
@@ -488,7 +488,7 @@ def test_parse_id_reuse_scan(mock_exists):
     assert args.id_reuse_source == 'ReuseScan'
 
 # Test behavior when id-reuse-source is provided with id-reuse-type that doesn't need it
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'any', '--id-reuse-source', 'UnneededSource'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan', '--project-name', 'P', '--scan-name', 'S', '--path', '.', '--id-reuse', '--id-reuse-type', 'any', '--id-reuse-source', 'UnneededSource'])
 @patch('os.path.exists', return_value=True)
 def test_parse_id_reuse_source_ignored(mock_exists):
     # The warning is logged directly in parse_cmdline_args, not through the logger mock
@@ -499,7 +499,7 @@ def test_parse_id_reuse_source_ignored(mock_exists):
     assert args.id_reuse_source is None  # Source should be ignored for 'any' type
 
 # Test help text formatting 
-@patch('sys.argv', ['workbench-agent', '--help'])
+@patch('sys.argv', ['workbench-cli', '--help'])
 @patch('argparse.ArgumentParser.print_help')
 @patch('sys.exit')
 def test_help_text_formatting(mock_exit, mock_print_help):
@@ -528,7 +528,7 @@ def test_help_text_formatting(mock_exit, mock_print_help):
         parse_cmdline_args()
 
 # --- Test Handler Return Types ---
-@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"])
+@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"])
 @patch("workbench_cli.handlers.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
@@ -542,7 +542,7 @@ def test_main_with_scan_handler_return_true(mock_parse, mock_wb, mock_handle_sca
     result = main()
     assert result == 0  # Should return 0 (success) when handler returns True
 
-@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"])
+@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"])
 @patch("workbench_cli.handlers.handle_scan")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
@@ -556,7 +556,7 @@ def test_main_with_scan_handler_return_false(mock_parse, mock_wb, mock_handle_sc
     result = main()
     assert result == 0
 
-@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "show-results"])
+@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "show-results"])
 @patch("workbench_cli.handlers.handle_show_results")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
@@ -572,7 +572,7 @@ def test_main_with_show_results_handler_return_true(mock_parse, mock_wb, mock_ha
     result = main()
     assert result == 0
 
-@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "import-da"])
+@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "import-da"])
 @patch("os.path.exists", return_value=True) # Mock path existence
 @patch("workbench_cli.handlers.handle_import_da")
 @patch("workbench_cli.api.WorkbenchAPI")
@@ -587,7 +587,7 @@ def test_main_with_import_da_handler_return_true(mock_parse, mock_wb, mock_handl
     result = main()
     assert result == 0
 
-@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "download-reports"])
+@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "download-reports"])
 @patch("workbench_cli.handlers.handle_download_reports")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
@@ -601,7 +601,7 @@ def test_main_with_download_reports_handler_return_true(mock_parse, mock_wb, moc
     result = main()
     assert result == 0
 
-@patch("sys.argv", ["workbench-agent", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan-git"])
+@patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan-git"])
 @patch("workbench_cli.handlers.handle_scan_git")
 @patch("workbench_cli.api.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
@@ -616,7 +616,7 @@ def test_main_with_scan_git_handler_return_true(mock_parse, mock_wb, mock_handle
     assert result == 0
     mock_handle.assert_called_once()
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git-diff', '--project-name', 'PG', '--scan-name', 'SG', '--base-ref', 'main', '--compare-ref', 'develop'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git-diff', '--project-name', 'PG', '--scan-name', 'SG', '--base-ref', 'main', '--compare-ref', 'develop'])
 def test_parse_scan_git_diff():
     args = parse_cmdline_args()
     assert args.command == 'scan-git-diff'
@@ -625,7 +625,7 @@ def test_parse_scan_git_diff():
     assert args.base_ref == 'main'
     assert args.compare_ref == 'develop'
 
-@patch('sys.argv', ['workbench-agent', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git-diff', '--project-name', 'P', '--scan-name', 'S'])
+@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git-diff', '--project-name', 'P', '--scan-name', 'S'])
 @patch('workbench_cli.utilities.ref_autodetection.autodetect_git_refs', return_value=(None, None))
 def test_parse_scan_git_diff_missing_ref_fails(mock_autodetect):
     # This test is now conceptual because the validation moved into the handler.
