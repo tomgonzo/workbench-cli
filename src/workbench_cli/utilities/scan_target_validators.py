@@ -7,7 +7,7 @@ including compatibility checks and ID reuse validation.
 
 import logging
 import argparse
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple
 
 from ..exceptions import (
     WorkbenchCLIError,
@@ -107,7 +107,7 @@ def ensure_scan_compatibility(workbench: 'WorkbenchAPI', params: argparse.Namesp
         elif current_command == 'import-da':
              logger.debug(f"Reusing existing scan '{scan_code}' for DA import.")
 
-def validate_reuse_source(workbench: 'Workbench', params: argparse.Namespace) -> Tuple[Optional[str], Optional[str]]:
+def validate_reuse_source(workbench: 'WorkbenchAPI', params: argparse.Namespace) -> Tuple[Optional[str], Optional[str]]:
     """
     Validates ID reuse source (project or scan) before uploading code or 
     starting a scan to prevent unnecessary work if the source doesn't exist.

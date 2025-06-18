@@ -41,7 +41,6 @@ jobs:
       WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
       WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
       WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
-      GH_PAT: ${{ secrets.TOMAS_GH_PAT }}
     steps:
     - name: Evaluate Gates; Fail on Issues
       run: |

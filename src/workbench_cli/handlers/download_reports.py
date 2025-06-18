@@ -3,29 +3,28 @@
 import os
 import logging
 import argparse
-from typing import Set
+from typing import Set, TYPE_CHECKING
 
-from ..api import WorkbenchAPI
-from ..utils import (
-    _save_report_content,
-    _wait_for_scan_completion,
-    handler_error_wrapper
-)
+from ..utilities.error_handling import handler_error_wrapper
 from ..exceptions import (
-    WorkbenchCLIError,
     ApiError,
     NetworkError,
     FileSystemError,
     ValidationError,
     ProcessError,
-    ProcessTimeoutError
+    ProcessTimeoutError,
+    ProjectNotFoundError,
+    ScanNotFoundError,
 )
+from ..utilities.scan_workflows import wait_for_scan_completion
 
-# Get logger from the handlers package
-from . import logger
+if TYPE_CHECKING:
+    from ..api import WorkbenchAPI
+
+logger = logging.getLogger("workbench-cli")
 
 @handler_error_wrapper
-def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace):
+def handle_download_reports(workbench: "WorkbenchAPI", params: argparse.Namespace):
     """
     Handler for the 'download-reports' command. 
     Downloads reports for a scan or project.
@@ -84,12 +83,12 @@ def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace)
         if params.scan_name:
             # Try to resolve using project context first if provided
             if project_code and params.project_name:
-                            scan_code, _ = workbench.resolve_scan(
-                scan_name=params.scan_name,
-                project_name=params.project_name,
-                create_if_missing=False,
-                params=params
-            )
+                scan_code, _ = workbench.resolve_scan(
+                    scan_name=params.scan_name,
+                    project_name=params.project_name,
+                    create_if_missing=False,
+                    params=params
+                )
             else:
                 # Try to resolve globally if project not provided
                 scan_code, _ = workbench.resolve_scan(
@@ -109,7 +108,7 @@ def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace)
         print("\nChecking scan completion status...")
         try:
             # Wait for scan to complete before generating reports
-            kb_scan_completed, da_completed, _ = _wait_for_scan_completion(workbench, params, scan_code)
+            kb_scan_completed, da_completed, _ = wait_for_scan_completion(workbench, params, scan_code)
             
             if not kb_scan_completed:
                 print("\nWarning: The KB scan has not completed successfully. Reports may be incomplete.")
@@ -149,9 +148,6 @@ def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace)
             
             # Common parameters for report generation
             common_params = {
-                "scope": params.report_scope,
-                "project_code": project_code,
-                "scan_code": scan_code,
                 "report_type": report_type,
             }
             
@@ -175,20 +171,27 @@ def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace)
             if is_async:
                 # Asynchronous report generation
                 print(f"Starting asynchronous generation of {report_type} report...")
-                process_id = workbench.generate_report(**common_params)
+                
+                if params.report_scope == "project":
+                    process_id = workbench.generate_project_report(project_code, **common_params)
+                else:
+                    process_id = workbench.generate_scan_report(scan_code, **common_params)
                 
                 # Wait for report generation to complete using workbench._wait_for_process
                 try:
                     print(f"Waiting for {report_type} report generation to complete...")
+                    
+                    if params.report_scope == "project":
+                        check_function = workbench.check_project_report_status
+                        check_args = {"process_id": process_id, "project_code": project_code}
+                    else:
+                        check_function = workbench.check_scan_report_status
+                        check_args = {"process_id": process_id, "scan_code": scan_code}
+                    
                     workbench._wait_for_process(
                         process_description=f"'{report_type}' report generation (Process ID: {process_id})",
-                        check_function=workbench.check_report_generation_status,
-                        check_args={
-                            "scope": params.report_scope,
-                            "process_id": process_id,
-                            "scan_code": scan_code,
-                            "project_code": project_code
-                        },
+                        check_function=check_function,
+                        check_args=check_args,
                         status_accessor=lambda data: data.get("progress_state", "UNKNOWN"),
                         success_values={"FINISHED"},
                         failure_values={"FAILED", "CANCELLED", "ERROR"},
@@ -216,15 +219,22 @@ def handle_download_reports(workbench: WorkbenchAPI, params: argparse.Namespace)
                 
                 # Download the generated report
                 print(f"Downloading {report_type} report...")
-                response = workbench.download_report(scope=params.report_scope, process_id=process_id)
+                if params.report_scope == "project":
+                    response = workbench.download_project_report(process_id)
+                else:
+                    response = workbench.download_scan_report(process_id)
             
             else:
                 # Synchronous report generation (returns response directly)
                 print(f"Directly downloading {report_type} report...")
-                response = workbench.generate_report(**common_params)
+                if params.report_scope == "project":
+                    # Note: Project reports are typically async, but handle sync case
+                    response = workbench.generate_project_report(project_code, **common_params)
+                else:
+                    response = workbench.generate_scan_report(scan_code, **common_params)
             
             # Save the report content
-            _save_report_content(response, output_dir, params.report_scope, name_component, report_type)
+            workbench._save_report_content(response, output_dir, params.report_scope, name_component, report_type)
             print(f"Successfully saved {report_type} report.")
             success_count += 1
             

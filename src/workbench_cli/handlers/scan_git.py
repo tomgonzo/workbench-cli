@@ -2,33 +2,50 @@
 
 import logging
 import argparse
-from typing import Dict
-
-from ..api import WorkbenchAPI
-from ..utils import (
-    _fetch_display_save_results,
-    _assert_scan_is_idle,
-    _wait_for_scan_completion,
-    _print_operation_summary,
-    handler_error_wrapper,
-    determine_scans_to_run
-)
-from ..utilities.scan_target_validators import ensure_scan_compatibility, validate_reuse_source
+from typing import TYPE_CHECKING, Dict
+from ..utilities.error_handling import handler_error_wrapper
 from ..exceptions import (
     WorkbenchCLIError,
     ApiError,
     NetworkError,
     ValidationError,
     ProcessError,
-    ProcessTimeoutError
+    ProcessTimeoutError,
+    ConfigurationError,
+    AuthenticationError,
+    ScanExistsError,
 )
+from ..utilities.scan_workflows import (
+    assert_scan_is_idle, 
+    wait_for_scan_completion, 
+    determine_scans_to_run,
+    print_operation_summary,
+    fetch_display_save_results
+)
+from ..utilities.scan_target_validators import ensure_scan_compatibility, validate_reuse_source
 
-# Get logger from the handlers package
-from . import logger
+if TYPE_CHECKING:
+    from ..api import WorkbenchAPI
 
+logger = logging.getLogger("workbench-cli")
+
+def _get_project_and_scan_codes(workbench: "WorkbenchAPI", params: argparse.Namespace) -> tuple[str, str]:
+    """
+    Resolve project and scan codes for git scan.
+    
+    Args:
+        workbench: The Workbench API client instance
+        params: Command line parameters
+        
+    Returns:
+        tuple[str, str]: Project code and scan code
+    """
+    project_code = workbench.resolve_project(params.project_name, create_if_missing=True)
+    scan_code, _ = workbench.resolve_scan(params.scan_name, params.project_name, create_if_missing=True, params=params)
+    return project_code, scan_code
 
 @handler_error_wrapper
-def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool:
+def handle_scan_git(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bool:
     """
     Handler for the 'scan-git' command. Triggers a scan on code directly from Git.
     
@@ -64,20 +81,16 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
     
     # Resolve project and scan (find or create)
     print("\nChecking if the Project and Scan exist or need to be created...")
-    project_code = workbench.resolve_project(params.project_name, create_if_missing=True)
-    scan_code, scan_id = workbench.resolve_scan(
-        scan_name=params.scan_name,
-        project_name=params.project_name,
-        create_if_missing=True,
-        params=params
-    )
+    project_code, scan_code = _get_project_and_scan_codes(workbench, params)
+    
+    print(f"Processing git scan for scan '{scan_code}' in project '{project_code}'...")
 
     # Ensure scan is compatible with the current operation
     ensure_scan_compatibility(workbench, params, scan_code)
 
     # Assert scan is idle before triggering Git clone
     print("\nEnsuring the Scan is idle before triggering Git clone...")
-    _assert_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS", "GIT_CLONE"])
+    assert_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS", "GIT_CLONE"])
 
     # Trigger Git clone
     git_ref_type = "tag" if params.git_tag else ("commit" if params.git_commit else "branch")
@@ -85,11 +98,15 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
     print(f"\nCloning the '{params.git_url}' repository using {git_ref_type}: '{git_ref_value}'.")
     
     # Download content from Git
-    workbench.download_content_from_git(scan_code)
-    git_status_data, git_duration = workbench.wait_for_git_clone(scan_code, params.scan_number_of_tries, params.scan_wait_time)
-    # Store git clone duration
-    durations["git_clone"] = git_duration
-    print(f"\nSuccessfully cloned Git repository from {params.git_url}")
+    try:
+        workbench.download_content_from_git(scan_code)
+        git_status_data, git_duration = workbench.wait_for_git_clone(scan_code, params.scan_number_of_tries, params.scan_wait_time)
+        # Store git clone duration
+        durations["git_clone"] = git_duration
+        print(f"\nSuccessfully cloned Git repository from {params.git_url}")
+    except Exception as e:
+        logger.error(f"Failed to clone Git repository for '{scan_code}': {e}", exc_info=True)
+        raise WorkbenchCLIError(f"Failed to clone Git repository: {e}", details={"error": str(e)}) from e
     
     # Remove .git directory before starting scan
     print("\nRemoving .git directory to optimize scan...")
@@ -100,6 +117,9 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
         logger.warning(f"Error removing .git directory: {e}. Continuing with scan...")
         print(f"Warning: Error removing .git directory: {e}. Continuing with scan...")
 
+    # Determine which scan operations to run
+    scan_operations = determine_scans_to_run(params)
+    
     # Run KB Scan
     scan_completed = False
     da_completed = False
@@ -113,9 +133,6 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
             params.scan_wait_time
         )
         
-        # Determine which scan operations to run
-        scan_operations = determine_scans_to_run(params)
-        
         # Handle dependency analysis only mode
         if not scan_operations["run_kb_scan"] and scan_operations["run_dependency_analysis"]:
             print("\nStarting Dependency Analysis only (skipping KB scan)...")
@@ -126,6 +143,7 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
                 print("Dependency Analysis has been started.")
                 print("\nExiting without waiting for completion (--no-wait mode).")
                 print("You can check the status later using the 'show-results' command.")
+                print_operation_summary(params, True, project_code, scan_code, durations)
                 return True
             
             # Wait for dependency analysis to complete
@@ -142,10 +160,10 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
                 scan_completed = True
                 
                 # Print operation summary
-                _print_operation_summary(params, da_completed, project_code, scan_code, durations)
+                print_operation_summary(params, da_completed, project_code, scan_code, durations)
                 
                 # Show results
-                _fetch_display_save_results(workbench, params, scan_code)
+                fetch_display_save_results(workbench, params, scan_code)
                 
                 return True
                 
@@ -179,6 +197,7 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
                 
                 print("\nExiting without waiting for completion (--no-wait mode).")
                 print("You can check the scan status later using the 'show-results' command.")
+                print_operation_summary(params, True, project_code, scan_code, durations)
                 return True
             else:
                 # Wait for KB scan to finish and get duration
@@ -217,7 +236,7 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
     # Process completed operations
     if scan_completed:
         # Print operation summary
-        _print_operation_summary(params, da_completed, project_code, scan_code, durations)
+        print_operation_summary(params, da_completed, project_code, scan_code, durations)
 
         # Check for pending files (informational)
         try:
@@ -232,7 +251,7 @@ def handle_scan_git(workbench: WorkbenchAPI, params: argparse.Namespace) -> bool
     
     # Fetch and display results if scan completed successfully
     if scan_completed or da_completed:
-        _fetch_display_save_results(workbench, params, scan_code)
+        fetch_display_save_results(workbench, params, scan_code)
     else:
         print("\nSkipping result fetching since scan did not complete successfully.")
     

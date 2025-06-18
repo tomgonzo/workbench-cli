@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Union, Any, Tuple
 import logging
 import time
 import argparse
-from ..workbench_api_helpers import WorkbenchAPIHelpers
+from .api_base import APIBase
 from ...exceptions import (
     WorkbenchCLIError,
     ApiError,
@@ -19,7 +19,7 @@ from ...exceptions import (
 logger = logging.getLogger("workbench-cli")
 
 
-class ResolveWorkbenchProjectScan(WorkbenchAPIHelpers):
+class ResolveWorkbenchProjectScan(APIBase):
     """
     Workbench API Scan Target Resolution Operations - handles resolving project names to codes
     and scan names to codes/IDs, with optional creation functionality.
