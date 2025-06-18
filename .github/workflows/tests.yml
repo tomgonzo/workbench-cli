@@ -4,9 +4,13 @@ name: Run Tests
 # Run on pushes and pull requests targeting the main branches
 on:
   push:
-    branches: [ main ] # Adjust branch names if needed
+    branches: [ main ]
+    paths-ignore:
+      - '.github/workflows/**'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '.github/workflows/**'
 
 jobs:
   unit_tests:

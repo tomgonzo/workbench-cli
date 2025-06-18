@@ -4,10 +4,14 @@ name: lint
 # Run on pushes and pull requests targeting the main branches
 on:
   push:
-    branches: [ main, develop ] # Adjust branch names if needed
+    branches: [ main ] # Adjust branch names if needed
+    paths-ignore:
+      - '.github/workflows/**'
   pull_request:
-    branches: [ main, develop ]
-
+    branches: [ main ]
+    paths-ignore:
+      - '.github/workflows/**'
+  
 jobs:
   code_linting:
     runs-on: ubuntu-latest
