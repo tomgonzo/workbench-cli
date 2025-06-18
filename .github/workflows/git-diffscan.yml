@@ -27,12 +27,14 @@ jobs:
       - name: Install Workbench CLI
         run: pip install ./fossid-tools
 
-      - name: Checkout Repo
+      - name: Checkout Target Repo
         uses: actions/checkout@v4
         with:
+          path: target-repo
           fetch-depth: 0 # Fetch all history for all branches and tags
 
       - name: Scan Files Changed by PR
+        working-directory: target-repo
         run: |
           workbench-cli scan-git-diff \
             --project-name $GITHUB_REPOSITORY \
