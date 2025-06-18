@@ -22,7 +22,7 @@ jobs:
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         scan-git \
         --project-name $GITHUB_REPOSITORY \
-        --scan-name ScanGit-$GITHUB_HEAD_REF \
+        --scan-name $GITHUB_HEAD_REF \
         --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
         --git-branch $GITHUB_HEAD_REF \
         --git-depth 1 \
@@ -50,6 +50,6 @@ jobs:
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         evaluate-gates \
         --project-name $GITHUB_REPOSITORY \
-        --scan-name ScanGit-$GITHUB_HEAD_REF \
+        --scan-name $GITHUB_HEAD_REF \
         --fail-on-pending \
         --fail-on-policy
