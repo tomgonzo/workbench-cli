@@ -33,6 +33,12 @@ jobs:
           path: target-repo
           fetch-depth: 0 # Fetch all history for all branches and tags
 
+      - name: Fetch Base Branch
+        working-directory: target-repo
+        run: |
+          git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
+          git branch -a
+
       - name: Scan Files Changed by PR
         working-directory: target-repo
         run: |
