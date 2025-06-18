@@ -1,5 +1,5 @@
 # This workflow runs on Pull Requests opened against MAIN.
-# It will scan the incoming HEAD branch with Workbench.
+# It will scan only those files touched by the incoming HEAD branch.
 # If Pending IDs or Policy Violations are found, the PR will be blocked.
 
 name: Scan Diff of Incoming PRs
@@ -18,15 +18,6 @@ jobs:
       WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
 
     steps:
-      - name: Checkout Workbench CLI
-        uses: actions/checkout@v4
-        with: 
-          repository: tomgonzo/workbench-cli
-          path: fossid-tools
-
-      - name: Install Workbench CLI
-        run: pip install ./fossid-tools
-
       - name: Checkout Target Repo
         uses: actions/checkout@v4
         with:
@@ -39,24 +30,34 @@ jobs:
           git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
           git fetch origin ${{ github.head_ref }}:${{ github.head_ref }}
           git branch -a
-
+      
       - name: Scan Files Changed by PR
-        working-directory: target-repo
         run: |
-          workbench-cli scan-git-diff \
-            --project-name $GITHUB_REPOSITORY \
-            --scan-name Diff-$GITHUB_HEAD_REF \
-            --base-ref $GITHUB_BASE_REF \
-            --compare-ref $GITHUB_HEAD_REF \
-            --run-dependency-analysis \
-            --autoid-file-licenses \
-            --autoid-file-copyrights \
-            --show-scan-metrics
-
-      - name: Evaluate Gates
-        run: |
-          workbench-cli evaluate-gates \
+          docker run --rm \
+          -v $GITHUB_WORKSPACE/target-repo:/scan_target:ro \
+          -w /scan_target \
+          ghcr.io/tomgonzo/workbench-cli:latest \
+          --api-url ${{ env.WORKBENCH_URL }} \
+          --api-user ${{ env.WORKBENCH_USER }} \
+          --api-token ${{ env.WORKBENCH_TOKEN }} \
+          scan-git-diff \
           --project-name $GITHUB_REPOSITORY \
           --scan-name Diff-$GITHUB_HEAD_REF \
-          --fail-on-pending \
-          --fail-on-policy
+          --base-ref ${{ github.base_ref }} \
+          --compare-ref ${{ github.head_ref }} \
+          --run-dependency-analysis \
+          --autoid-file-licenses \
+          --autoid-file-copyrights \
+          --show-scan-metrics
+    
+      - name: Evaluate Gates
+        run: |
+            docker run ghcr.io/tomgonzo/workbench-cli:latest \
+            --api-url ${{ env.WORKBENCH_URL }} \
+            --api-user ${{ env.WORKBENCH_USER }} \
+            --api-token ${{ env.WORKBENCH_TOKEN }} \
+            evaluate-gates \
+            --project-name $GITHUB_REPOSITORY \
+            --scan-name Diff-$GITHUB_HEAD_REF \
+            --fail-on-pending \
+            --fail-on-policy 
