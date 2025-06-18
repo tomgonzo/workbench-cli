@@ -18,6 +18,15 @@ jobs:
       WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
 
     steps:
+      - name: Checkout Workbench CLI
+        uses: actions/checkout@v4
+        with: 
+          repository: tomgonzo/workbench-cli
+          path: fossid-tools
+
+      - name: Install Workbench CLI
+        run: pip install ./fossid-tools
+
       - name: Checkout Target Repo
         uses: actions/checkout@v4
         with:
@@ -32,32 +41,26 @@ jobs:
           git branch -a
       
       - name: Scan Files Changed by PR
+        working-directory: target-repo
         run: |
-          docker run \
-          -v $GITHUB_WORKSPACE/target-repo:/scan_target \
-          -w /scan_target \
-          ghcr.io/tomgonzo/workbench-cli:latest \
-          --api-url ${{ env.WORKBENCH_URL }} \
-          --api-user ${{ env.WORKBENCH_USER }} \
-          --api-token ${{ env.WORKBENCH_TOKEN }} \
-          scan-git-diff \
-          --project-name $GITHUB_REPOSITORY \
-          --scan-name Diff-$GITHUB_HEAD_REF \
-          --base-ref ${{ github.base_ref }} \
-          --compare-ref ${{ github.head_ref }} \
-          --run-dependency-analysis \
-          --autoid-file-licenses \
-          --autoid-file-copyrights \
-          --show-scan-metrics
+          workbench-cli scan-git-diff \
+            --project-name $GITHUB_REPOSITORY \
+            --scan-name Diff-$GITHUB_HEAD_REF \
+            --base-ref ${{ github.base_ref }} \
+            --compare-ref ${{ github.head_ref }} \
+            --run-dependency-analysis \
+            --autoid-file-licenses \
+            --autoid-file-copyrights \
+            --id-reuse \
+            --id-reuse-type project \
+            --id-reuse-source $GITHUB_REPOSITORY \
+            --no-wait \
+            --show-scan-metrics
     
       - name: Evaluate Gates
         run: |
-            docker run ghcr.io/tomgonzo/workbench-cli:latest \
-            --api-url ${{ env.WORKBENCH_URL }} \
-            --api-user ${{ env.WORKBENCH_USER }} \
-            --api-token ${{ env.WORKBENCH_TOKEN }} \
-            evaluate-gates \
-            --project-name $GITHUB_REPOSITORY \
-            --scan-name Diff-$GITHUB_HEAD_REF \
-            --fail-on-pending \
-            --fail-on-policy 
+          workbench-cli evaluate-gates \
+          --project-name $GITHUB_REPOSITORY \
+          --scan-name Diff-$GITHUB_HEAD_REF \
+          --fail-on-pending \
+          --fail-on-policy

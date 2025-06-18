@@ -1,0 +1,89 @@
+# Alternative workflow using container approach with pre-built archive
+# This workflow runs on Pull Requests opened against MAIN.
+# It will scan only those files touched by the incoming HEAD branch using containers.
+# If Pending IDs or Policy Violations are found, the PR will be blocked.
+
+name: Scan Diff of Incoming PRs (Container Archive Approach)
+
+on: 
+  pull_request:
+    branches: 
+      - main
+
+jobs:
+  workbench-scan:
+    runs-on: ubuntu-latest
+    env:
+      WORKBENCH_URL: ${{ secrets.WORKBENCH_URL }}
+      WORKBENCH_USER: ${{ secrets.WORKBENCH_USER }}
+      WORKBENCH_TOKEN: ${{ secrets.WORKBENCH_TOKEN }}
+
+    steps:
+      - name: Checkout Target Repo
+        uses: actions/checkout@v4
+        with:
+          path: target-repo
+          fetch-depth: 0 # Fetch all history for all branches and tags
+
+      - name: Fetch Base and Head Branches
+        working-directory: target-repo
+        run: |
+          git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
+          git fetch origin ${{ github.head_ref }}:${{ github.head_ref }}
+          git branch -a
+
+      - name: Create Archive of Changed Files
+        working-directory: target-repo
+        id: create-diff-archive
+        run: |
+          # Get the list of changed files and create archive
+          CHANGED_FILES=$(git diff --name-only --diff-filter=d ${{ github.base_ref }} ${{ github.head_ref }})
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "✅ No changed files found - creating empty marker"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+            echo "$CHANGED_FILES" | zip -@ ../diff-archive.zip
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Archive created: ../diff-archive.zip"
+            ls -la ../diff-archive.zip
+          fi
+      
+      - name: Scan Files Changed by PR
+        if: steps.create-diff-archive.outputs.has_changes == 'true'
+        run: |
+          docker run --rm \
+          -v $GITHUB_WORKSPACE/diff-archive.zip:/scan_target/diff-archive.zip:ro \
+          ghcr.io/tomgonzo/workbench-cli:latest \
+          --api-url ${{ env.WORKBENCH_URL }} \
+          --api-user ${{ env.WORKBENCH_USER }} \
+          --api-token ${{ env.WORKBENCH_TOKEN }} \
+          scan \
+          --project-name $GITHUB_REPOSITORY \
+          --scan-name DiffContainer-$GITHUB_HEAD_REF \
+          --path /scan_target/diff-archive.zip \
+          --run-dependency-analysis \
+          --autoid-file-licenses \
+          --autoid-file-copyrights \
+          --no-wait \
+          --show-scan-metrics
+
+      - name: No Changes Detected
+        if: steps.creatediff-archive.outputs.has_changes == 'false'
+        run: echo "✅ No changed files detected - skipping scan"
+    
+      - name: Evaluate Gates
+        if: steps.creatediff-archive.outputs.has_changes == 'true'
+        run: |
+          docker run --rm \
+          ghcr.io/tomgonzo/workbench-cli:latest \
+          --api-url ${{ env.WORKBENCH_URL }} \
+          --api-user ${{ env.WORKBENCH_USER }} \
+          --api-token ${{ env.WORKBENCH_TOKEN }} \
+          evaluate-gates \
+          --project-name $GITHUB_REPOSITORY \
+          --scan-name DiffContainer-$GITHUB_HEAD_REF \
+          --fail-on-pending \
+          --fail-on-policy 
