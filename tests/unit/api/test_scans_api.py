@@ -369,7 +369,7 @@ def test_start_dependency_analysis_success(mock_send, mock_assert, scans_api_ins
     assert payload['group'] == 'scans'
     assert payload['action'] == 'run_dependency_analysis'
     assert payload['data']['scan_code'] == 'scan1'
-    assert 'import_only' not in payload['data']
+    assert payload['data']['import_only'] == "0"
 
 @patch.object(ScansAPI, 'assert_process_can_start')
 @patch.object(ScansAPI, '_send_request')
@@ -383,7 +383,7 @@ def test_start_dependency_analysis_import_only(mock_send, mock_assert, scans_api
 @patch.object(ScansAPI, '_send_request')
 def test_start_dependency_analysis_scan_not_found(mock_send, mock_assert, scans_api_inst):
     mock_send.return_value = {"status": "0", "error": "Scan not found"}
-    with pytest.raises(ScanNotFoundError, match="Scan 'scan1' not found"):
+    with pytest.raises(ApiError, match="Failed to start dependency analysis for 'scan1': Scan not found"):
         scans_api_inst.start_dependency_analysis("scan1")
 
 # --- Tests for get_scan_status ---

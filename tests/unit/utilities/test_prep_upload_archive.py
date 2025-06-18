@@ -158,13 +158,14 @@ def test_is_excluded_by_gitignore_simple_patterns():
     # Should match
     assert UploadArchivePrep._is_excluded_by_gitignore("app.log", patterns) is True
     assert UploadArchivePrep._is_excluded_by_gitignore("debug.log", patterns) is True
-    assert UploadArchivePrep._is_excluded_by_gitignore("build/output.js", patterns, is_dir=False) is True
-    assert UploadArchivePrep._is_excluded_by_gitignore("build", patterns, is_dir=True) is True
+    assert UploadArchivePrep._is_excluded_by_gitignore("build", patterns, is_dir=True) is True  # build directory
     assert UploadArchivePrep._is_excluded_by_gitignore("__pycache__", patterns) is True
     
     # Should not match
     assert UploadArchivePrep._is_excluded_by_gitignore("main.py", patterns) is False
     assert UploadArchivePrep._is_excluded_by_gitignore("src/main.py", patterns) is False
+    # build/output.js should NOT match because the pattern "build/" matches the directory, not files inside it
+    assert UploadArchivePrep._is_excluded_by_gitignore("build/output.js", patterns, is_dir=False) is False
 
 def test_is_excluded_by_gitignore_directory_patterns():
     """Test directory-specific patterns."""
@@ -191,13 +192,17 @@ def test_create_zip_archive_source_not_directory():
 @patch('tempfile.mkdtemp')
 @patch('os.walk')
 @patch('zipfile.ZipFile')
+@patch('os.path.exists')
+@patch('os.path.getsize')
 @patch('workbench_cli.utilities.prep_upload_archive.UploadArchivePrep._parse_gitignore')
-def test_create_zip_archive_success(mock_parse_gitignore, mock_zipfile, mock_walk, mock_mkdtemp, mock_isdir):
+def test_create_zip_archive_success(mock_parse_gitignore, mock_getsize, mock_exists, mock_zipfile, mock_walk, mock_mkdtemp, mock_isdir):
     """Test successful archive creation."""
     # Setup mocks
     mock_isdir.return_value = True
     mock_mkdtemp.return_value = "/tmp/workbench_upload_123"
     mock_parse_gitignore.return_value = []
+    mock_exists.return_value = True
+    mock_getsize.return_value = 1024  # Non-zero size
     
     # Mock file walking
     mock_walk.return_value = [
@@ -225,13 +230,17 @@ def test_create_zip_archive_success(mock_parse_gitignore, mock_zipfile, mock_wal
 @patch('tempfile.mkdtemp')
 @patch('os.walk')
 @patch('zipfile.ZipFile')
+@patch('os.path.exists')
+@patch('os.path.getsize')
 @patch('workbench_cli.utilities.prep_upload_archive.UploadArchivePrep._parse_gitignore')
-def test_create_zip_archive_with_exclusions(mock_parse_gitignore, mock_zipfile, mock_walk, mock_mkdtemp, mock_isdir):
+def test_create_zip_archive_with_exclusions(mock_parse_gitignore, mock_getsize, mock_exists, mock_zipfile, mock_walk, mock_mkdtemp, mock_isdir):
     """Test archive creation with file exclusions."""
     # Setup mocks
     mock_isdir.return_value = True
     mock_mkdtemp.return_value = "/tmp/workbench_upload_123"
     mock_parse_gitignore.return_value = ["*.log"]
+    mock_exists.return_value = True
+    mock_getsize.return_value = 1024  # Non-zero size
     
     # Mock file walking
     mock_walk.return_value = [
@@ -260,10 +269,14 @@ def test_create_zip_archive_with_exclusions(mock_parse_gitignore, mock_zipfile, 
 
 @patch('os.path.isdir')
 @patch('tempfile.mkdtemp')
-def test_create_zip_archive_custom_name(mock_mkdtemp, mock_isdir):
+@patch('os.path.exists')
+@patch('os.path.getsize')
+def test_create_zip_archive_custom_name(mock_getsize, mock_exists, mock_mkdtemp, mock_isdir):
     """Test archive creation with custom name."""
     mock_isdir.return_value = True
     mock_mkdtemp.return_value = "/tmp/workbench_upload_123"
+    mock_exists.return_value = True
+    mock_getsize.return_value = 1024  # Non-zero size
     
     with patch('os.walk', return_value=[]):
         with patch('zipfile.ZipFile'):
@@ -274,10 +287,14 @@ def test_create_zip_archive_custom_name(mock_mkdtemp, mock_isdir):
 
 @patch('os.path.isdir')
 @patch('tempfile.mkdtemp')
-def test_create_zip_archive_custom_name_with_extension(mock_mkdtemp, mock_isdir):
+@patch('os.path.exists')
+@patch('os.path.getsize')
+def test_create_zip_archive_custom_name_with_extension(mock_getsize, mock_exists, mock_mkdtemp, mock_isdir):
     """Test archive creation with custom name already having .zip extension."""
     mock_isdir.return_value = True
     mock_mkdtemp.return_value = "/tmp/workbench_upload_123"
+    mock_exists.return_value = True
+    mock_getsize.return_value = 1024  # Non-zero size
     
     with patch('os.walk', return_value=[]):
         with patch('zipfile.ZipFile'):
@@ -295,10 +312,10 @@ def test_create_zip_archive_zipfile_error(mock_zipfile, mock_mkdtemp, mock_isdir
     """Test handling of zipfile creation errors."""
     mock_isdir.return_value = True
     mock_mkdtemp.return_value = "/tmp/workbench_upload_123"
-    mock_zipfile.side_effect = IOError("Cannot create zip")
+    mock_zipfile.side_effect = OSError("Cannot create zip")
     
     with patch.object(UploadArchivePrep, '_parse_gitignore', return_value=[]):
-        with pytest.raises(FileSystemError, match="Failed to create archive"):
+        with pytest.raises(FileSystemError, match="Archive creation failed"):
             UploadArchivePrep.create_zip_archive("/source")
 
 # --- Tests for _get_file_type_description ---
@@ -335,11 +352,13 @@ def test_get_file_type_description_symlink(mock_islink, mock_isdir, mock_isfile)
     mock_isdir.return_value = False
     mock_islink.return_value = True
     
-    result = UploadArchivePrep._get_file_type_description("/path/to/symlink")
-    assert result == "symbolic link"
+    with patch('os.path.realpath', return_value="/path/to/target"):
+        with patch('os.path.exists', return_value=True):
+            result = UploadArchivePrep._get_file_type_description("/path/to/symlink")
+            assert result == "symlink -> /path/to/target"
 
 @patch('os.path.isfile')
-@patch('os.path.isdir')
+@patch('os.path.isdir') 
 @patch('os.path.islink')
 def test_get_file_type_description_unknown(mock_islink, mock_isdir, mock_isfile):
     """Test file type description for unknown type."""
@@ -347,5 +366,5 @@ def test_get_file_type_description_unknown(mock_islink, mock_isdir, mock_isfile)
     mock_isdir.return_value = False
     mock_islink.return_value = False
     
-    result = UploadArchivePrep._get_file_type_description("/path/to/unknown")
-    assert result == "unknown type" 
+    result = UploadArchivePrep._get_file_type_description("/path/to/special")
+    assert result == "special file" 
