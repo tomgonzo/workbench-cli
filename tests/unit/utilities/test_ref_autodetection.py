@@ -19,9 +19,10 @@ def test_autodetect_github_actions_not_pr(monkeypatch):
     Should not detect refs if not in a pull_request event.
     """
     monkeypatch.setenv('GITHUB_ACTIONS', 'true')
-    monkeypatch.setenv('GITHUB_EVENT_NAME', 'push')
-    monkeypatch.setenv('GITHUB_BASE_REF', 'main')
-    monkeypatch.setenv('GITHUB_HEAD_REF', 'main')
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'push')  # Not a pull_request
+    # Clear any existing PR-related variables to ensure clean state
+    monkeypatch.delenv('GITHUB_BASE_REF', raising=False)
+    monkeypatch.delenv('GITHUB_HEAD_REF', raising=False)
 
     base_ref, head_ref = autodetect_git_refs()
     assert base_ref is None
@@ -33,7 +34,9 @@ def test_autodetect_github_actions_pr_missing_vars(monkeypatch):
     """
     monkeypatch.setenv('GITHUB_ACTIONS', 'true')
     monkeypatch.setenv('GITHUB_EVENT_NAME', 'pull_request')
-    # Missing GITHUB_BASE_REF and GITHUB_HEAD_REF
+    # Explicitly remove GITHUB_BASE_REF and GITHUB_HEAD_REF
+    monkeypatch.delenv('GITHUB_BASE_REF', raising=False)
+    monkeypatch.delenv('GITHUB_HEAD_REF', raising=False)
 
     base_ref, head_ref = autodetect_git_refs()
     assert base_ref is None
@@ -45,6 +48,9 @@ def test_autodetect_no_ci_environment(monkeypatch):
     """
     # Ensure no relevant environment variables are set
     monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
+    monkeypatch.delenv('GITHUB_EVENT_NAME', raising=False)
+    monkeypatch.delenv('GITHUB_BASE_REF', raising=False)
+    monkeypatch.delenv('GITHUB_HEAD_REF', raising=False)
     
     base_ref, head_ref = autodetect_git_refs()
     assert base_ref is None
@@ -54,6 +60,13 @@ def test_autodetect_other_ci_environment(monkeypatch):
     """
     Should return None for an unrecognized CI environment.
     """
+    # Clear GitHub Actions environment variables
+    monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
+    monkeypatch.delenv('GITHUB_EVENT_NAME', raising=False)
+    monkeypatch.delenv('GITHUB_BASE_REF', raising=False)
+    monkeypatch.delenv('GITHUB_HEAD_REF', raising=False)
+    
+    # Set different CI environment
     monkeypatch.setenv('CI', 'true')
     monkeypatch.setenv('BUILD_ID', '12345')
 
