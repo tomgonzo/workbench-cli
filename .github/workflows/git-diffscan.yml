@@ -51,10 +51,6 @@ jobs:
             --run-dependency-analysis \
             --autoid-file-licenses \
             --autoid-file-copyrights \
-            --id-reuse \
-            --id-reuse-type project \
-            --id-reuse-source $GITHUB_REPOSITORY \
-            --no-wait \
             --show-scan-metrics
 
       - name: Evaluate Gates
