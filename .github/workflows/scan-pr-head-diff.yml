@@ -1,9 +1,8 @@
-# Alternative workflow using container approach with pre-built archive
 # This workflow runs on Pull Requests opened against MAIN.
-# It will scan only those files touched by the incoming HEAD branch using containers.
+# It will scan only those files touched by the incoming HEAD branch.
 # If Pending IDs or Policy Violations are found, the PR will be blocked.
 
-name: Scan Diff of Incoming PRs
+name: Scan Diff of PR Head
 
 on: 
   pull_request:
