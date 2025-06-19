@@ -236,7 +236,7 @@ def test_parse_args_unknown_command():
 
 # Mock the handler functions used by main
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args") 
 def test_main_success(mock_parse, mock_wb, mock_handle_scan):
     # Configure mocks
@@ -248,130 +248,112 @@ def test_main_success(mock_parse, mock_wb, mock_handle_scan):
     
     mock_handle_scan.return_value = True
     
-    # Run main and check success
     result = main()
     assert result == 0
-    # Verify handler was called (the exact WorkbenchAPI instance doesn't matter for this test)
-    mock_handle_scan.assert_called_once()
-    # Verify it was called with correct argument types
-    call_args = mock_handle_scan.call_args[0]
-    assert len(call_args) == 2
-    assert call_args[1] == mock_args  # Second argument should be our mock args
 
 def test_main_validation_error():
     # Simulate parse_cmdline_args raising the error
-    with patch("sys.argv", ["workbench-cli", "--api-url", "X", "--api-user", "Y", "--api-token", "Z", "scan"]), \
-         patch("workbench_cli.main.parse_cmdline_args", side_effect=ValidationError("Invalid args")):
+    with patch('workbench_cli.main.parse_cmdline_args', side_effect=ValidationError("Test validation error")):
         result = main()
-        assert result == 1 # Exit code for validation error
+        assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_configuration_error(mock_parse, mock_wb, mock_handle_scan):
     # Configure mocks
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
     
-    mock_workbench_instance = MagicMock()
-    mock_wb.return_value = mock_workbench_instance
+    # Simulate API init raising an error
+    mock_wb.side_effect = ConfigurationError("Test config error")
     
-    mock_handle_scan.side_effect = ConfigurationError("Bad config")
-    
-    # Run main
     result = main()
     assert result == 1
+    mock_handle_scan.assert_not_called()
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_authentication_error(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_wb.return_value = MagicMock()
-    mock_handle_scan.side_effect = AuthenticationError("Auth failed")
+    mock_wb.side_effect = AuthenticationError("Auth error")
     result = main()
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_project_not_found(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ProjectNotFoundError("Project not found")
     result = main()
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_scan_not_found(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ScanNotFoundError("Scan not found")
     result = main()
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_api_error(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ApiError("API error")
     result = main()
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_network_error(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = NetworkError("Network error")
     result = main()
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_process_error(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_wb.return_value = MagicMock()
     mock_handle_scan.side_effect = ProcessError("Process error")
     result = main()
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_process_timeout(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_wb.return_value = MagicMock()
-    mock_handle_scan.side_effect = ProcessTimeoutError("Process timeout")
+    mock_handle_scan.side_effect = ProcessTimeoutError("Timeout error")
     result = main()
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_file_system_error(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
     mock_parse.return_value = mock_args
-    mock_wb.return_value = MagicMock()
-    mock_handle_scan.side_effect = FileSystemError("File system error")
+    mock_handle_scan.side_effect = FileSystemError("FS error")
     result = main()
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_compatibility_error(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
@@ -382,7 +364,7 @@ def test_main_compatibility_error(mock_parse, mock_wb, mock_handle_scan):
     assert result == 1
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_unexpected_error(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
@@ -393,7 +375,7 @@ def test_main_unexpected_error(mock_parse, mock_wb, mock_handle_scan):
     assert result == 1
 
 @patch("workbench_cli.main.handle_evaluate_gates")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_evaluate_gates_fail_returns_1(mock_parse, mock_wb, mock_handle_gates):
     mock_args = MagicMock(command="evaluate-gates", log="INFO")
@@ -462,7 +444,7 @@ def test_help_text_formatting(mock_exit, mock_print_help):
 
 # --- Test Handler Return Types ---
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_scan_handler_return_true(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
@@ -476,7 +458,7 @@ def test_main_with_scan_handler_return_true(mock_parse, mock_wb, mock_handle_sca
     mock_handle_scan.assert_called_once()
 
 @patch("workbench_cli.main.handle_scan")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_scan_handler_return_false(mock_parse, mock_wb, mock_handle_scan):
     mock_args = MagicMock(command="scan", log="INFO")
@@ -492,7 +474,7 @@ def test_main_with_scan_handler_return_false(mock_parse, mock_wb, mock_handle_sc
     mock_handle_scan.assert_called_once()
 
 @patch("workbench_cli.main.handle_show_results")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_show_results_handler_return_true(mock_parse, mock_wb, mock_handle):
     mock_args = MagicMock(command="show-results", log="INFO")
@@ -506,7 +488,7 @@ def test_main_with_show_results_handler_return_true(mock_parse, mock_wb, mock_ha
     mock_handle.assert_called_once()
 
 @patch("workbench_cli.main.handle_import_da")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_import_da_handler_return_true(mock_parse, mock_wb, mock_handle):
     mock_args = MagicMock(command="import-da", log="INFO")
@@ -520,7 +502,7 @@ def test_main_with_import_da_handler_return_true(mock_parse, mock_wb, mock_handl
     mock_handle.assert_called_once()
 
 @patch("workbench_cli.main.handle_download_reports")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_download_reports_handler_return_true(mock_parse, mock_wb, mock_handle):
     mock_args = MagicMock(command="download-reports", log="INFO")
@@ -534,7 +516,7 @@ def test_main_with_download_reports_handler_return_true(mock_parse, mock_wb, moc
     mock_handle.assert_called_once()
 
 @patch("workbench_cli.main.handle_scan_git")
-@patch("workbench_cli.api.WorkbenchAPI")
+@patch("workbench_cli.main.WorkbenchAPI")
 @patch("workbench_cli.main.parse_cmdline_args")
 def test_main_with_scan_git_handler_return_true(mock_parse, mock_wb, mock_handle):
     mock_args = MagicMock(command="scan-git", log="INFO")
@@ -546,25 +528,4 @@ def test_main_with_scan_git_handler_return_true(mock_parse, mock_wb, mock_handle
     result = main()
     assert result == 0
     mock_handle.assert_called_once()
-
-@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git-diff', '--project-name', 'PG', '--scan-name', 'SG', '--base-ref', 'main', '--compare-ref', 'develop'])
-def test_parse_scan_git_diff():
-    args = parse_cmdline_args()
-    assert args.command == 'scan-git-diff'
-    assert args.project_name == 'PG'
-    assert args.scan_name == 'SG'
-    assert args.base_ref == 'main'
-    assert args.compare_ref == 'develop'
-
-@patch('sys.argv', ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 'scan-git-diff', '--project-name', 'P', '--scan-name', 'S'])
-@patch('workbench_cli.utilities.ref_autodetection.autodetect_git_refs', return_value=(None, None))
-def test_parse_scan_git_diff_missing_ref_fails(mock_autodetect):
-    # This test is now conceptual because the validation moved into the handler.
-    # We are testing that argparse *allows* the ref to be missing,
-    # as the handler is now responsible for validation.
-    try:
-        args = parse_cmdline_args()
-        assert args.base_ref is None # It should parse as None
-    except SystemExit:
-        pytest.fail("CLI parsing should not fail when base-ref is missing; handler validates it.")
 

@@ -27,9 +27,9 @@ class TestDownloadReportsIntegration:
         mocker.patch('workbench_cli.api.scans_api.ScansAPI.generate_scan_report',
                     return_value={"process_id": 12345})
         
-        # Mock report status check
-        mocker.patch('workbench_cli.api.scans_api.ScansAPI.check_scan_report_status',
-                    return_value={"status": "FINISHED"})
+        # Mock the entire wait process to avoid actual waiting
+        mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI._wait_for_process',
+                    return_value=True)
         
         # Mock the report download
         mocker.patch('workbench_cli.api.helpers.generate_download_report.ReportHelper.download_scan_report',
@@ -83,9 +83,9 @@ class TestDownloadReportsIntegration:
                         {"process_id": 12347}   # For XLSX
                     ])
         
-        # Mock report status checks
-        mocker.patch('workbench_cli.api.scans_api.ScansAPI.check_scan_report_status',
-                    return_value={"status": "FINISHED"})
+        # Mock the entire wait process
+        mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI._wait_for_process',
+                    return_value=True)
         
         # Mock the report downloads
         mocker.patch('workbench_cli.api.helpers.generate_download_report.ReportHelper.download_scan_report',
@@ -137,9 +137,9 @@ class TestDownloadReportsIntegration:
         mocker.patch('workbench_cli.api.projects_api.ProjectsAPI.generate_project_report',
                     return_value={"process_id": 12345})
         
-        # Mock report status check
-        mocker.patch('workbench_cli.api.projects_api.ProjectsAPI.check_project_report_status',
-                    return_value={"status": "FINISHED"})
+        # Mock the entire wait process
+        mocker.patch('workbench_cli.api.workbench_api.WorkbenchAPI._wait_for_process',
+                    return_value=True)
         
         # Mock the report download
         mocker.patch('workbench_cli.api.helpers.generate_download_report.ReportHelper.download_project_report',

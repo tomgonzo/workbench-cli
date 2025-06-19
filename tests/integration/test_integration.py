@@ -51,8 +51,12 @@ class TestBasicIntegration:
         combined_output = captured.out + captured.err
         assert any(char.isdigit() for char in combined_output)  # Should contain version numbers
 
-    def test_missing_api_credentials(self, capsys):
+    @patch('os.path.exists', return_value=True)
+    def test_missing_api_credentials(self, mock_exists, capsys, mocker):
         """Test that missing API credentials are handled properly"""
+        # Clear environment variables to ensure no credentials are available
+        mocker.patch.dict(os.environ, {}, clear=True)
+        
         args = [
             'workbench-cli',
             'scan',
@@ -60,11 +64,13 @@ class TestBasicIntegration:
             '--scan-name', 'TestScan',
             '--path', '/dummy/path'
         ]
-        
-        with patch.object(sys, 'argv', args):
-            return_code = main()
-            
-        assert return_code != 0, "Should fail when API credentials are missing"
+    
+        with patch.object(sys, 'argv', args), pytest.raises(SystemExit) as e:
+            main()
+
+        assert e.type == SystemExit
+        assert e.value.code == 2
+
         captured = capsys.readouterr()
         combined_output = captured.out + captured.err
         # Should mention missing credentials or URL
@@ -80,16 +86,14 @@ class TestBasicIntegration:
             'invalid-command'
         ]
         
-        with patch.object(sys, 'argv', args):
-            return_code = main()
-            
-        assert return_code != 0, "Should fail when invalid command is provided"
-        captured = capsys.readouterr()
-        combined_output = captured.out + captured.err
-        # Should mention invalid command
-        assert any(term in combined_output.lower() for term in ["invalid", "command", "error", "unknown"])
+        with patch.object(sys, 'argv', args), pytest.raises(SystemExit) as e:
+            main()
 
-    def test_command_line_parsing_basic(self):
+        assert e.type == SystemExit
+        assert e.value.code == 2
+
+    @patch('os.path.exists', return_value=True)
+    def test_command_line_parsing_basic(self, mock_exists):
         """Test basic command line argument parsing"""
         # Test scan command parsing
         args = [
@@ -103,9 +107,10 @@ class TestBasicIntegration:
             '--path', '/test/path'
         ]
         
-        parsed_args = parse_cmdline_args(args[1:])  # Skip program name
+        with patch.object(sys, 'argv', args):
+            parsed_args = parse_cmdline_args()  # No args needed
         
-        assert parsed_args.api_url == 'http://test.com'
+        assert parsed_args.api_url == 'http://test.com/api.php' # URL is fixed
         assert parsed_args.api_user == 'testuser'
         assert parsed_args.api_token == 'testtoken'
         assert parsed_args.command == 'scan'
@@ -113,7 +118,8 @@ class TestBasicIntegration:
         assert parsed_args.scan_name == 'TestScan'
         assert parsed_args.path == '/test/path'
 
-    def test_environment_variable_fallback(self, mocker):
+    @patch('os.path.exists', return_value=True)
+    def test_environment_variable_fallback(self, mock_exists, mocker):
         """Test that environment variables are used as fallback for API credentials"""
         # Mock environment variables
         mocker.patch.dict(os.environ, {
@@ -130,10 +136,11 @@ class TestBasicIntegration:
             '--path', '/test/path'
         ]
         
-        parsed_args = parse_cmdline_args(args[1:])  # Skip program name
+        with patch.object(sys, 'argv', args):
+            parsed_args = parse_cmdline_args() # No args needed
         
         # The parsed args should have the environment values
-        assert parsed_args.api_url == 'http://env-test.com'
+        assert parsed_args.api_url == 'http://env-test.com/api.php' # URL is fixed
         assert parsed_args.api_user == 'env-user'
         assert parsed_args.api_token == 'env-token'
 

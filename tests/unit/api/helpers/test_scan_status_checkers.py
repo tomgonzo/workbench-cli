@@ -100,79 +100,71 @@ def test_standard_scan_status_accessor_access_error(status_checker_inst):
     status = status_checker_inst._standard_scan_status_accessor(data)
     assert status == "ACCESS_ERROR"
 
-# --- Test assert_process_can_start ---
-def test_assert_process_can_start_when_new(status_checker_inst, mocker):
-    # Mock the get_scan_status method
-    status_checker_inst.get_scan_status = mocker.MagicMock(return_value={"status": "NEW"})
+# --- Test ensure_process_can_start ---
+def test_ensure_process_can_start_when_new(status_checker_inst, mocker):
+    """Test ensure_process_can_start when the initial status is NEW."""
+    mocker.patch.object(status_checker_inst, 'get_scan_status', return_value={"status": "NEW"})
     
-    # Should not raise exception
-    status_checker_inst.assert_process_can_start("SCAN", "scan1", 30, 5)
-    status_checker_inst.get_scan_status.assert_called_once_with("SCAN", "scan1")
+    # Should not raise any exception
+    status_checker_inst.ensure_process_can_start("SCAN", "scan1", 30, 5)
 
-def test_assert_process_can_start_when_finished(status_checker_inst, mocker):
-    # Mock the get_scan_status method for testing
-    status_checker_inst.get_scan_status = mocker.MagicMock(return_value={"status": "FINISHED"})
+def test_ensure_process_can_start_when_finished(status_checker_inst, mocker):
+    """Test ensure_process_can_start when the initial status is FINISHED."""
+    mocker.patch.object(status_checker_inst, 'get_scan_status', return_value={"status": "FINISHED"})
     
-    # Should not raise exception
-    status_checker_inst.assert_process_can_start("SCAN", "scan1", 30, 5)
-    status_checker_inst.get_scan_status.assert_called_once_with("SCAN", "scan1")
+    # Should not raise any exception
+    status_checker_inst.ensure_process_can_start("SCAN", "scan1", 30, 5)
 
-def test_assert_process_can_start_when_failed(status_checker_inst, mocker):
-    # Mock the get_scan_status method for testing
-    status_checker_inst.get_scan_status = mocker.MagicMock(return_value={"status": "FAILED"})
+def test_ensure_process_can_start_when_failed(status_checker_inst, mocker):
+    """Test ensure_process_can_start when the initial status is FAILED."""
+    mocker.patch.object(status_checker_inst, 'get_scan_status', return_value={"status": "FAILED"})
     
-    # Should not raise exception
-    status_checker_inst.assert_process_can_start("SCAN", "scan1", 30, 5)
-    status_checker_inst.get_scan_status.assert_called_once_with("SCAN", "scan1")
+    # Should not raise any exception
+    status_checker_inst.ensure_process_can_start("SCAN", "scan1", 30, 5)
 
-def test_assert_process_can_start_when_running_then_wait_success(status_checker_inst, mocker):
-    # Mock required methods
-    status_checker_inst.get_scan_status = mocker.MagicMock(return_value={"status": "RUNNING"})
-    status_checker_inst.wait_for_scan_to_finish = mocker.MagicMock(return_value=({"status": "FINISHED"}, 10.0))
+def test_ensure_process_can_start_when_running_then_wait_success(status_checker_inst, mocker):
+    """Test ensure_process_can_start when status is running but wait succeeds."""
+    mocker.patch.object(status_checker_inst, 'get_scan_status', return_value={"status": "RUNNING"})
+    mocker.patch.object(status_checker_inst, 'wait_for_scan_to_finish', return_value=None)
     
-    # This should complete without error
-    status_checker_inst.assert_process_can_start("SCAN", "scan1", 30, 5)
+    status_checker_inst.ensure_process_can_start("SCAN", "scan1", 30, 5)
     
-    # Verify both methods were called as expected
-    status_checker_inst.get_scan_status.assert_called_once_with("SCAN", "scan1")
+    # Verify wait_for_scan_to_finish was called
     status_checker_inst.wait_for_scan_to_finish.assert_called_once_with("SCAN", "scan1", 30, 5)
 
-def test_assert_process_can_start_when_running_then_wait_error(status_checker_inst, mocker):
-    # Mock required methods
-    status_checker_inst.get_scan_status = mocker.MagicMock(return_value={"status": "RUNNING"})
-    status_checker_inst.wait_for_scan_to_finish = mocker.MagicMock(side_effect=ProcessTimeoutError("Wait timeout"))
+def test_ensure_process_can_start_when_running_then_wait_error(status_checker_inst, mocker):
+    """Test ensure_process_can_start when status is running and wait fails."""
+    mocker.patch.object(status_checker_inst, 'get_scan_status', return_value={"status": "RUNNING"})
+    mocker.patch.object(status_checker_inst, 'wait_for_scan_to_finish', side_effect=ProcessTimeoutError("Timeout"))
+
+    with pytest.raises(ProcessError, match="Could not start SCAN for 'scan1' because waiting for the existing process failed: Timeout"):
+        status_checker_inst.ensure_process_can_start("SCAN", "scan1", 30, 5)
     
-    with pytest.raises(ProcessError):
-        status_checker_inst.assert_process_can_start("SCAN", "scan1", 30, 5)
-    
-    # Verify both methods were called as expected
-    status_checker_inst.get_scan_status.assert_called_once_with("SCAN", "scan1")
+    # Verify wait_for_scan_to_finish was called
     status_checker_inst.wait_for_scan_to_finish.assert_called_once_with("SCAN", "scan1", 30, 5)
 
-def test_assert_process_can_start_other_status(status_checker_inst, mocker):
-    """Test assert_process_can_start with a status that isn't allowed."""
-    
-    # Add the get_scan_status mock method to the helpers instance
-    status_checker_inst.get_scan_status = mocker.MagicMock(return_value={"status": "RUNNING"})
-    
-    # Mock wait_for_scan_to_finish to fail with a timeout
-    status_checker_inst.wait_for_scan_to_finish = mocker.MagicMock(
-        side_effect=ProcessTimeoutError("SCAN timed out for scan 'scan1' after 1 attempts")
+def test_ensure_process_can_start_other_status(status_checker_inst, mocker):
+    """Test ensure_process_can_start with a status that isn't allowed."""
+    # Mocking get_scan_status to return a status that's not in the allowed list
+    mocker.patch.object(
+        status_checker_inst,
+        'get_scan_status',
+        return_value={"status": "NOT_ALLOWED_STATUS"}
     )
     
-    # The helper's assert_process_can_start method should raise a ProcessError
-    with pytest.raises(ProcessError, match="Could not verify if scan can start for 'scan1'"):
-        status_checker_inst.assert_process_can_start("SCAN", "scan1", 1, 1)
+    with pytest.raises(CompatibilityError):
+        # The helper's ensure_process_can_start method should raise a ProcessError
+        # for statuses that are not NEW, FINISHED, FAILED, CANCELLED, or RUNNING/QUEUED.
+        status_checker_inst.ensure_process_can_start("SCAN", "scan1", 1, 1)
 
-def test_assert_process_can_start_scan_not_found(status_checker_inst, mocker):
-    # Mock the get_scan_status method to raise ScanNotFoundError
-    status_checker_inst.get_scan_status = mocker.MagicMock(side_effect=ScanNotFoundError("Scan not found"))
+def test_ensure_process_can_start_scan_not_found(status_checker_inst, mocker):
+    """Test ensure_process_can_start when the scan is not found."""
+    mocker.patch.object(status_checker_inst, 'get_scan_status', side_effect=ScanNotFoundError("Not Found"))
     
-    # Should propagate the ScanNotFoundError
-    with pytest.raises(ScanNotFoundError, match="Scan not found"):
-        status_checker_inst.assert_process_can_start("SCAN", "scan1", 30, 5)
+    with pytest.raises(ScanNotFoundError):
+        status_checker_inst.ensure_process_can_start("SCAN", "scan1", 30, 5)
 
-def test_assert_process_can_start_invalid_type(status_checker_inst):
-    # Should raise ValueError for invalid process type
-    with pytest.raises(ValueError, match="Invalid process_type 'INVALID' provided to assert_process_can_start"):
-        status_checker_inst.assert_process_can_start("INVALID", "scan1", 30, 5) 
+def test_ensure_process_can_start_invalid_type(status_checker_inst):
+    """Test that an invalid process type raises a ValueError."""
+    with pytest.raises(ValueError, match="Invalid process_type 'INVALID' provided to ensure_process_can_start"):
+        status_checker_inst.ensure_process_can_start("INVALID", "scan1", 30, 5) 

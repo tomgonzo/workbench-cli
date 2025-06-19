@@ -133,7 +133,7 @@ class StatusCheckers:
             logger.warning(f"Error accessing status keys in data: {data}", exc_info=True)
             return "ACCESS_ERROR" # Use the ACCESS_ERROR state
             
-    def assert_process_can_start(
+    def ensure_process_can_start(
         self,
         process_type: str,
         scan_code: str,
@@ -159,7 +159,7 @@ class StatusCheckers:
         """
         process_type_upper = process_type.upper()
         if process_type_upper not in ["SCAN", "DEPENDENCY_ANALYSIS"]:
-             raise ValueError(f"Invalid process_type '{process_type}' provided to assert_process_can_start.")
+             raise ValueError(f"Invalid process_type '{process_type}' provided to ensure_process_can_start.")
 
         try:
             scan_status = self.get_scan_status(process_type, scan_code)
@@ -188,10 +188,24 @@ class StatusCheckers:
                     f"Cannot start {process_type.lower()} for '{scan_code}'. Current status is {current_status} (Must be one of {allowed_statuses})."
                 )
             logger.debug(f"The {process_type} for '{scan_code}' can start (Current status: {current_status}).")
-        except (ApiError, NetworkError, ScanNotFoundError):
+        except (ApiError, NetworkError, ScanNotFoundError, CompatibilityError):
+            raise
+        except (ProcessError, ProcessTimeoutError):
+            # Re-raise process-related errors without wrapping them
             raise
         except Exception as e:
             raise ProcessError(f"Could not verify if {process_type.lower()} can start for '{scan_code}'", details={"error": str(e)})
+
+    def _get_process_status(self, process_type: str, scan_code: str) -> str:
+        """Helper to get status for a given process type."""
+        
+        if process_type not in self.PROCESS_STATUS_MAP:
+            raise ValueError(f"Invalid process_type '{process_type}' provided to ensure_process_can_start.")
+
+        status_method = self.PROCESS_STATUS_MAP[process_type]
+        status_data = status_method(scan_code)
+        
+        return status_data.get("status", "UNKNOWN")
 
     def get_scan_status(self, scan_type: str, scan_code: str) -> dict:
         """

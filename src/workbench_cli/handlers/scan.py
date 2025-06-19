@@ -85,8 +85,8 @@ def handle_scan(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bool:
 
     # Assert scan is idle before uploading code
     print("\nEnsuring the Scan is idle before uploading code...")
-    workbench.assert_process_can_start("SCAN", scan_code, wait_max_tries=60, wait_interval=30)
-    workbench.assert_process_can_start("DEPENDENCY_ANALYSIS", scan_code, wait_max_tries=60, wait_interval=30)
+    workbench.ensure_process_can_start("SCAN", scan_code, wait_max_tries=60, wait_interval=30)
+    workbench.ensure_process_can_start("DEPENDENCY_ANALYSIS", scan_code, wait_max_tries=60, wait_interval=30)
 
     # Clear existing scan content
     print("\nClearing existing scan content...")
@@ -129,7 +129,7 @@ def handle_scan(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bool:
         print("No archives to extract. Continuing with scan...")
 
     # Verify scan can start
-    workbench.assert_process_can_start(
+    workbench.ensure_process_can_start(
         "SCAN",
         scan_code,
         params.scan_number_of_tries,

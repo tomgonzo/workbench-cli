@@ -100,11 +100,11 @@ def handle_import_da(workbench: "WorkbenchAPI", params: argparse.Namespace) -> b
     # Verify DA import can start - CRITICAL: Match old implementation  
     print("Verifying Dependency Analysis can start...")
     try:
-        workbench.assert_process_can_start(
+        workbench.ensure_process_can_start(
             "DEPENDENCY_ANALYSIS",
             scan_code,
-            params.scan_number_of_tries,
-            params.scan_wait_time
+            wait_max_tries=params.scan_number_of_tries,
+            wait_interval=params.scan_wait_time
         )
     except Exception as e:
         logger.error(f"Cannot start dependency analysis import for '{scan_code}': {e}", exc_info=True)

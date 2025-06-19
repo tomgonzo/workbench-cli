@@ -58,8 +58,8 @@ class TestImportDAHandler:
         mock_workbench.upload_dependency_analysis_results.assert_called_once_with(
             scan_code="TEST_SCAN_CODE", path="/path/to/results.json"
         )
-        mock_workbench.assert_process_can_start.assert_called_once_with(
-            "DEPENDENCY_ANALYSIS", "TEST_SCAN_CODE", 10, 5
+        mock_workbench.ensure_process_can_start.assert_called_once_with(
+            "DEPENDENCY_ANALYSIS", "TEST_SCAN_CODE", wait_max_tries=10, wait_interval=5
         )
         mock_workbench.start_dependency_analysis.assert_called_once_with(
             scan_code="TEST_SCAN_CODE", import_only=True

@@ -162,23 +162,6 @@ Example Usage:
     add_common_monitoring_options(scan_parser)
     add_common_result_options(scan_parser)
 
-    # --- 'scan-git-diff' Subcommand ---
-    scan_git_diff_parser = subparsers.add_parser(
-        'scan-git-diff',
-        help='Scan files that have changed between two git references.',
-        description='Scans only the files that have been added or modified between two git references (e.g., branches or commits).',
-        formatter_class=RawTextHelpFormatter
-    )
-    scan_git_diff_parser.add_argument("--project-name", help="Project Name to associate the scan with.", required=True, metavar="NAME")
-    scan_git_diff_parser.add_argument("--scan-name", help="Scan Name to create or use.", required=True, metavar="NAME")
-    scan_git_diff_parser.add_argument("--base-ref", help="The base git ref for the comparison. Auto-detected in CI/CD environments.", required=False, metavar="REF")
-    scan_git_diff_parser.add_argument("--compare-ref", help="The git ref to compare against the base (Default: HEAD). Auto-detected in CI/CD environments.", default="HEAD", metavar="REF")
-    scan_git_diff_parser.add_argument("--recursively-extract-archives", help="Recursively extract nested archives (Default: True).", action=argparse.BooleanOptionalAction, default=True)
-    scan_git_diff_parser.add_argument("--jar-file-extraction", help="Control extraction of jar files (Default: False).", action=argparse.BooleanOptionalAction, default=False)
-    add_common_scan_options(scan_git_diff_parser)
-    add_common_monitoring_options(scan_git_diff_parser)
-    add_common_result_options(scan_git_diff_parser)
-
     # --- 'import-da' Subcommand ---
     import_da_parser = subparsers.add_parser(
         'import-da',

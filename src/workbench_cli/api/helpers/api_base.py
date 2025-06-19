@@ -57,6 +57,7 @@ class APIBase(ProcessWaiters, StatusCheckers):
         self.api_user = api_user
         self.api_token = api_token
         self.session = requests.Session()  # Use a session for potential connection reuse
+        self.session.trust_env = False # Do not trust .netrc file
 
 ## General API Operations
     def _send_request(self, payload: dict, timeout: int = 1800) -> dict:
