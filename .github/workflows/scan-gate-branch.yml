@@ -1,12 +1,9 @@
-# This workflow runs on Pull Requests opened against MAIN.
-# It will scan the incoming HEAD branch with Workbench.
-# If Pending IDs or Policy Violations are found, the PR will be blocked.
+# This workflow can be triggered to scan a branch and evaluate gates.
+# The workflow will fail if Pending IDs or Policy Violations are found.
 
-name: Scan Incoming PRs and Check Gates
+name: Scan Branch and Evaluate Gates
 
-on: 
-  pull_request:
-    branches: main
+on: workflow_dispatch
 
 jobs:
   workbench-scan:
@@ -24,9 +21,9 @@ jobs:
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         scan-git \
         --project-name $GITHUB_REPOSITORY \
-        --scan-name $GITHUB_HEAD_REF \
+        --scan-name $GITHUB_REF_NAME \
         --git-url $GITHUB_SERVER_URL/$GITHUB_REPOSITORY \
-        --git-branch $GITHUB_HEAD_REF \
+        --git-branch $GITHUB_REF_NAME \
         --git-depth 1 \
         --id-reuse \
         --id-reuse-type project \
@@ -52,6 +49,6 @@ jobs:
         --api-token ${{ env.WORKBENCH_TOKEN }} \
         evaluate-gates \
         --project-name $GITHUB_REPOSITORY \
-        --scan-name $GITHUB_HEAD_REF \
+        --scan-name $GITHUB_REF_NAME \
         --fail-on-pending \
         --fail-on-policy
