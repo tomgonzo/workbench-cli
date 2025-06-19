@@ -280,3 +280,49 @@ def mock_api_post(mocker):
         print(f"[DEBUG] Scans: {state['scans']}")
         print(f"[DEBUG] API Calls: {len(state['call_log'])}")
 
+@pytest.fixture
+def mock_workbench_api(mocker):
+    """Provides a fully mocked WorkbenchAPI instance."""
+    
+    # Create a mock instance of the API
+    mock_api = MagicMock()
+
+    # Mock the resolver methods to return predictable values
+    mock_api.resolve_project.return_value = "PRJ-MOCK"
+    mock_api.resolve_scan.return_value = ("SCN-MOCK", 12345)
+
+    # --- Mock Core Scan Operations ---
+    mock_api.download_content_from_git.return_value = None
+    mock_api.upload_scan_target.return_value = None
+    mock_api.extract_archives.return_value = None
+    mock_api.run_scan.return_value = None
+    mock_api.start_dependency_analysis.return_value = None
+    mock_api.remove_uploaded_content.return_value = None
+
+    # --- Mock Waiting Operations ---
+    # Return a tuple: (final_status_dict, time_taken)
+    mock_api.wait_for_git_clone.return_value = ({"status": "FINISHED", "is_finished": "1"}, 2.0)
+    mock_api.wait_for_archive_extraction.return_value = ({"status": "FINISHED", "is_finished": "1"}, 3.0)
+    mock_api.wait_for_scan_to_finish.return_value = ({"status": "FINISHED", "is_finished": "1"}, 10.0)
+
+    # --- Mock Status Checkers ---
+    mock_api.ensure_process_can_start = MagicMock(return_value=None)
+    mock_api.get_scan_information.return_value = {"status": "NEW", "usage": "git"}
+    mock_api.get_scan_status.return_value = {"status": "FINISHED", "is_finished": "1"}
+    mock_api._standard_scan_status_accessor.return_value = "FINISHED"
+    
+    # --- Mock Compatibility Checks ---
+    mocker.patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility', return_value=None)
+
+    # --- Mock Report/Gate Operations ---
+    mock_api.get_policy_violations.return_value = []
+    mock_api.get_pending_files.return_value = {}
+    mock_api.get_all_vulnerabilities.return_value = []
+    mock_api.get_scan_report.return_value = {"_raw_response": b"dummy-report-content"}
+
+
+    # Patch the WorkbenchAPI where it's instantiated in the 'main' module
+    mocker.patch('workbench_cli.main.WorkbenchAPI', return_value=mock_api)
+    
+    return mock_api
+

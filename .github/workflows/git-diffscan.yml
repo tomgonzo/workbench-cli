@@ -86,4 +86,4 @@ jobs:
           --project-name $GITHUB_REPOSITORY \
           --scan-name Diff-$GITHUB_HEAD_REF \
           --fail-on-pending \
-          --fail-on-policy 
+          --fail-on-policy

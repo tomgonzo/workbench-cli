@@ -30,7 +30,6 @@ from .handlers import (
     handle_evaluate_gates,
     handle_download_reports,
     handle_scan_git,
-    handle_scan_git_diff
 )
 
 
@@ -77,26 +76,12 @@ def main() -> int:
         logger.debug("Parsed parameters: %s", params)
 
         # Initialize Workbench API client
-        try:
-            workbench = WorkbenchAPI(params.api_url, params.api_user, params.api_token)
-            logger.info("Workbench client initialized.")
-        except AuthenticationError as e:
-            print(f"\nAuthentication Error: {e.message}")
-            logger.error("Failed to authenticate with Workbench", exc_info=True)
-            return 1
-        except NetworkError as e:
-            print(f"\nNetwork Error: {e.message}")
-            logger.error("Failed to connect to Workbench", exc_info=True)
-            return 1
-        except Exception as e:
-            print(f"\nError initializing Workbench connection: {e}")
-            logger.critical("Failed to initialize Workbench connection", exc_info=True)
-            return 1
+        workbench = WorkbenchAPI(params.api_url, params.api_user, params.api_token)
+        logger.info("Workbench client initialized.")
 
         # --- Command Dispatch ---
         COMMAND_HANDLERS = {
             "scan": handle_scan,
-            "scan-git-diff": handle_scan_git_diff,
             "import-da": handle_import_da,
             "show-results": handle_show_results,
             "evaluate-gates": handle_evaluate_gates,
@@ -131,18 +116,18 @@ def main() -> int:
             exit_code = 1 # Failure
 
     # --- Unified Exception Handling ---
-    except (ConfigurationError, ValidationError, CompatibilityError) as e:
+    except (AuthenticationError, ConfigurationError, ValidationError, CompatibilityError) as e:
         # Errors typically due to user input/setup, less need for full traceback in log
         print(f"\nDetailed Error Information:")
         print(f"Runtime Error: {e.message}")
         if logger: logger.error("%s: %s", type(e).__name__, e.message, exc_info=False)
-        exit_code = 1
+        return 1
     except (ApiError, NetworkError, ProcessError, ProcessTimeoutError, FileSystemError) as e:
         # Errors during runtime interaction, traceback can be useful
         print(f"\nDetailed Error Information:")
         print(f"Runtime Error: {e.message}")
         if logger: logger.error("%s: %s", type(e).__name__, e.message, exc_info=True)
-        exit_code = 1
+        return 1
     except (ProjectNotFoundError, ScanNotFoundError) as e:
         # These are expected errors that have already been formatted nicely by the handler wrapper
         print(f"\nDetailed Error Information:")
@@ -152,19 +137,19 @@ def main() -> int:
         tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
         print("".join(tb_lines).rstrip())
         if logger: logger.error("%s: %s", type(e).__name__, e.message, exc_info=True)
-        exit_code = 1
+        return 1
     except WorkbenchCLIError as e:
         # Catch any other specific CLI errors that might be missed above
         print(f"\nDetailed Error Information:")
         print(f"Workbench CLI Error: {e.message}")
         if logger: logger.error("Unhandled WorkbenchCLIError: %s", e.message, exc_info=True)
-        exit_code = 1
+        return 1
     except Exception as e:
         # Catch truly unexpected errors
         print(f"\nDetailed Error Information:")
         print(f"Unexpected Error: {e}")
         if logger: logger.critical("Unexpected error occurred", exc_info=True)
-        exit_code = 1
+        return 1
     finally:
         # Calculate and print duration regardless of success/failure
         end_time = time.monotonic()

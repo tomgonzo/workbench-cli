@@ -88,9 +88,14 @@ def handle_scan_git(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bo
     # Ensure scan is compatible with the current operation
     ensure_scan_compatibility(workbench, params, scan_code)
 
-    # Assert scan is idle before triggering Git clone
+    # Ensure scan is idle before triggering Git clone
     print("\nEnsuring the Scan is idle before triggering Git clone...")
-    assert_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS", "GIT_CLONE"])
+    workbench.ensure_process_can_start(
+        "SCAN", 
+        scan_code, 
+        wait_max_tries=params.scan_number_of_tries, 
+        wait_interval=params.scan_wait_time
+    )
 
     # Trigger Git clone
     git_ref_type = "tag" if params.git_tag else ("commit" if params.git_commit else "branch")
@@ -126,11 +131,11 @@ def handle_scan_git(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bo
     
     try:
         # Verify scan can start
-        workbench.assert_process_can_start(
+        workbench.ensure_process_can_start(
             "SCAN",
             scan_code,
-            params.scan_number_of_tries,
-            params.scan_wait_time
+            wait_max_tries=params.scan_number_of_tries,
+            wait_interval=params.scan_wait_time
         )
         
         # Handle dependency analysis only mode

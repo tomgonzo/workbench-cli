@@ -632,7 +632,12 @@ class ScansAPI(APIBase, ReportHelper):
             NetworkError: If there are network issues
         """
         try:
-            self.assert_process_can_start("SCAN", scan_code, wait_max_tries=60, wait_interval=30)
+            self.ensure_process_can_start(
+                "SCAN",
+                scan_code,
+                wait_max_tries=60, # Use a fixed reasonable default
+                wait_interval=30
+            )
         except Exception as e:
             logger.error(f"Pre-scan check failed for '{scan_code}': {e}")
             raise
@@ -715,7 +720,12 @@ class ScansAPI(APIBase, ReportHelper):
             NetworkError: If there are network issues
         """
         try:
-            self.assert_process_can_start("DEPENDENCY_ANALYSIS", scan_code, wait_max_tries=60, wait_interval=30)
+            self.ensure_process_can_start(
+                "DEPENDENCY_ANALYSIS",
+                scan_code,
+                wait_max_tries=60, # Use a fixed reasonable default
+                wait_interval=30
+            )
         except Exception as e:
             logger.error(f"Pre-analysis check failed for '{scan_code}': {e}")
             raise
