@@ -67,7 +67,6 @@ jobs:
           --run-dependency-analysis \
           --autoid-file-licenses \
           --autoid-file-copyrights \
-          --no-wait \
           --show-scan-metrics
 
       - name: No Changes Detected
