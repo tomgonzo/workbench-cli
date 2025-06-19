@@ -599,11 +599,11 @@ def test_get_scan_information_failure(mock_ensure_process_can_start, mock_send_r
 
 @patch.object(ScansAPI, '_send_request')
 @patch.object(ScansAPI, 'ensure_process_can_start')
-def test_method_pre_check_failure(mock_ensure_process_can_start, mock_send_request, scans_api_inst, capsys):
+def test_method_pre_check_failure(mock_ensure_process_can_start, mock_send_request, scans_api_inst, caplog):
     mock_ensure_process_can_start.side_effect = Exception("Pre-check failed")
     
     with pytest.raises(Exception, match="Pre-check failed"):
         scans_api_inst.run_scan("scan1", 10, 10, False, False, False, False, False)
 
-    assert "Pre-scan check failed" in capsys.readouterr().err
+    assert "Pre-scan check failed" in caplog.text
     mock_send_request.assert_not_called() 
