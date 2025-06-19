@@ -18,6 +18,60 @@ from ..exceptions import (
 
 logger = logging.getLogger("workbench-cli")
 
+# --- Workbench UI Link Generation ---
+
+def get_workbench_links(api_url: str, scan_id: int) -> Dict[str, Dict[str, str]]:
+    """
+    Get all Workbench UI links and messages for a scan.
+    
+    Args:
+        api_url: The Workbench API URL (includes /api.php)
+        scan_id: The scan ID
+        
+    Returns:
+        Dict with link types as keys, each containing 'url' and 'message'
+        Example: {
+            "main": {"url": "https://...", "message": "View scan results..."},
+            "pending": {"url": "https://...", "message": "Review Pending IDs..."},
+            "policy": {"url": "https://...", "message": "Review policy warnings..."}
+        }
+    """
+    # Link type configuration
+    link_config = {
+        "main": {
+            "view_param": None,
+            "message": "View scan results in Workbench"
+        },
+        "pending": {
+            "view_param": "pending_items", 
+            "message": "Review Pending IDs in Workbench"
+        },
+        "policy": {
+            "view_param": "mark_as_identified",
+            "message": "Review policy warnings in Workbench"
+        },
+    }
+    
+    # Build base URL once
+    base_url = api_url.replace("/api.php", "").rstrip("/")
+    
+    # Build all links
+    links = {}
+    for link_type, config in link_config.items():
+        url = f"{base_url}/index.html?form=main_interface&action=scanview&sid={scan_id}"
+        if config["view_param"]:
+            url += f"&current_view={config['view_param']}"
+        
+        links[link_type] = {
+            "url": url,
+            "message": config["message"]
+        }
+    
+    return links
+
+
+
+
 # --- Process Waiters and Checkers ---
 
 def assert_scan_is_idle(
