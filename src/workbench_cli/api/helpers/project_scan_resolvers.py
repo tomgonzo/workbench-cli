@@ -49,7 +49,7 @@ class ResolveWorkbenchProjectScan(APIBase):
                 
         raise ProjectNotFoundError(f"Project '{project_name}' not found")
 
-    def resolve_scan(self, scan_name: str, project_name: Optional[str], create_if_missing: bool, params: argparse.Namespace) -> Tuple[str, int]:
+    def resolve_scan(self, scan_name: str, project_name: Optional[str], create_if_missing: bool, params: argparse.Namespace, import_from_report: bool = False) -> Tuple[str, int]:
         """Find a scan by name, optionally creating it if not found."""
         if project_name:
             # Look in specific project
@@ -64,7 +64,13 @@ class ResolveWorkbenchProjectScan(APIBase):
             # Create if requested
             if create_if_missing:
                 print(f"Creating scan '{scan_name}' in project '{project_name}'...")
-                self.create_webapp_scan(project_code=project_code, scan_name=scan_name, **self._get_git_params(params))
+                git_params = self._get_git_params(params)
+                self.create_webapp_scan(
+                    project_code=project_code, 
+                    scan_name=scan_name, 
+                    import_from_report=import_from_report,
+                    **git_params
+                )
                 time.sleep(2)  # Brief wait for creation to process
                 
                 # Get the newly created scan

@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch, mock_open, call
 from typing import Dict, Any
 
 from workbench_cli.utilities.scan_workflows import (
-    assert_scan_is_idle,
     wait_for_scan_completion,
     determine_scans_to_run,
     fetch_results,
@@ -305,44 +304,6 @@ class TestSaveResultsToFile:
 # ============================================================================
 # SCAN STATUS MANAGEMENT TESTS
 # ============================================================================
-
-class TestAssertScanIsIdle:
-    """Test cases for the assert_scan_is_idle function."""
-    
-    def test_all_processes_idle(self, mock_workbench, mock_params):
-        """Test when all requested processes are already idle."""
-        mock_workbench.check_status_download_content_from_git.return_value = "FINISHED"
-        mock_workbench.get_scan_status.return_value = create_mock_status_response("FINISHED")
-        mock_workbench._standard_scan_status_accessor.return_value = "FINISHED"
-        
-        # Should complete without raising
-        assert_scan_is_idle(mock_workbench, TEST_SCAN_CODE, mock_params, ["GIT_CLONE", "SCAN"])
-        
-        # Verify correct API calls
-        mock_workbench.check_status_download_content_from_git.assert_called_with(TEST_SCAN_CODE)
-        mock_workbench.get_scan_status.assert_called_with("SCAN", TEST_SCAN_CODE)
-    
-    def test_scan_not_found_graceful_handling(self, mock_workbench, mock_params):
-        """Test graceful handling when scan is not found."""
-        mock_workbench.check_status_download_content_from_git.side_effect = ScanNotFoundError("Scan not found")
-        
-        # Should not raise exception
-        assert_scan_is_idle(mock_workbench, TEST_SCAN_CODE, mock_params, ["GIT_CLONE"])
-    
-    def test_api_error_propagation(self, mock_workbench, mock_params):
-        """Test that API errors are properly propagated."""
-        mock_workbench.check_status_download_content_from_git.side_effect = ApiError("API temporarily unavailable")
-        
-        with pytest.raises(ProcessError, match="Failed to check status"):
-            assert_scan_is_idle(mock_workbench, TEST_SCAN_CODE, mock_params, ["GIT_CLONE"])
-    
-    def test_extract_archives_not_supported(self, mock_workbench, mock_params):
-        """Test handling when EXTRACT_ARCHIVES status checking is not supported."""
-        mock_workbench._is_status_check_supported.return_value = False
-        
-        # Should complete without errors
-        assert_scan_is_idle(mock_workbench, TEST_SCAN_CODE, mock_params, ["EXTRACT_ARCHIVES"])
-        mock_workbench._is_status_check_supported.assert_called_with(TEST_SCAN_CODE, "EXTRACT_ARCHIVES")
 
 
 class TestWaitForScanCompletion:

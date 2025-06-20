@@ -33,7 +33,7 @@ def mock_workbench(mocker):
     # Common methods used across handlers
     mock.resolve_project = mocker.MagicMock(return_value='TEST_PROJ_CODE')
     mock.resolve_scan = mocker.MagicMock(return_value=('TEST_SCAN_CODE', 123))
-    mock.ensure_process_can_start = mocker.MagicMock()
+    mock.ensure_scan_is_idle = mocker.MagicMock()
     mock.upload_dependency_analysis_results = mocker.MagicMock()
     mock.start_dependency_analysis = mocker.MagicMock()
     mock.wait_for_scan_to_finish = mocker.MagicMock(return_value=({}, 5.0))

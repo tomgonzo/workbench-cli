@@ -74,81 +74,6 @@ def get_workbench_links(api_url: str, scan_id: int) -> Dict[str, Dict[str, str]]
 
 # --- Process Waiters and Checkers ---
 
-def assert_scan_is_idle(
-    workbench: 'WorkbenchAPI',
-    scan_code: str,
-    params: argparse.Namespace,
-    process_types_to_check: List[str]
-):
-    """
-    Checks if specified background processes for a scan are idle (not RUNNING or QUEUED).
-    If a process is running/queued, waits for it to finish.
-    """
-    logger.debug(f"Asserting idle status for processes {process_types_to_check} on scan '{scan_code}'...")
-    while True:
-        all_processes_idle_this_pass = True
-        logger.debug("Starting a new pass to check idle status...")
-        for process_type in process_types_to_check:
-            process_type_upper = process_type.upper()
-            logger.debug(f"Checking status for process type: {process_type_upper}")
-            current_status = "UNKNOWN"
-            try:
-                if process_type_upper == "GIT_CLONE":
-                    current_status = workbench.check_status_download_content_from_git(scan_code).upper()
-                elif process_type_upper in ["SCAN", "DEPENDENCY_ANALYSIS"]:
-                    status_data = workbench.get_scan_status(process_type_upper, scan_code)
-                    current_status = status_data.get("status", "UNKNOWN").upper()
-                elif process_type_upper == "EXTRACT_ARCHIVES":
-                    # EXTRACT_ARCHIVES status checking is handled differently
-                    # Check if status checking is supported for this process type
-                    if workbench._is_status_check_supported(scan_code, "EXTRACT_ARCHIVES"):
-                        # Use the specialized method for checking archive extraction status
-                        try:
-                            status_data = workbench.get_scan_status("EXTRACT_ARCHIVES", scan_code)
-                            current_status = workbench._standard_scan_status_accessor(status_data)
-                        except (ApiError, ScanNotFoundError) as e:
-                            logger.debug(f"Could not check EXTRACT_ARCHIVES status, assuming finished: {e}")
-                            current_status = "FINISHED"
-                    else:
-                        logger.debug(f"EXTRACT_ARCHIVES status checking not supported. Assuming idle.")
-                        current_status = "FINISHED"
-                else:
-                    logger.warning(f"Unknown process type '{process_type_upper}' requested for idle check. Skipping.")
-                    continue
-                logger.debug(f"Current status for {process_type_upper}: {current_status}")
-            except ScanNotFoundError:
-                logger.debug(f"Scan '{scan_code}' not found during idle check for {process_type_upper}. Assuming idle.")
-                print(f"  - {process_type_upper}: Not found (considered idle).")
-                continue
-            except (ApiError, NetworkError) as e:
-                raise ProcessError(f"Cannot proceed: Failed to check status for {process_type_upper} due to API/Network error: {e}") from e
-            except Exception as e:
-                raise ProcessError(f"Cannot proceed: Unexpected error checking status for {process_type_upper}: {e}") from e
-
-            if current_status in ["RUNNING", "QUEUED", "NOT FINISHED"]:
-                all_processes_idle_this_pass = False
-                print(f"  - {process_type_upper}: Status is {current_status}. Waiting for completion...")
-                try:
-                    if process_type_upper == "GIT_CLONE":
-                        _, _ = workbench.wait_for_git_clone(scan_code, params.scan_number_of_tries, params.scan_wait_time)
-                    elif process_type_upper == "EXTRACT_ARCHIVES":
-                        _, _ = workbench.wait_for_archive_extraction(scan_code, params.scan_number_of_tries, params.scan_wait_time)
-                    else:
-                        _, _ = workbench.wait_for_scan_to_finish(process_type_upper, scan_code, params.scan_number_of_tries, params.scan_wait_time)
-                    print(f"  - {process_type_upper}: Previous run finished.")
-                    logger.debug(f"Breaking inner loop after waiting for {process_type_upper} to re-check all statuses.")
-                    break
-                except (ProcessTimeoutError, ProcessError) as wait_err:
-                    raise ProcessError(f"Cannot proceed: Waiting for existing {process_type_upper} failed: {wait_err}") from wait_err
-                except Exception as wait_exc:
-                    raise ProcessError(f"Cannot proceed: Unexpected error waiting for {process_type_upper}: {wait_exc}") from wait_exc
-            else:
-                print(f"  - {process_type_upper}: Status is {current_status} (considered idle).")
-        
-        if all_processes_idle_this_pass:
-            logger.debug("All processes confirmed idle in this pass. Exiting check loop.")
-            break
-    print("All Scan status checks passed! Proceeding...")
 
 def wait_for_scan_completion(workbench: 'WorkbenchAPI', params: argparse.Namespace, scan_code: str) -> Tuple[bool, bool, Dict[str, float]]:
     """
@@ -572,6 +497,9 @@ def print_operation_summary(params: argparse.Namespace, da_completed: bool, proj
     elif params.command == 'import-da':
         print(f"  - Method: Dependency Analysis Import")
         print(f"  - Source Path: {getattr(params, 'path', 'N/A')}")
+    elif params.command == 'import-sbom':
+        print(f"  - Method: SBOM Import")
+        print(f"  - Source Path: {getattr(params, 'path', 'N/A')}")
     else:
         print(f"  - Method: Unknown ({params.command})")
 
@@ -602,6 +530,8 @@ def print_operation_summary(params: argparse.Namespace, da_completed: bool, proj
         print(f"  - Dependency Analysis: Yes (Duration: {da_duration_str})")
     elif params.command == 'import-da':
         print(f"  - Dependency Analysis: Imported")
+    elif params.command == 'import-sbom':
+        print(f"  - SBOM Imported: Yes")
     else:
         print(f"  - Dependency Analysis: No")
     

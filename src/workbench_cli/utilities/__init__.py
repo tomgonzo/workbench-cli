@@ -7,7 +7,6 @@ archive preparation, and error handling.
 
 from .error_handling import format_and_print_error, handler_error_wrapper
 from .scan_workflows import (
-    assert_scan_is_idle,
     wait_for_scan_completion,
     determine_scans_to_run,
     fetch_results,
@@ -28,7 +27,6 @@ __all__ = [
     'format_and_print_error',
     'handler_error_wrapper',
     # Scan workflows
-    'assert_scan_is_idle',
     'wait_for_scan_completion',
     'determine_scans_to_run',
     'fetch_results',

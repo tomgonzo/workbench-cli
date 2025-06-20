@@ -17,6 +17,8 @@ requires-python = ">=3.9"
 dependencies = [
     "requests>=2.20.0",
     "GitPython>=3.1.40",
+    "spdx-tools>=0.8.0",
+    "cyclonedx-python-lib[validation]>=7.0.0",
 ]
 
 [project.scripts]

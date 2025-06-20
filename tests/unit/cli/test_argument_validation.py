@@ -81,6 +81,14 @@ class TestValidationRules:
             
             with pytest.raises(ValidationError, match=re.escape("Path does not exist: /non/existent/file.json")):
                 arg_parser(cmd_args)
+    
+    def test_import_sbom_non_existent_path(self, args, arg_parser):
+        """Test validation when import-sbom path doesn't exist."""
+        with patch('os.path.exists', return_value=False):
+            cmd_args = args().import_sbom(path='/non/existent/sbom.json').build()
+            
+            with pytest.raises(ValidationError, match=re.escape("Path does not exist: /non/existent/sbom.json")):
+                arg_parser(cmd_args)
 
 
 class TestArgparseValidation:
@@ -164,6 +172,14 @@ class TestArgparseValidation:
         """Test that import-da without path raises SystemExit."""
         cmd_args = ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 
                    'import-da', '--project-name', 'P', '--scan-name', 'S']
+        
+        with pytest.raises(SystemExit):
+            arg_parser(cmd_args)
+    
+    def test_import_sbom_missing_path_raises_system_exit(self, arg_parser):
+        """Test that import-sbom without path raises SystemExit."""
+        cmd_args = ['workbench-cli', '--api-url', 'X', '--api-user', 'Y', '--api-token', 'Z', 
+                   'import-sbom', '--project-name', 'P', '--scan-name', 'S']
         
         with pytest.raises(SystemExit):
             arg_parser(cmd_args)

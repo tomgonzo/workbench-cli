@@ -354,6 +354,9 @@ class ProcessWaiters:
         elif scan_type == "DEPENDENCY_ANALYSIS":
             operation_name = "Dependency Analysis"
             should_track_files = False
+        elif scan_type == "REPORT_IMPORT":
+            operation_name = "SBOM Import"
+            should_track_files = False
         else:
             raise ValueError(f"Unsupported scan type: {scan_type}")
             

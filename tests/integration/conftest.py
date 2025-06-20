@@ -306,7 +306,7 @@ def mock_workbench_api(mocker):
     mock_api.wait_for_scan_to_finish.return_value = ({"status": "FINISHED", "is_finished": "1"}, 10.0)
 
     # --- Mock Status Checkers ---
-    mock_api.ensure_process_can_start = MagicMock(return_value=None)
+    mock_api.ensure_scan_is_idle = MagicMock(return_value=None)
     mock_api.get_scan_information.return_value = {"status": "NEW", "usage": "git"}
     mock_api.get_scan_status.return_value = {"status": "FINISHED", "is_finished": "1"}
     mock_api._standard_scan_status_accessor.return_value = "FINISHED"

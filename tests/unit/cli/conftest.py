@@ -51,26 +51,37 @@ def mock_main_dependencies():
         mocks['workbench_instance'] = MagicMock()
         mock_wb.return_value = mocks['workbench_instance']
         
-        # Mock all handlers
-        with patch("workbench_cli.main.handle_scan") as mock_scan:
-            mocks['handle_scan'] = mock_scan
+        # Set up common API methods that handlers might use
+        mocks['workbench_instance'].resolve_project.return_value = "TEST_PROJECT_CODE"
+        mocks['workbench_instance'].resolve_scan.return_value = ("TEST_SCAN_CODE", 123)
+        mocks['workbench_instance'].ensure_scan_is_idle.return_value = None
+        
+        # Set up API methods that return empty/simple data to avoid JSON serialization issues
+        mocks['workbench_instance'].get_scan_folder_metrics.return_value = {}
+        mocks['workbench_instance'].get_dependency_analysis_results.return_value = []
+        mocks['workbench_instance'].get_scan_identified_licenses.return_value = []
+        mocks['workbench_instance'].get_scan_identified_components.return_value = []
+        mocks['workbench_instance'].get_policy_warnings_counter.return_value = {}
+        mocks['workbench_instance'].list_vulnerabilities.return_value = []
+        
+        # Mock all handlers - need to patch them at the main module level where they're imported
+        with patch("workbench_cli.main.handle_scan") as mock_scan, \
+             patch("workbench_cli.main.handle_scan_git") as mock_scan_git, \
+             patch("workbench_cli.main.handle_import_da") as mock_import, \
+             patch("workbench_cli.main.handle_import_sbom") as mock_import_sbom, \
+             patch("workbench_cli.main.handle_show_results") as mock_show, \
+             patch("workbench_cli.main.handle_download_reports") as mock_download, \
+             patch("workbench_cli.main.handle_evaluate_gates") as mock_gates:
             
-            with patch("workbench_cli.main.handle_scan_git") as mock_scan_git:
-                mocks['handle_scan_git'] = mock_scan_git
-                
-                with patch("workbench_cli.main.handle_import_da") as mock_import:
-                    mocks['handle_import_da'] = mock_import
-                    
-                    with patch("workbench_cli.main.handle_show_results") as mock_show:
-                        mocks['handle_show_results'] = mock_show
-                        
-                        with patch("workbench_cli.main.handle_download_reports") as mock_download:
-                            mocks['handle_download_reports'] = mock_download
-                            
-                            with patch("workbench_cli.main.handle_evaluate_gates") as mock_gates:
-                                mocks['handle_evaluate_gates'] = mock_gates
-                                
-                                yield mocks
+            mocks['handle_scan'] = mock_scan
+            mocks['handle_scan_git'] = mock_scan_git
+            mocks['handle_import_da'] = mock_import
+            mocks['handle_import_sbom'] = mock_import_sbom
+            mocks['handle_show_results'] = mock_show
+            mocks['handle_download_reports'] = mock_download
+            mocks['handle_evaluate_gates'] = mock_gates
+            
+            yield mocks
 
 
 class ArgBuilder:
@@ -106,6 +117,10 @@ class ArgBuilder:
     
     def import_da(self, project='TestProject', scan='TestScan', path='results.json'):
         self.args.extend(['import-da', '--project-name', project, '--scan-name', scan, '--path', path])
+        return self
+    
+    def import_sbom(self, project='TestProject', scan='TestScan', path='bom.json'):
+        self.args.extend(['import-sbom', '--project-name', project, '--scan-name', scan, '--path', path])
         return self
     
     def download_reports(self, scope='scan'):

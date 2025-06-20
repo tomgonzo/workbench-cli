@@ -79,6 +79,16 @@ class TestBasicCommandParsing:
         assert parsed.scan_name == 'DAScan'
         assert parsed.path == 'results.json'
     
+    def test_parse_import_sbom_command(self, args, arg_parser, mock_path_exists):
+        """Test import-sbom command parsing."""
+        cmd_args = args().import_sbom(project='SBOMProject', scan='SBOMScan', path='bom.json').build()
+        parsed = arg_parser(cmd_args)
+        
+        assert parsed.command == 'import-sbom'
+        assert parsed.project_name == 'SBOMProject'
+        assert parsed.scan_name == 'SBOMScan'
+        assert parsed.path == 'bom.json'
+    
     def test_parse_download_reports_scan_scope(self, args, arg_parser):
         """Test download-reports with scan scope."""
         cmd_args = (args()

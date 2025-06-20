@@ -82,5 +82,28 @@ class UploadAPI(UploadHelper):
         }
 
         self._perform_upload(path, headers)
+
+    def upload_sbom_file(self, scan_code: str, path: str):
+        """
+        Uploads an SBOM file to a scan.
+
+        Args:
+            scan_code: Code of the scan to upload to
+            path: Path to the SBOM file to upload
+        """
+        if not os.path.exists(path) or not os.path.isfile(path):
+            raise FileSystemError(f"SBOM file does not exist: {path}")
+
+        upload_basename = os.path.basename(path)
+        name_b64 = base64.b64encode(upload_basename.encode()).decode("utf-8")
+        scan_code_b64 = base64.b64encode(scan_code.encode()).decode("utf-8")
+            
+        headers = {
+            "FOSSID-SCAN-CODE": scan_code_b64,
+            "FOSSID-FILE-NAME": name_b64,
+            "Accept": "*/*"
+        }
+
+        self._perform_upload(path, headers)
     
 
