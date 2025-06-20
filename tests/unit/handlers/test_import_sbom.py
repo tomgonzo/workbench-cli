@@ -25,7 +25,7 @@ class TestImportSBOMHandler:
     @patch('workbench_cli.handlers.import_sbom.fetch_display_save_results')
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
@@ -37,7 +37,6 @@ class TestImportSBOMHandler:
         mock_params.path = "/path/to/sbom.json"
         mock_params.scan_number_of_tries = 10
         mock_params.scan_wait_time = 5
-        mock_params.no_wait = False
         
         mock_validate_sbom.return_value = ('cyclonedx', '1.6', {'components_count': 42})
         mock_workbench.resolve_project.return_value = 'TEST_PROJ_CODE'
@@ -135,7 +134,7 @@ class TestImportSBOMHandler:
     @patch('workbench_cli.handlers.import_sbom.fetch_display_save_results')
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
@@ -150,7 +149,6 @@ class TestImportSBOMHandler:
         mock_params.path = "/path/to/sbom.json"
         mock_params.scan_number_of_tries = 10
         mock_params.scan_wait_time = 5
-        mock_params.no_wait = False
         
         # Configure mocks
         mock_validate_sbom.return_value = ('cyclonedx', '1.6', {'components_count': 42})
@@ -180,43 +178,7 @@ class TestImportSBOMHandler:
         mock_fetch.assert_called_once()
         mock_print_summary.assert_called_once()
 
-    @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.assert_scan_is_idle')
-    @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
-    @patch('os.path.exists', return_value=True)
-    @patch('os.path.isfile', return_value=True)
-    def test_handle_import_sbom_no_wait(self, mock_isfile, mock_exists, mock_validate_sbom,
-                                       mock_assert_idle, mock_ensure_compat, mock_print_summary, 
-                                       mock_workbench, mock_params):
-        """Tests the execution of handle_import_sbom with no wait."""
-        # Configure params
-        mock_params.command = 'import-sbom'
-        mock_params.project_name = "SBOMProj"
-        mock_params.scan_name = "SBOMScan"
-        mock_params.path = "/path/to/sbom.json"
-        mock_params.scan_number_of_tries = 10
-        mock_params.scan_wait_time = 5
-        mock_params.no_wait = True
-        
-        # Configure mocks
-        mock_validate_sbom.return_value = ('spdx', '2.3', {'packages_count': 15})
-        mock_workbench.resolve_project.return_value = 'TEST_PROJ_CODE'
-        mock_workbench.resolve_scan.return_value = ('TEST_SCAN_CODE', 123)
 
-        # Execute the handler
-        result = handle_import_sbom(mock_workbench, mock_params)
-        
-        # Verify the result and expected calls
-        assert result is True
-        mock_validate_sbom.assert_called_once()
-        mock_workbench.resolve_project.assert_called_once()
-        mock_workbench.resolve_scan.assert_called_once()
-        mock_workbench.upload_sbom_file.assert_called_once()
-        mock_workbench.import_report.assert_called_once()
-        # Should not wait or fetch results in no-wait mode
-        mock_workbench.wait_for_scan_to_finish.assert_not_called()
-        mock_print_summary.assert_called_once()
 
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
@@ -314,7 +276,7 @@ class TestImportSBOMHandler:
            side_effect=ApiError("Error fetching results"))
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
@@ -329,7 +291,6 @@ class TestImportSBOMHandler:
         mock_params.path = "/path/to/sbom.json"
         mock_params.scan_number_of_tries = 10
         mock_params.scan_wait_time = 5
-        mock_params.no_wait = False
 
         # Configure mocks
         mock_validate_sbom.return_value = ('cyclonedx', '1.6', {})
@@ -350,7 +311,7 @@ class TestImportSBOMHandler:
 
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
@@ -376,7 +337,7 @@ class TestImportSBOMHandler:
 
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
@@ -402,7 +363,7 @@ class TestImportSBOMHandler:
 
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
@@ -415,7 +376,6 @@ class TestImportSBOMHandler:
         mock_params.project_name = "SBOMProj"
         mock_params.scan_name = "SBOMScan"
         mock_params.path = "/path/to/sbom.json"
-        mock_params.no_wait = False
 
         # Configure mocks
         mock_validate_sbom.return_value = ('cyclonedx', '1.6', {})

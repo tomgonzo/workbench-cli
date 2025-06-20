@@ -17,7 +17,7 @@ from ..exceptions import (
     FileSystemError,
 )
 from ..utilities.scan_workflows import (
-    assert_scan_is_idle, 
+    ensure_scan_is_idle, 
     wait_for_scan_completion, 
     print_operation_summary,
     fetch_display_save_results,
@@ -133,9 +133,9 @@ def handle_import_sbom(workbench: "WorkbenchAPI", params: argparse.Namespace) ->
     # Ensure scan is compatible with the current operation
     ensure_scan_compatibility(workbench, params, scan_code)
 
-    # Assert scan is idle before starting SBOM import
+    # Ensure scan is idle before starting SBOM import
     print("\nEnsuring the Scan is idle before starting SBOM import...")
-    assert_scan_is_idle(workbench, scan_code, params, ["REPORT_IMPORT"])
+    ensure_scan_is_idle(workbench, scan_code, params, ["REPORT_IMPORT"])
 
     # Upload SBOM file
     print("\n--- Uploading SBOM File ---")
@@ -155,16 +155,6 @@ def handle_import_sbom(workbench: "WorkbenchAPI", params: argparse.Namespace) ->
     except Exception as e:
         logger.error(f"Failed to start SBOM import for '{scan_code}': {e}", exc_info=True)
         raise WorkbenchCLIError(f"Failed to start SBOM import: {e}", details={"error": str(e)}) from e
-
-    # Handle no-wait mode
-    if getattr(params, 'no_wait', False):
-        print("\nSBOM import started successfully.")
-        print("\nExiting without waiting for completion (--no-wait mode).")
-        print("You can check the status later using the 'show-results' command.")
-        
-        # Print operation summary for no-wait mode
-        print_operation_summary(params, True, project_code, scan_code, durations)
-        return True
 
     # Wait for SBOM import to complete  
     sbom_completed = False

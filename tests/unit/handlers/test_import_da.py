@@ -26,7 +26,7 @@ class TestImportDAHandler:
     @patch('workbench_cli.handlers.import_da.fetch_display_save_results')
     @patch('workbench_cli.handlers.import_da.print_operation_summary')
     @patch('workbench_cli.handlers.import_da.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_da.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
     def test_handle_import_da_success(self, mock_isfile, mock_exists, mock_assert_idle, 
@@ -72,7 +72,7 @@ class TestImportDAHandler:
 
     @patch('workbench_cli.handlers.import_da.print_operation_summary')
     @patch('workbench_cli.handlers.import_da.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_da.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
     def test_handle_import_da_no_wait(self, mock_isfile, mock_exists, mock_assert_idle, 
@@ -182,7 +182,7 @@ class TestImportDAHandler:
            side_effect=ApiError("Error fetching results"))
     @patch('workbench_cli.handlers.import_da.print_operation_summary')
     @patch('workbench_cli.handlers.import_da.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_da.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
     def test_handle_import_da_fetch_api_error(self, mock_isfile, mock_exists, mock_assert_idle, 

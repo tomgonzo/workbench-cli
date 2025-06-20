@@ -26,7 +26,7 @@ class TestScanGitHandler:
     @patch('workbench_cli.handlers.scan_git.fetch_display_save_results')
     @patch('workbench_cli.handlers.scan_git.print_operation_summary')
     @patch('workbench_cli.handlers.scan_git.determine_scans_to_run')
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_success_full_scan(self, mock_ensure_compat, mock_assert_idle, 
                                              mock_determine_scans, mock_print_summary, mock_fetch,
@@ -76,7 +76,7 @@ class TestScanGitHandler:
 
     @patch('workbench_cli.handlers.scan_git.print_operation_summary')
     @patch('workbench_cli.handlers.scan_git.determine_scans_to_run')
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_no_wait(self, mock_ensure_compat, mock_assert_idle, 
                                    mock_determine_scans, mock_print_summary,
@@ -117,7 +117,7 @@ class TestScanGitHandler:
     @patch('workbench_cli.handlers.scan_git.fetch_display_save_results')
     @patch('workbench_cli.handlers.scan_git.print_operation_summary')
     @patch('workbench_cli.handlers.scan_git.determine_scans_to_run')
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_dependency_analysis_only(self, mock_ensure_compat, mock_assert_idle, 
                                                      mock_determine_scans, mock_print_summary, mock_fetch,
@@ -161,7 +161,7 @@ class TestScanGitHandler:
 
     @patch('workbench_cli.handlers.scan_git.print_operation_summary')
     @patch('workbench_cli.handlers.scan_git.determine_scans_to_run')
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_dependency_analysis_only_no_wait(self, mock_ensure_compat, mock_assert_idle, 
                                                              mock_determine_scans, mock_print_summary,
@@ -201,7 +201,7 @@ class TestScanGitHandler:
     @patch('workbench_cli.handlers.scan_git.validate_reuse_source')
     @patch('workbench_cli.handlers.scan_git.print_operation_summary')
     @patch('workbench_cli.handlers.scan_git.determine_scans_to_run')
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_with_id_reuse(self, mock_ensure_compat, mock_assert_idle, 
                                          mock_determine_scans, mock_print_summary, mock_validate_reuse,
@@ -247,7 +247,7 @@ class TestScanGitHandler:
 
     @patch('workbench_cli.handlers.scan_git.validate_reuse_source')
     @patch('workbench_cli.handlers.scan_git.determine_scans_to_run')
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_id_reuse_validation_fails(self, mock_ensure_compat, mock_assert_idle, 
                                                       mock_determine_scans, mock_validate_reuse,
@@ -288,7 +288,7 @@ class TestScanGitHandler:
         args = call_args[0]
         assert args[7] is False  # ID reuse should be disabled (7th index)
 
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_git_clone_fails(self, mock_ensure_compat, mock_assert_idle, 
                                            mock_workbench, mock_params):
@@ -310,7 +310,7 @@ class TestScanGitHandler:
         with pytest.raises(WorkbenchCLIError, match="Failed to clone Git repository"):
             handle_scan_git(mock_workbench, mock_params)
 
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_project_not_found(self, mock_ensure_compat, mock_assert_idle,
                                               mock_workbench, mock_params):
@@ -331,7 +331,7 @@ class TestScanGitHandler:
     @patch('workbench_cli.handlers.scan_git.fetch_display_save_results')
     @patch('workbench_cli.handlers.scan_git.print_operation_summary')
     @patch('workbench_cli.handlers.scan_git.determine_scans_to_run')
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_remove_git_dir_fails(self, mock_ensure_compat, mock_assert_idle, 
                                                  mock_determine_scans, mock_print_summary, mock_fetch,
@@ -370,7 +370,7 @@ class TestScanGitHandler:
     @patch('workbench_cli.handlers.scan_git.fetch_display_save_results')
     @patch('workbench_cli.handlers.scan_git.print_operation_summary')
     @patch('workbench_cli.handlers.scan_git.determine_scans_to_run')
-    @patch('workbench_cli.handlers.scan_git.assert_scan_is_idle')
+    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.scan_git.ensure_scan_compatibility')
     def test_handle_scan_git_kb_scan_timeout(self, mock_ensure_compat, mock_assert_idle, 
                                            mock_determine_scans, mock_print_summary, mock_fetch,

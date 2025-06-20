@@ -8,6 +8,7 @@ from typing import Dict, Any, TYPE_CHECKING
 
 from ..utilities.error_handling import handler_error_wrapper
 from ..utilities.scan_workflows import (
+    ensure_scan_is_idle,
     fetch_display_save_results,
     print_operation_summary,
     determine_scans_to_run
@@ -85,8 +86,7 @@ def handle_scan(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bool:
 
     # Assert scan is idle before uploading code
     print("\nEnsuring the Scan is idle before uploading code...")
-    workbench.ensure_process_can_start("SCAN", scan_code, wait_max_tries=60, wait_interval=30)
-    workbench.ensure_process_can_start("DEPENDENCY_ANALYSIS", scan_code, wait_max_tries=60, wait_interval=30)
+    ensure_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS"])
 
     # Clear existing scan content
     print("\nClearing existing scan content...")
@@ -129,12 +129,7 @@ def handle_scan(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bool:
         print("No archives to extract. Continuing with scan...")
 
     # Verify scan can start
-    workbench.ensure_process_can_start(
-        "SCAN",
-        scan_code,
-        params.scan_number_of_tries,
-        params.scan_wait_time
-    )
+    ensure_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS"])
     
     # Determine which scan operations to run
     scan_operations = determine_scans_to_run(params)

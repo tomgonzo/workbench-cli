@@ -16,7 +16,7 @@ from ..exceptions import (
     ScanExistsError,
 )
 from ..utilities.scan_workflows import (
-    assert_scan_is_idle, 
+    ensure_scan_is_idle, 
     wait_for_scan_completion, 
     determine_scans_to_run,
     print_operation_summary,
@@ -90,12 +90,7 @@ def handle_scan_git(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bo
 
     # Ensure scan is idle before triggering Git clone
     print("\nEnsuring the Scan is idle before triggering Git clone...")
-    workbench.ensure_process_can_start(
-        "SCAN", 
-        scan_code, 
-        wait_max_tries=params.scan_number_of_tries, 
-        wait_interval=params.scan_wait_time
-    )
+    ensure_scan_is_idle(workbench, scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS"])
 
     # Trigger Git clone
     git_ref_type = "tag" if params.git_tag else ("commit" if params.git_commit else "branch")
@@ -131,12 +126,7 @@ def handle_scan_git(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bo
     
     try:
         # Verify scan can start
-        workbench.ensure_process_can_start(
-            "SCAN",
-            scan_code,
-            wait_max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time
-        )
+        ensure_scan_is_idle(workbench, scan_code, params, ["SCAN"])
         
         # Handle dependency analysis only mode
         if not scan_operations["run_kb_scan"] and scan_operations["run_dependency_analysis"]:

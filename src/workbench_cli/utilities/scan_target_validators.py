@@ -7,7 +7,7 @@ including compatibility checks and ID reuse validation.
 
 import logging
 import argparse
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from ..exceptions import (
     WorkbenchCLIError,
@@ -20,10 +20,13 @@ from ..exceptions import (
     ScanNotFoundError
 )
 
+if TYPE_CHECKING:
+    from ..api import WorkbenchAPI
+
 # Assume logger is configured in main.py
 logger = logging.getLogger("workbench-cli")
 
-def ensure_scan_compatibility(workbench: 'WorkbenchAPI', params: argparse.Namespace, scan_code: str):
+def ensure_scan_compatibility(workbench: "WorkbenchAPI", params: argparse.Namespace, scan_code: str):
     """
     Checks if the existing scan configuration is compatible with the current command.
     Fetches scan information directly from the API.
@@ -120,7 +123,7 @@ def ensure_scan_compatibility(workbench: 'WorkbenchAPI', params: argparse.Namesp
         elif current_command == 'import-sbom':
              logger.debug(f"Reusing existing scan '{scan_code}' for SBOM import (report scan: {existing_is_report_scan}).")
 
-def validate_reuse_source(workbench: 'WorkbenchAPI', params: argparse.Namespace) -> Tuple[Optional[str], Optional[str]]:
+def validate_reuse_source(workbench: "WorkbenchAPI", params: argparse.Namespace) -> Tuple[Optional[str], Optional[str]]:
     """
     Validates ID reuse source (project or scan) before uploading code or 
     starting a scan to prevent unnecessary work if the source doesn't exist.

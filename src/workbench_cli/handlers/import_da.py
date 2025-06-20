@@ -17,7 +17,7 @@ from ..exceptions import (
     FileSystemError,
 )
 from ..utilities.scan_workflows import (
-    assert_scan_is_idle, 
+    ensure_scan_is_idle, 
     wait_for_scan_completion, 
     print_operation_summary,
     fetch_display_save_results
@@ -81,9 +81,9 @@ def handle_import_da(workbench: "WorkbenchAPI", params: argparse.Namespace) -> b
     # Ensure scan is compatible with the current operation
     ensure_scan_compatibility(workbench, params, scan_code)
 
-    # Assert scan is idle before starting dependency analysis import
+    # Ensure scan is idle before starting dependency analysis import
     print("\nEnsuring the Scan is idle before starting dependency analysis import...")
-    assert_scan_is_idle(workbench, scan_code, params, ["DEPENDENCY_ANALYSIS"])
+    ensure_scan_is_idle(workbench, scan_code, params, ["DEPENDENCY_ANALYSIS"])
 
     # Upload dependency analysis file
     print("\n--- Uploading Dependency Analysis File ---")

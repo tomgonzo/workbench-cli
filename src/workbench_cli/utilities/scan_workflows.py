@@ -74,15 +74,15 @@ def get_workbench_links(api_url: str, scan_id: int) -> Dict[str, Dict[str, str]]
 
 # --- Process Waiters and Checkers ---
 
-def assert_scan_is_idle(
+def ensure_scan_is_idle(
     workbench: 'WorkbenchAPI',
     scan_code: str,
     params: argparse.Namespace,
     process_types_to_check: List[str]
 ):
     """
-    Checks if specified background processes for a scan are idle (not RUNNING or QUEUED).
-    If a process is running/queued, waits for it to finish.
+    Ensures specified background processes for a scan are idle (not RUNNING or QUEUED).
+    If a process is running/queued, waits for it to finish before proceeding.
     """
     logger.debug(f"Asserting idle status for processes {process_types_to_check} on scan '{scan_code}'...")
     while True:
@@ -95,7 +95,7 @@ def assert_scan_is_idle(
             try:
                 if process_type_upper == "GIT_CLONE":
                     current_status = workbench.check_status_download_content_from_git(scan_code).upper()
-                elif process_type_upper in ["SCAN", "DEPENDENCY_ANALYSIS"]:
+                elif process_type_upper in ["SCAN", "DEPENDENCY_ANALYSIS", "REPORT_IMPORT"]:
                     status_data = workbench.get_scan_status(process_type_upper, scan_code)
                     current_status = status_data.get("status", "UNKNOWN").upper()
                 elif process_type_upper == "EXTRACT_ARCHIVES":

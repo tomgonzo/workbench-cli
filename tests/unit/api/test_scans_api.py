@@ -616,7 +616,7 @@ def test_import_report_success(mock_send, scans_api_inst):
     
     result = scans_api_inst.import_report("scan1")
     
-    assert result is True
+    assert result is None
     mock_send.assert_called_once()
     payload = mock_send.call_args[0][0]
     assert payload['group'] == 'scans'
@@ -636,5 +636,5 @@ def test_import_report_api_error(mock_send, scans_api_inst):
     """Test import_report with API error."""
     mock_send.return_value = {"status": "0", "error": "Import failed"}
     
-    with pytest.raises(ApiError, match="Failed to start report import for scan 'scan1': Import failed"):
+    with pytest.raises(ApiError, match="Failed to start SBOM report import for 'scan1': Import failed"):
         scans_api_inst.import_report("scan1") 

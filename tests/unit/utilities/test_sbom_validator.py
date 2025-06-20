@@ -224,20 +224,36 @@ class TestSPDXValidation:
 
     def test_validate_spdx_rdf_missing_library(self):
         """Test validation fails when SPDX library is missing."""
-        # Mock the import by patching the actual import statements in the function
-        with patch('workbench_cli.utilities.sbom_validator.importlib.import_module', side_effect=ImportError("No module named 'spdx_tools'")):
-            with pytest.raises(ValidationError, match="SPDX tools library not available"):
-                SBOMValidator._validate_spdx_rdf("/path/to/file.rdf")
+        # Create a mock that will simulate the ImportError from the try block
+        with patch('sys.modules', {
+            'spdx_tools': None,
+            'spdx_tools.spdx': None,
+            'spdx_tools.spdx.parser': None,
+            'spdx_tools.spdx.parser.parse_anything': None,
+            'spdx_tools.spdx.model': None,
+            'spdx_tools.spdx.validation': None,
+            'spdx_tools.spdx.validation.document_validator': None
+        }):
+            # Mock the specific imports to raise ImportError
+            def mock_import(name, *args):
+                if name.startswith('spdx_tools'):
+                    raise ImportError("No module named 'spdx_tools'")
+                return __import__(name, *args)
+            
+            with patch('builtins.__import__', side_effect=mock_import):
+                with pytest.raises(ValidationError, match="SPDX tools library not available"):
+                    SBOMValidator._validate_spdx_rdf("/path/to/file.rdf")
 
     def test_validate_spdx_rdf_success(self):
         """Test successful SPDX RDF validation."""
-        from spdx_tools.spdx.model import Document
+        from spdx_tools.spdx.model import Document, Version
         
         with patch('spdx_tools.spdx.parser.parse_anything.parse_file') as mock_parse:
             with patch('spdx_tools.spdx.validation.document_validator.validate_full_spdx_document') as mock_validate:
                 mock_document = MagicMock(spec=Document)
                 
-                mock_version = MagicMock()
+                # Create a mock version object that behaves like a Version instance
+                mock_version = MagicMock(spec=Version)
                 mock_version.value = "SPDX-2.3"
                 mock_document.creation_info.spdx_version = mock_version
                 
@@ -283,13 +299,14 @@ class TestSPDXValidation:
 
     def test_validate_spdx_rdf_unsupported_version(self):
         """Test SPDX validation fails for unsupported version."""
-        from spdx_tools.spdx.model import Document
+        from spdx_tools.spdx.model import Document, Version
         
         with patch('spdx_tools.spdx.parser.parse_anything.parse_file') as mock_parse:
             with patch('spdx_tools.spdx.validation.document_validator.validate_full_spdx_document') as mock_validate:
                 mock_document = MagicMock(spec=Document)
                 
-                mock_version = MagicMock()
+                # Create a mock version object that behaves like a Version instance  
+                mock_version = MagicMock(spec=Version)
                 mock_version.value = "SPDX-3.0"  # Unsupported
                 mock_document.creation_info.spdx_version = mock_version
                 
