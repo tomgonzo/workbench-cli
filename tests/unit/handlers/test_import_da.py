@@ -26,10 +26,9 @@ class TestImportDAHandler:
     @patch('workbench_cli.handlers.import_da.fetch_display_save_results')
     @patch('workbench_cli.handlers.import_da.print_operation_summary')
     @patch('workbench_cli.handlers.import_da.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
-    def test_handle_import_da_success(self, mock_isfile, mock_exists, mock_assert_idle, 
+    def test_handle_import_da_success(self, mock_isfile, mock_exists, 
                                     mock_ensure_compat, mock_print_summary, mock_fetch, 
                                     mock_workbench, mock_params):
         """Tests the successful execution of handle_import_da."""
@@ -58,8 +57,8 @@ class TestImportDAHandler:
         mock_workbench.upload_dependency_analysis_results.assert_called_once_with(
             scan_code="TEST_SCAN_CODE", path="/path/to/results.json"
         )
-        mock_workbench.ensure_process_can_start.assert_called_once_with(
-            "DEPENDENCY_ANALYSIS", "TEST_SCAN_CODE", wait_max_tries=10, wait_interval=5
+        mock_workbench.ensure_scan_is_idle.assert_called_once_with(
+            "TEST_SCAN_CODE", mock_params, ["DEPENDENCY_ANALYSIS"]
         )
         mock_workbench.start_dependency_analysis.assert_called_once_with(
             scan_code="TEST_SCAN_CODE", import_only=True
@@ -72,10 +71,9 @@ class TestImportDAHandler:
 
     @patch('workbench_cli.handlers.import_da.print_operation_summary')
     @patch('workbench_cli.handlers.import_da.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
-    def test_handle_import_da_no_wait(self, mock_isfile, mock_exists, mock_assert_idle, 
+    def test_handle_import_da_no_wait(self, mock_isfile, mock_exists, 
                                     mock_ensure_compat, mock_print_summary, 
                                     mock_workbench, mock_params):
         """Tests the execution of handle_import_da with no wait."""
@@ -182,10 +180,9 @@ class TestImportDAHandler:
            side_effect=ApiError("Error fetching results"))
     @patch('workbench_cli.handlers.import_da.print_operation_summary')
     @patch('workbench_cli.handlers.import_da.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
-    def test_handle_import_da_fetch_api_error(self, mock_isfile, mock_exists, mock_assert_idle, 
+    def test_handle_import_da_fetch_api_error(self, mock_isfile, mock_exists, 
                                             mock_ensure_compat, mock_print_summary, mock_fetch,
                                             mock_workbench, mock_params):
         """Tests handling of ApiError from fetch_display_save_results."""

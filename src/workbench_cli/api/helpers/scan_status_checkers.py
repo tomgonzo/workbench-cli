@@ -1,6 +1,7 @@
 import logging
 import requests
-from typing import Dict, Any
+import argparse
+from typing import Dict, Any, List
 from ...exceptions import (
     ApiError,
     NetworkError,
@@ -133,79 +134,7 @@ class StatusCheckers:
             logger.warning(f"Error accessing status keys in data: {data}", exc_info=True)
             return "ACCESS_ERROR" # Use the ACCESS_ERROR state
             
-    def ensure_process_can_start(
-        self,
-        process_type: str,
-        scan_code: str,
-        wait_max_tries: int,
-        wait_interval: int
-    ):
-        """
-        Checks if a SCAN or DEPENDENCY_ANALYSIS can be started.
-        If the process is currently QUEUED or RUNNING, it waits for it to finish.
 
-        Args:
-            process_type: Type of process to check (SCAN or DEPENDENCY_ANALYSIS)
-            scan_code: Code of the scan to check
-            wait_max_tries: Max attempts to wait if process is running/queued.
-            wait_interval: Seconds between wait attempts.
-
-        Raises:
-            CompatibilityError: If the process cannot be started due to incompatible state
-            ProcessError: If there are process-related issues
-            ApiError: If there are API issues
-            NetworkError: If there are network issues
-            ScanNotFoundError: If the scan doesn't exist
-        """
-        process_type_upper = process_type.upper()
-        if process_type_upper not in ["SCAN", "DEPENDENCY_ANALYSIS"]:
-             raise ValueError(f"Invalid process_type '{process_type}' provided to ensure_process_can_start.")
-
-        try:
-            scan_status = self.get_scan_status(process_type, scan_code)
-            # Use the standard accessor for consistent status checking
-            current_status = self._standard_scan_status_accessor(scan_status)
-
-            # If queued or running, wait for it to finish first
-            if current_status in ["QUEUED", "RUNNING"]: 
-                print() # Newline before waiting message
-                print(f"Existing {process_type} for '{scan_code}' is {current_status}. Waiting for it to complete...")
-                logger.info(f"Existing {process_type} for '{scan_code}' is {current_status}. Waiting...")
-                try:
-                    self.wait_for_scan_to_finish(process_type, scan_code, wait_max_tries, wait_interval)
-                    print(f"Previous {process_type} for '{scan_code}' finished. Proceeding...")
-                    logger.info(f"Previous {process_type} for '{scan_code}' finished.")
-                    # No need to re-check status, wait_for_scan handles terminal states
-                    return # Allow proceeding
-                except (ProcessTimeoutError, ProcessError) as wait_err:
-                    # If waiting failed, we cannot start the new process
-                    raise ProcessError(f"Could not start {process_type} for '{scan_code}' because waiting for the existing process failed: {wait_err}", details=getattr(wait_err, 'details', None)) from wait_err
-
-            # Allow starting if NEW, FINISHED, FAILED, or CANCELLED
-            allowed_statuses = ["NEW", "FINISHED", "FAILED", "CANCELLED"]
-            if current_status not in allowed_statuses:
-                raise CompatibilityError(
-                    f"Cannot start {process_type.lower()} for '{scan_code}'. Current status is {current_status} (Must be one of {allowed_statuses})."
-                )
-            logger.debug(f"The {process_type} for '{scan_code}' can start (Current status: {current_status}).")
-        except (ApiError, NetworkError, ScanNotFoundError, CompatibilityError):
-            raise
-        except (ProcessError, ProcessTimeoutError):
-            # Re-raise process-related errors without wrapping them
-            raise
-        except Exception as e:
-            raise ProcessError(f"Could not verify if {process_type.lower()} can start for '{scan_code}'", details={"error": str(e)})
-
-    def _get_process_status(self, process_type: str, scan_code: str) -> str:
-        """Helper to get status for a given process type."""
-        
-        if process_type not in self.PROCESS_STATUS_MAP:
-            raise ValueError(f"Invalid process_type '{process_type}' provided to ensure_process_can_start.")
-
-        status_method = self.PROCESS_STATUS_MAP[process_type]
-        status_data = status_method(scan_code)
-        
-        return status_data.get("status", "UNKNOWN")
 
     def get_scan_status(self, scan_type: str, scan_code: str) -> dict:
         """
@@ -225,3 +154,92 @@ class StatusCheckers:
             NotImplementedError: If called on the base class
         """
         raise NotImplementedError("get_scan_status must be implemented by subclasses")
+    
+    def ensure_scan_is_idle(
+        self,
+        scan_code: str,
+        params: argparse.Namespace,
+        process_types_to_check: List[str]
+    ):
+        """
+        Ensures specified background processes for a scan are idle (not RUNNING or QUEUED).
+        If a process is running/queued, waits for it to finish before proceeding.
+        
+        This method can handle multiple process types at once and supports various process types 
+        including SCAN, DEPENDENCY_ANALYSIS, GIT_CLONE, EXTRACT_ARCHIVES, and REPORT_IMPORT.
+        
+        Args:
+            scan_code: Code of the scan to check
+            params: Command line parameters containing retry settings
+            process_types_to_check: List of process types to check (e.g., ["SCAN", "DEPENDENCY_ANALYSIS"])
+        
+        Raises:
+            ProcessError: If there are process-related issues
+            ApiError: If there are API issues
+            NetworkError: If there are network issues
+        """
+        logger.debug(f"Asserting idle status for processes {process_types_to_check} on scan '{scan_code}'...")
+        while True:
+            all_processes_idle_this_pass = True
+            logger.debug("Starting a new pass to check idle status...")
+            for process_type in process_types_to_check:
+                process_type_upper = process_type.upper()
+                logger.debug(f"Checking status for process type: {process_type_upper}")
+                current_status = "UNKNOWN"
+                try:
+                    if process_type_upper == "GIT_CLONE":
+                        current_status = self.check_status_download_content_from_git(scan_code).upper()
+                    elif process_type_upper in ["SCAN", "DEPENDENCY_ANALYSIS", "REPORT_IMPORT"]:
+                        status_data = self.get_scan_status(process_type_upper, scan_code)
+                        current_status = status_data.get("status", "UNKNOWN").upper()
+                    elif process_type_upper == "EXTRACT_ARCHIVES":
+                        # EXTRACT_ARCHIVES status checking is handled differently
+                        # Check if status checking is supported for this process type
+                        if self._is_status_check_supported(scan_code, "EXTRACT_ARCHIVES"):
+                            # Use the specialized method for checking archive extraction status
+                            try:
+                                status_data = self.get_scan_status("EXTRACT_ARCHIVES", scan_code)
+                                current_status = self._standard_scan_status_accessor(status_data)
+                            except (ApiError, ScanNotFoundError) as e:
+                                logger.debug(f"Could not check EXTRACT_ARCHIVES status, assuming finished: {e}")
+                                current_status = "FINISHED"
+                        else:
+                            logger.debug(f"EXTRACT_ARCHIVES status checking not supported. Assuming idle.")
+                            current_status = "FINISHED"
+                    else:
+                        logger.warning(f"Unknown process type '{process_type_upper}' requested for idle check. Skipping.")
+                        continue
+                    logger.debug(f"Current status for {process_type_upper}: {current_status}")
+                except ScanNotFoundError:
+                    logger.debug(f"Scan '{scan_code}' not found during idle check for {process_type_upper}. Assuming idle.")
+                    print(f"  - {process_type_upper}: Not found (considered idle).")
+                    continue
+                except (ApiError, NetworkError) as e:
+                    raise ProcessError(f"Cannot proceed: Failed to check status for {process_type_upper} due to API/Network error: {e}") from e
+                except Exception as e:
+                    raise ProcessError(f"Cannot proceed: Unexpected error checking status for {process_type_upper}: {e}") from e
+
+                if current_status in ["RUNNING", "QUEUED", "NOT FINISHED"]:
+                    all_processes_idle_this_pass = False
+                    print(f"  - {process_type_upper}: Status is {current_status}. Waiting for completion...")
+                    try:
+                        if process_type_upper == "GIT_CLONE":
+                            _, _ = self.wait_for_git_clone(scan_code, params.scan_number_of_tries, params.scan_wait_time)
+                        elif process_type_upper == "EXTRACT_ARCHIVES":
+                            _, _ = self.wait_for_archive_extraction(scan_code, params.scan_number_of_tries, params.scan_wait_time)
+                        else:
+                            _, _ = self.wait_for_scan_to_finish(process_type_upper, scan_code, params.scan_number_of_tries, params.scan_wait_time)
+                        print(f"  - {process_type_upper}: Previous run finished.")
+                        logger.debug(f"Breaking inner loop after waiting for {process_type_upper} to re-check all statuses.")
+                        break
+                    except (ProcessTimeoutError, ProcessError) as wait_err:
+                        raise ProcessError(f"Cannot proceed: Waiting for existing {process_type_upper} failed: {wait_err}") from wait_err
+                    except Exception as wait_exc:
+                        raise ProcessError(f"Cannot proceed: Unexpected error waiting for {process_type_upper}: {wait_exc}") from wait_exc
+                else:
+                    print(f"  - {process_type_upper}: Status is {current_status} (considered idle).")
+            
+            if all_processes_idle_this_pass:
+                logger.debug("All processes confirmed idle in this pass. Exiting check loop.")
+                break
+        print("All Scan processes confirmed idle! Proceeding...")

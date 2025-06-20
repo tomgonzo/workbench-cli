@@ -639,12 +639,13 @@ class ScansAPI(APIBase, ReportHelper):
             NetworkError: If there are network issues
         """
         try:
-            self.ensure_process_can_start(
-                "SCAN",
-                scan_code,
-                wait_max_tries=60, # Use a fixed reasonable default
-                wait_interval=30
+            # Create a minimal params namespace for ensure_scan_is_idle
+            import argparse
+            params_for_idle_check = argparse.Namespace(
+                scan_number_of_tries=60,
+                scan_wait_time=30
             )
+            self.ensure_scan_is_idle(scan_code, params_for_idle_check, ["SCAN"])
         except Exception as e:
             logger.error(f"Pre-scan check failed for '{scan_code}': {e}")
             raise
@@ -727,12 +728,13 @@ class ScansAPI(APIBase, ReportHelper):
             NetworkError: If there are network issues
         """
         try:
-            self.ensure_process_can_start(
-                "DEPENDENCY_ANALYSIS",
-                scan_code,
-                wait_max_tries=60, # Use a fixed reasonable default
-                wait_interval=30
+            # Create a minimal params namespace for ensure_scan_is_idle
+            import argparse
+            params_for_idle_check = argparse.Namespace(
+                scan_number_of_tries=60,
+                scan_wait_time=30
             )
+            self.ensure_scan_is_idle(scan_code, params_for_idle_check, ["DEPENDENCY_ANALYSIS"])
         except Exception as e:
             logger.error(f"Pre-analysis check failed for '{scan_code}': {e}")
             raise

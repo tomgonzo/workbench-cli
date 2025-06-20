@@ -17,7 +17,6 @@ from ..exceptions import (
     FileSystemError,
 )
 from ..utilities.scan_workflows import (
-    ensure_scan_is_idle, 
     wait_for_scan_completion, 
     print_operation_summary,
     fetch_display_save_results,
@@ -135,7 +134,7 @@ def handle_import_sbom(workbench: "WorkbenchAPI", params: argparse.Namespace) ->
 
     # Ensure scan is idle before starting SBOM import
     print("\nEnsuring the Scan is idle before starting SBOM import...")
-    ensure_scan_is_idle(workbench, scan_code, params, ["REPORT_IMPORT"])
+    workbench.ensure_scan_is_idle(scan_code, params, ["REPORT_IMPORT"])
 
     # Upload SBOM file
     print("\n--- Uploading SBOM File ---")

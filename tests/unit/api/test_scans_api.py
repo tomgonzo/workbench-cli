@@ -202,7 +202,7 @@ def test_extract_archives_api_error(mock_send, scans_api_inst):
         scans_api_inst.extract_archives("scan1", True, True)
 
 # --- Tests for run_scan and related methods ---
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_run_scan_basic_success(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "1"}
@@ -229,7 +229,7 @@ def test_run_scan_basic_success(mock_send, mock_ensure, scans_api_inst):
     assert payload['data']['delta_only'] == 0
     assert 'reuse_identification' not in payload['data']
 
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_run_scan_with_run_dependency_analysis(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "1"}
@@ -251,7 +251,7 @@ def test_run_scan_with_run_dependency_analysis(mock_send, mock_ensure, scans_api
     assert payload['data']['scan_code'] == 'scan1'
     assert payload['data']['run_dependency_analysis'] == "1"
 
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_run_scan_with_id_reuse_any(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "1"}
@@ -270,7 +270,7 @@ def test_run_scan_with_id_reuse_any(mock_send, mock_ensure, scans_api_inst):
     assert payload['data']['reuse_identification'] == "1"
     assert payload['data']['identification_reuse_type'] == "any"
 
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_run_scan_with_id_reuse_project(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "1"}
@@ -291,7 +291,7 @@ def test_run_scan_with_id_reuse_project(mock_send, mock_ensure, scans_api_inst):
     assert payload['data']['identification_reuse_type'] == "specific_project"
     assert payload['data']['specific_code'] == "PROJECT_CODE"
 
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_run_scan_with_id_reuse_scan(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "1"}
@@ -312,7 +312,7 @@ def test_run_scan_with_id_reuse_scan(mock_send, mock_ensure, scans_api_inst):
     assert payload['data']['identification_reuse_type'] == "specific_scan"
     assert payload['data']['specific_code'] == "OTHER_SCAN_CODE"
 
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_run_scan_not_found(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "0", "error": "Scan not found"}
@@ -328,7 +328,7 @@ def test_run_scan_not_found(mock_send, mock_ensure, scans_api_inst):
             id_reuse=False
         )
 
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_run_scan_id_reuse_validation_error(mock_send, mock_ensure, scans_api_inst):
     # Configure mock to return success
@@ -359,7 +359,7 @@ def test_run_scan_id_reuse_validation_error(mock_send, mock_ensure, scans_api_in
     assert "specific_code" not in payload["data"], "specific_code should not be in payload when disabled"
 
 # --- Tests for dependency analysis ---
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_start_dependency_analysis_success(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "1"}
@@ -371,7 +371,7 @@ def test_start_dependency_analysis_success(mock_send, mock_ensure, scans_api_ins
     assert payload['data']['scan_code'] == 'scan1'
     assert payload['data']['import_only'] == "0"
 
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_start_dependency_analysis_import_only(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "1"}
@@ -379,7 +379,7 @@ def test_start_dependency_analysis_import_only(mock_send, mock_ensure, scans_api
     payload = mock_send.call_args[0][0]
     assert payload['data']['import_only'] == "1"
 
-@patch.object(ScansAPI, 'ensure_process_can_start')
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
 @patch.object(ScansAPI, '_send_request')
 def test_start_dependency_analysis_scan_not_found(mock_send, mock_ensure, scans_api_inst):
     mock_send.return_value = {"status": "0", "error": "Scan not found"}
@@ -591,16 +591,16 @@ def test_check_scan_report_status_success(mock_send, scans_api_inst):
     assert payload['data']['type'] == 'REPORT_GENERATION'
 
 @patch.object(ScansAPI, '_send_request')
-@patch.object(ScansAPI, 'ensure_process_can_start')
-def test_get_scan_information_failure(mock_ensure_process_can_start, mock_send_request, scans_api_inst):
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
+def test_get_scan_information_failure(mock_ensure_scan_is_idle, mock_send_request, scans_api_inst):
     mock_send_request.return_value = {"status": "0", "error": "Not found"}
     with pytest.raises(ApiError, match="Not found"):
         scans_api_inst.get_scan_information("scan1")
 
 @patch.object(ScansAPI, '_send_request')
-@patch.object(ScansAPI, 'ensure_process_can_start')
-def test_method_pre_check_failure(mock_ensure_process_can_start, mock_send_request, scans_api_inst, caplog):
-    mock_ensure_process_can_start.side_effect = Exception("Pre-check failed")
+@patch.object(ScansAPI, 'ensure_scan_is_idle')
+def test_method_pre_check_failure(mock_ensure_scan_is_idle, mock_send_request, scans_api_inst, caplog):
+    mock_ensure_scan_is_idle.side_effect = Exception("Pre-check failed")
     
     with pytest.raises(Exception, match="Pre-check failed"):
         scans_api_inst.run_scan("scan1", 10, 10, False, False, False, False, False)

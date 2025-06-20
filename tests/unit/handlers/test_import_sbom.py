@@ -25,11 +25,10 @@ class TestImportSBOMHandler:
     @patch('workbench_cli.handlers.import_sbom.fetch_display_save_results')
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
-    def test_handle_import_sbom_success(self, mock_isfile, mock_exists, mock_validate_sbom, mock_assert_idle, mock_ensure_compat, mock_print_summary, mock_fetch, mock_workbench, mock_params):
+    def test_handle_import_sbom_success(self, mock_isfile, mock_exists, mock_validate_sbom, mock_ensure_compat, mock_print_summary, mock_fetch, mock_workbench, mock_params):
         """Tests the successful execution of handle_import_sbom."""
         mock_params.command = 'import-sbom'
         mock_params.project_name = "SBOMProj"
@@ -134,12 +133,11 @@ class TestImportSBOMHandler:
     @patch('workbench_cli.handlers.import_sbom.fetch_display_save_results')
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
     def test_handle_import_sbom_success(self, mock_isfile, mock_exists, mock_validate_sbom, 
-                                       mock_assert_idle, mock_ensure_compat, mock_print_summary, 
+                                       mock_ensure_compat, mock_print_summary, 
                                        mock_fetch, mock_workbench, mock_params):
         """Tests the successful execution of handle_import_sbom."""
         # Configure params
@@ -167,7 +165,7 @@ class TestImportSBOMHandler:
                                                           create_if_missing=True, params=mock_params,
                                                           import_from_report=True)
         mock_ensure_compat.assert_called_once_with(mock_workbench, mock_params, "TEST_SCAN_CODE")
-        mock_assert_idle.assert_called_once_with(mock_workbench, "TEST_SCAN_CODE", mock_params, ["REPORT_IMPORT"])
+        mock_workbench.ensure_scan_is_idle.assert_called_once_with("TEST_SCAN_CODE", mock_params, ["REPORT_IMPORT"])
         mock_workbench.upload_sbom_file.assert_called_once_with(
             scan_code="TEST_SCAN_CODE", path="/path/to/sbom.json"
         )
@@ -276,12 +274,11 @@ class TestImportSBOMHandler:
            side_effect=ApiError("Error fetching results"))
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
     def test_handle_import_sbom_fetch_api_error(self, mock_isfile, mock_exists, mock_validate_sbom,
-                                              mock_assert_idle, mock_ensure_compat, mock_print_summary, 
+                                              mock_ensure_compat, mock_print_summary, 
                                               mock_fetch, mock_workbench, mock_params):
         """Tests handling of ApiError from fetch_display_save_results (should not fail the whole operation)."""
         # Configure params
@@ -311,12 +308,11 @@ class TestImportSBOMHandler:
 
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
     def test_handle_import_sbom_upload_error(self, mock_isfile, mock_exists, mock_validate_sbom,
-                                           mock_assert_idle, mock_ensure_compat, mock_print_summary,
+                                           mock_ensure_compat, mock_print_summary,
                                            mock_workbench, mock_params):
         """Tests handling of upload error."""
         # Configure params
@@ -337,12 +333,11 @@ class TestImportSBOMHandler:
 
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
     def test_handle_import_sbom_import_error(self, mock_isfile, mock_exists, mock_validate_sbom,
-                                           mock_assert_idle, mock_ensure_compat, mock_print_summary,
+                                           mock_ensure_compat, mock_print_summary,
                                            mock_workbench, mock_params):
         """Tests handling of import_report error."""
         # Configure params
@@ -363,12 +358,11 @@ class TestImportSBOMHandler:
 
     @patch('workbench_cli.handlers.import_sbom.print_operation_summary')
     @patch('workbench_cli.handlers.import_sbom.ensure_scan_compatibility')
-    @patch('workbench_cli.handlers.import_sbom.ensure_scan_is_idle')
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
     @patch('os.path.isfile', return_value=True)
     def test_handle_import_sbom_timeout_error(self, mock_isfile, mock_exists, mock_validate_sbom,
-                                            mock_assert_idle, mock_ensure_compat, mock_print_summary,
+                                            mock_ensure_compat, mock_print_summary,
                                             mock_workbench, mock_params):
         """Tests handling of timeout during SBOM import."""
         # Configure params
