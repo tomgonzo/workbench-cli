@@ -26,6 +26,7 @@ from .exceptions import (
 from .handlers import (
     handle_scan,
     handle_import_da,
+    handle_import_sbom,
     handle_show_results,
     handle_evaluate_gates,
     handle_download_reports,
@@ -83,6 +84,7 @@ def main() -> int:
         COMMAND_HANDLERS = {
             "scan": handle_scan,
             "import-da": handle_import_da,
+            "import-sbom": handle_import_sbom,
             "show-results": handle_show_results,
             "evaluate-gates": handle_evaluate_gates,
             "download-reports": handle_download_reports,

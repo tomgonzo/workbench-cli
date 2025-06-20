@@ -61,8 +61,11 @@ def mock_main_dependencies():
                 with patch("workbench_cli.main.handle_import_da") as mock_import:
                     mocks['handle_import_da'] = mock_import
                     
-                    with patch("workbench_cli.main.handle_show_results") as mock_show:
-                        mocks['handle_show_results'] = mock_show
+                    with patch("workbench_cli.main.handle_import_sbom") as mock_import_sbom:
+                        mocks['handle_import_sbom'] = mock_import_sbom
+                        
+                        with patch("workbench_cli.main.handle_show_results") as mock_show:
+                            mocks['handle_show_results'] = mock_show
                         
                         with patch("workbench_cli.main.handle_download_reports") as mock_download:
                             mocks['handle_download_reports'] = mock_download
@@ -106,6 +109,10 @@ class ArgBuilder:
     
     def import_da(self, project='TestProject', scan='TestScan', path='results.json'):
         self.args.extend(['import-da', '--project-name', project, '--scan-name', scan, '--path', path])
+        return self
+    
+    def import_sbom(self, project='TestProject', scan='TestScan', path='bom.json'):
+        self.args.extend(['import-sbom', '--project-name', project, '--scan-name', scan, '--path', path])
         return self
     
     def download_reports(self, scope='scan'):

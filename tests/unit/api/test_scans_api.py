@@ -606,4 +606,35 @@ def test_method_pre_check_failure(mock_ensure_process_can_start, mock_send_reque
         scans_api_inst.run_scan("scan1", 10, 10, False, False, False, False, False)
 
     assert "Pre-scan check failed" in caplog.text
-    mock_send_request.assert_not_called() 
+    mock_send_request.assert_not_called()
+
+# --- Tests for import_report method ---
+@patch.object(ScansAPI, '_send_request')
+def test_import_report_success(mock_send, scans_api_inst):
+    """Test successful SBOM/report import."""
+    mock_send.return_value = {"status": "1", "data": {"message": "Import started successfully"}}
+    
+    result = scans_api_inst.import_report("scan1")
+    
+    assert result is True
+    mock_send.assert_called_once()
+    payload = mock_send.call_args[0][0]
+    assert payload['group'] == 'scans'
+    assert payload['action'] == 'import_report'
+    assert payload['data']['scan_code'] == 'scan1'
+
+@patch.object(ScansAPI, '_send_request')
+def test_import_report_scan_not_found(mock_send, scans_api_inst):
+    """Test import_report with scan not found."""
+    mock_send.return_value = {"status": "0", "error": "Scan not found"}
+    
+    with pytest.raises(ScanNotFoundError, match="Scan 'scan1' not found"):
+        scans_api_inst.import_report("scan1")
+
+@patch.object(ScansAPI, '_send_request')
+def test_import_report_api_error(mock_send, scans_api_inst):
+    """Test import_report with API error."""
+    mock_send.return_value = {"status": "0", "error": "Import failed"}
+    
+    with pytest.raises(ApiError, match="Failed to start report import for scan 'scan1': Import failed"):
+        scans_api_inst.import_report("scan1") 

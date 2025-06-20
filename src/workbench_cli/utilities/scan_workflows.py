@@ -572,6 +572,9 @@ def print_operation_summary(params: argparse.Namespace, da_completed: bool, proj
     elif params.command == 'import-da':
         print(f"  - Method: Dependency Analysis Import")
         print(f"  - Source Path: {getattr(params, 'path', 'N/A')}")
+    elif params.command == 'import-sbom':
+        print(f"  - Method: SBOM Import")
+        print(f"  - Source Path: {getattr(params, 'path', 'N/A')}")
     else:
         print(f"  - Method: Unknown ({params.command})")
 
@@ -602,6 +605,8 @@ def print_operation_summary(params: argparse.Namespace, da_completed: bool, proj
         print(f"  - Dependency Analysis: Yes (Duration: {da_duration_str})")
     elif params.command == 'import-da':
         print(f"  - Dependency Analysis: Imported")
+    elif params.command == 'import-sbom':
+        print(f"  - SBOM Imported: Yes")
     else:
         print(f"  - Dependency Analysis: No")
     

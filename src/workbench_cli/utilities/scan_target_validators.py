@@ -54,6 +54,10 @@ def ensure_scan_compatibility(workbench: 'WorkbenchAPI', params: argparse.Namesp
     # The API puts both branch and tag *values* in the 'git_branch' field
     existing_git_ref_value = existing_scan_info.get("git_branch")
     existing_git_ref_type = existing_scan_info.get("git_ref_type") # Directly get the type ('tag' or 'branch')
+    existing_is_from_report = existing_scan_info.get("is_from_report", "0")  # Default to "0" if not present
+    
+    # Convert string to boolean for easier comparison
+    existing_is_report_scan = existing_is_from_report in ["1", 1, True, "true"]
 
     # --- Read current command info ---
     current_command = params.command
@@ -69,10 +73,14 @@ def ensure_scan_compatibility(workbench: 'WorkbenchAPI', params: argparse.Namesp
 
     # --- Compatibility Checks ---
     if current_command == 'scan':
-        if existing_git_repo:
+        if existing_is_report_scan:
+            error_message = f"Scan '{scan_code}' was created for SBOM import and cannot be reused for code upload via --path."
+        elif existing_git_repo:
             error_message = f"Scan '{scan_code}' was created for Git scanning (Repo: {existing_git_repo}) and cannot be reused for code upload via --path."
     elif current_command == 'scan-git':
-        if not existing_git_repo:
+        if existing_is_report_scan:
+            error_message = f"Scan '{scan_code}' was created for SBOM import and cannot be reused for Git scanning."
+        elif not existing_git_repo:
              error_message = f"Scan '{scan_code}' was created for code upload (using --path) and cannot be reused for Git scanning."
         elif existing_git_repo != current_git_url:
             error_message = (f"Scan '{scan_code}' already exists but is configured for a different Git repository "
@@ -88,8 +96,11 @@ def ensure_scan_compatibility(workbench: 'WorkbenchAPI', params: argparse.Namesp
                               f"but current command specified {current_git_ref_type or 'ref'} '{current_git_ref_value}'. "
                               f"Please use a different --scan-name or use the matching ref.")
     elif current_command == 'import-da':
-        # DA import doesn't care about the original scan type.
-        pass
+        if existing_is_report_scan:
+            error_message = f"Scan '{scan_code}' was created for SBOM import and cannot be reused for dependency analysis import."
+    elif current_command == 'import-sbom':
+        if not existing_is_report_scan:
+            error_message = f"Scan '{scan_code}' was not created for SBOM import and cannot be reused for SBOM import. Only scans created with 'import-sbom' can be reused for SBOM operations."
 
     # --- Error Handling ---
     if error_message:
@@ -106,6 +117,8 @@ def ensure_scan_compatibility(workbench: 'WorkbenchAPI', params: argparse.Namesp
              logger.debug(f"Reusing existing scan '{scan_code}' configured for code upload.")
         elif current_command == 'import-da':
              logger.debug(f"Reusing existing scan '{scan_code}' for DA import.")
+        elif current_command == 'import-sbom':
+             logger.debug(f"Reusing existing scan '{scan_code}' for SBOM import (report scan: {existing_is_report_scan}).")
 
 def validate_reuse_source(workbench: 'WorkbenchAPI', params: argparse.Namespace) -> Tuple[Optional[str], Optional[str]]:
     """

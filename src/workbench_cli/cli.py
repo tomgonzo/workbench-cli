@@ -87,6 +87,10 @@ Example Usage:
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     import-da --project-name MYPROJ --scan-name MYSCAN03 --path ./ort-test-data/analyzer-result.json
 
+  # Import SBOM file
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    import-sbom --project-name MYPROJ --scan-name MYSCAN04 --path ./sbom-data/bom.json
+
   # Show results for an existing scan
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     show-results --project-name MYPROJ --scan-name MYSCAN01 --show-licenses --show-components
@@ -174,6 +178,19 @@ Example Usage:
     import_da_parser.add_argument("--path", help="Path to the 'analyzer-result.json' file to be imported.", type=str, required=True)
     add_common_monitoring_options(import_da_parser)
     add_common_result_options(import_da_parser)
+
+    # --- 'import-sbom' Subcommand ---
+    import_sbom_parser = subparsers.add_parser(
+        'import-sbom',
+        help='Import SBOM (Software Bill of Materials) from a file.',
+        description='Import SBOM data from CycloneDX JSON (v1.4-1.6) or SPDX RDF (v2.0-2.3) files.',
+        formatter_class=RawTextHelpFormatter
+    )
+    import_sbom_parser.add_argument("--project-name", help="Project name to associate the scan with.", type=str, required=True, metavar="NAME")
+    import_sbom_parser.add_argument("--scan-name", help="Scan name to import SBOM into.", type=str, required=True, metavar="NAME")
+    import_sbom_parser.add_argument("--path", help="Path to the SBOM file to be imported (CycloneDX JSON or SPDX RDF).", type=str, required=True)
+    add_common_monitoring_options(import_sbom_parser)
+    add_common_result_options(import_sbom_parser)
 
     # --- 'show-results' Subcommand ---
     show_results_parser = subparsers.add_parser(
@@ -327,6 +344,13 @@ Example Usage:
         # Validate path for import-da
         if not args.path:
             raise ValidationError("Path is required for import-da command")
+        if not os.path.exists(args.path):
+            raise ValidationError(f"Path does not exist: {args.path}")
+    
+    elif args.command == 'import-sbom':
+        # Validate path for import-sbom
+        if not args.path:
+            raise ValidationError("Path is required for import-sbom command")
         if not os.path.exists(args.path):
             raise ValidationError(f"Path does not exist: {args.path}")
     
