@@ -183,12 +183,12 @@ Example Usage:
     import_sbom_parser = subparsers.add_parser(
         'import-sbom',
         help='Import SBOM (Software Bill of Materials) from a file.',
-        description='Import SBOM data from CycloneDX JSON (v1.4-1.6) or SPDX RDF (v2.0-2.3) files.',
+        description='Import SBOM data from CycloneDX JSON (v1.4-1.6) or SPDX (v2.0-2.3) in JSON/RDF/XML formats. SPDX JSON files are automatically converted to RDF format for compatibility.',
         formatter_class=RawTextHelpFormatter
     )
     import_sbom_parser.add_argument("--project-name", help="Project name to associate the scan with.", type=str, required=True, metavar="NAME")
     import_sbom_parser.add_argument("--scan-name", help="Scan name to import SBOM into.", type=str, required=True, metavar="NAME")
-    import_sbom_parser.add_argument("--path", help="Path to the SBOM file to be imported (CycloneDX JSON or SPDX RDF).", type=str, required=True)
+    import_sbom_parser.add_argument("--path", help="Path to the SBOM file to be imported (supports CycloneDX JSON and SPDX JSON/RDF/XML formats).", type=str, required=True)
     add_common_monitoring_options(import_sbom_parser)
     add_common_result_options(import_sbom_parser)
 
