@@ -366,7 +366,7 @@ def handle_evaluate_gates(workbench: "WorkbenchAPI", params: "argparse.Namespace
     print("\nEnsuring scans finished before evaluating gates...")
     try:
         workbench.ensure_scan_is_idle(scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS"])
-        print("Scan processes are ready. Proceeding with gate evaluation...")
+        print("Verified all Scan processes are idle. Proceeding with gate evaluation...")
     except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
         print(f"\n❌ Gate Evaluation Failed: Could not verify scan completion: {e}")
         return False
