@@ -26,6 +26,7 @@ from .exceptions import (
 from .handlers import (
     handle_scan,
     handle_import_da,
+    handle_import_sbom,
     handle_show_results,
     handle_evaluate_gates,
     handle_download_reports,
@@ -58,7 +59,7 @@ def main() -> int:
         console_handler = logging.StreamHandler(sys.stdout)
         console_formatter = logging.Formatter('%(levelname)s: %(message)s') # Simpler format for console
         console_handler.setFormatter(console_formatter)
-        console_handler.setLevel(logging.INFO if log_level <= logging.INFO else log_level)
+        console_handler.setLevel(log_level)  # Use the same level as configured by user
         logging.getLogger().addHandler(console_handler)
 
         logger = logging.getLogger("workbench-cli")
@@ -83,6 +84,7 @@ def main() -> int:
         COMMAND_HANDLERS = {
             "scan": handle_scan,
             "import-da": handle_import_da,
+            "import-sbom": handle_import_sbom,
             "show-results": handle_show_results,
             "evaluate-gates": handle_evaluate_gates,
             "download-reports": handle_download_reports,

@@ -234,4 +234,4 @@ def handler_error_wrapper(handler_func: Callable) -> Callable:
             # Raise the wrapped error for proper exit code handling
             raise cli_error
             
-    return wrapper 
+    return wrapper

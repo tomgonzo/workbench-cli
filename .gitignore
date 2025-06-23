@@ -95,6 +95,7 @@ results.json
 
 # Optional: Test data if not intended to be part of the repo
 da-analyzer-results
+sbom-test-data
 
 # Optional: User-specific test scripts if not shared
 test-commands.txt

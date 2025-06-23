@@ -47,7 +47,7 @@ class TestScanIntegration:
                     return_value=({"status": "FINISHED", "is_finished": "1"}, 10.0))
         
         # Mock status checkers with correct class name
-        mocker.patch('workbench_cli.api.helpers.scan_status_checkers.StatusCheckers.ensure_process_can_start', 
+        mocker.patch('workbench_cli.api.helpers.scan_status_checkers.StatusCheckers.ensure_scan_is_idle', 
                     return_value=None)
         
         # File system operations
@@ -98,7 +98,7 @@ class TestScanIntegration:
                     return_value=({"status": "FINISHED", "is_finished": "1"}, 10.0))
         
         # Mock status checkers
-        mocker.patch('workbench_cli.api.helpers.scan_status_checkers.StatusCheckers.ensure_process_can_start', 
+        mocker.patch('workbench_cli.api.helpers.scan_status_checkers.StatusCheckers.ensure_scan_is_idle', 
                     return_value=None)
         
         # File system operations
@@ -152,7 +152,7 @@ class TestScanIntegration:
                     return_value=({"status": "FINISHED", "is_finished": "1"}, 10.0))
         
         # Mock status checkers
-        mocker.patch('workbench_cli.api.helpers.scan_status_checkers.StatusCheckers.ensure_process_can_start', 
+        mocker.patch('workbench_cli.api.helpers.scan_status_checkers.StatusCheckers.ensure_scan_is_idle', 
                     return_value=None)
         
         # File system operations

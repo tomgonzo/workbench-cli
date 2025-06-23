@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch, call
 
 # Import handler and dependencies
 from workbench_cli.handlers.evaluate_gates import handle_evaluate_gates
+from workbench_cli.api import WorkbenchAPI
 from workbench_cli.exceptions import (
     WorkbenchCLIError,
     ApiError, 
@@ -19,8 +20,7 @@ from workbench_cli.exceptions import (
 class TestEvaluateGatesHandler:
     """Test cases for the evaluate-gates handler."""
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_pass(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_pass(self, mock_workbench, mock_params):
         """Test passing gate check with all conditions in good state."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "ProjB"
@@ -33,7 +33,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PROJ_B_CODE"
         mock_workbench.resolve_scan.return_value = ("SCAN_CLEAN_CODE", 456)
-        mock_wait.return_value = (True, True, {})  # scan and DA completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan and DA completed successfully successfully
         mock_workbench.get_pending_files.return_value = {}
         mock_workbench.get_policy_warnings_counter.return_value = {
             "policy_warnings_total": 0, 
@@ -46,8 +46,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is True  # Should return True for PASS
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_fail_pending(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_fail_pending(self, mock_workbench, mock_params):
         """Test failing gate check due to pending files."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -60,7 +59,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {"1": "/file/a"}
         mock_workbench.get_policy_warnings_counter.return_value = {
             "policy_warnings_total": 0,
@@ -73,8 +72,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is False  # Should FAIL because of pending files
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_fail_policy(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_fail_policy(self, mock_workbench, mock_params):
         """Test failing gate check due to policy violations."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -87,7 +85,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {}
         mock_workbench.get_policy_warnings_counter.return_value = {
             "policy_warnings_total": 5, 
@@ -100,8 +98,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is False  # Should FAIL because of policy violations
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_fail_vulnerabilities(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_fail_vulnerabilities(self, mock_workbench, mock_params):
         """Test failing gate check due to vulnerabilities."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -114,7 +111,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {}
         mock_workbench.get_policy_warnings_counter.return_value = {
             "policy_warnings_total": 0,
@@ -130,8 +127,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is False  # Should FAIL because of high severity vulnerabilities
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_pass_low_vulnerabilities(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_pass_low_vulnerabilities(self, mock_workbench, mock_params):
         """Test passing gate check with only low severity vulnerabilities."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -144,7 +140,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {}
         mock_workbench.get_policy_warnings_counter.return_value = {
             "policy_warnings_total": 0,
@@ -160,8 +156,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is True  # Should PASS with only medium/low vulnerabilities
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_warn_vulnerabilities_no_fail_flag(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_warn_vulnerabilities_no_fail_flag(self, mock_workbench, mock_params):
         """Test gate passes with vulnerabilities when no fail flag is set."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -174,7 +169,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {}
         mock_workbench.get_policy_warnings_counter.return_value = {
             "policy_warnings_total": 0,
@@ -190,8 +185,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is True  # Should PASS despite vulnerabilities when no fail flag
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_scan_not_completed(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_scan_not_completed(self, mock_workbench, mock_params):
         """Test gate fails when scan has not completed."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -203,14 +197,13 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (False, False, {})  # scan NOT completed
+        mock_workbench.ensure_scan_is_idle.side_effect = ProcessTimeoutError("Scan not completed")  # scan NOT completed
 
         # Run handler
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is False  # Should FAIL when scan not completed
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_api_error_pending(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_api_error_pending(self, mock_workbench, mock_params):
         """Test handling of ApiError from get_pending_files."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -223,7 +216,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.side_effect = ApiError("API Error")
         mock_workbench.get_policy_warnings_counter.return_value = {
             "policy_warnings_total": 0,
@@ -236,8 +229,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is False  # Should FAIL due to API error when fail_on_pending is True
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_api_error_policy(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_api_error_policy(self, mock_workbench, mock_params):
         """Test handling of ApiError from get_policy_warnings_counter."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -250,7 +242,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {}
         mock_workbench.get_policy_warnings_counter.side_effect = ApiError("Policy API Error")
         mock_workbench.list_vulnerabilities.return_value = []
@@ -259,8 +251,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is False  # Should FAIL due to API error when fail_on_policy is True
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_api_error_vulnerabilities(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_api_error_vulnerabilities(self, mock_workbench, mock_params):
         """Test handling of ApiError from list_vulnerabilities."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -273,7 +264,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {}
         mock_workbench.get_policy_warnings_counter.return_value = {
             "policy_warnings_total": 0,
@@ -308,8 +299,7 @@ class TestEvaluateGatesHandler:
         with pytest.raises(ScanNotFoundError):
             handle_evaluate_gates(mock_workbench, mock_params)
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_show_pending_files(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_show_pending_files(self, mock_workbench, mock_params):
         """Test showing pending files when requested."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -322,7 +312,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {
             "1": "/file/a.py",
             "2": "/file/b.py",
@@ -339,8 +329,7 @@ class TestEvaluateGatesHandler:
         result = handle_evaluate_gates(mock_workbench, mock_params)
         assert result is True  # Should PASS when not failing on pending files
 
-    @patch('workbench_cli.handlers.evaluate_gates.wait_for_scan_completion')
-    def test_handle_evaluate_gates_policy_data_format_nested(self, mock_wait, mock_workbench, mock_params):
+    def test_handle_evaluate_gates_policy_data_format_nested(self, mock_workbench, mock_params):
         """Test handling of nested policy data format."""
         mock_params.command = 'evaluate-gates'
         mock_params.project_name = "P"
@@ -353,7 +342,7 @@ class TestEvaluateGatesHandler:
         # Setup mocks
         mock_workbench.resolve_project.return_value = "PC"
         mock_workbench.resolve_scan.return_value = ("SC", 1)
-        mock_wait.return_value = (True, True, {})  # scan completed
+        mock_workbench.ensure_scan_is_idle.return_value = None  # scan completed successfully
         mock_workbench.get_pending_files.return_value = {}
         # Test nested data format
         mock_workbench.get_policy_warnings_counter.return_value = {

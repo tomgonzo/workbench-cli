@@ -166,7 +166,7 @@ def test_scan_fail_during_scan(mock_open, mock_getsize, mock_isdir, mock_exists,
         {"json_data": {"status": "1", "data": []}},
         # 4. create_webapp_scan call
         {"json_data": {"status": "1", "data": {"scan_id": "123"}}},
-        # 5. _assert_scan_is_idle -> get_scan_status (check scan status before starting)
+        # 5. _ensure_scan_is_idle -> get_scan_status (check scan status before starting)
         {"json_data": {"status": "1", "data": {"status": "NEW"}}},
         # 6. upload_files
         {"status_code": 200, "json_data": {"status": "1"}},

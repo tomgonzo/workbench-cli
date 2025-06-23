@@ -56,9 +56,21 @@ class TestMainFunctionSuccess:
         assert result == 0
         mock_main_dependencies['handle_import_da'].assert_called_once()
     
+    def test_main_success_with_import_sbom_handler(self, mock_main_dependencies):
+        """Test successful main() execution with import-sbom handler."""
+        mock_args = MagicMock(command="import-sbom", log="INFO")
+        mock_main_dependencies['handle_import_sbom'].return_value = True
+        
+        with patch("workbench_cli.main.parse_cmdline_args", return_value=mock_args):
+            result = main()
+        
+        assert result == 0
+        mock_main_dependencies['handle_import_sbom'].assert_called_once()
+    
     def test_main_success_with_show_results_handler(self, mock_main_dependencies):
         """Test successful main() execution with show-results handler."""
         mock_args = MagicMock(command="show-results", log="INFO")
+        mock_args.path_result = None  # Don't trigger save functionality
         mock_main_dependencies['handle_show_results'].return_value = True
         
         with patch("workbench_cli.main.parse_cmdline_args", return_value=mock_args):

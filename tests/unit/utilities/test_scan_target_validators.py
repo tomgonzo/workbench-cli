@@ -207,4 +207,68 @@ def test_validate_reuse_source_missing_source_scan(mock_workbench, mock_params):
     mock_params.id_reuse_type = "scan"
     mock_params.id_reuse_source = None
     with pytest.raises(ConfigurationError, match="Missing scan name"):
-        validate_reuse_source(mock_workbench, mock_params) 
+        validate_reuse_source(mock_workbench, mock_params)
+
+# --- Tests for import-sbom compatibility ---
+def test_ensure_scan_compatibility_import_sbom_with_report_scan_compatible(mock_workbench, mock_params):
+    """Test that import-sbom can reuse SBOM import scans."""
+    mock_params.command = 'import-sbom'
+    mock_workbench.get_scan_information.return_value = {
+        "is_from_report": "1"
+    }
+    
+    ensure_scan_compatibility(mock_workbench, mock_params, "test_scan_code")
+
+def test_ensure_scan_compatibility_import_sbom_with_code_scan_incompatible(mock_workbench, mock_params):
+    """Test that import-sbom cannot reuse code upload scans."""
+    mock_params.command = 'import-sbom'
+    mock_workbench.get_scan_information.return_value = {
+        "is_from_report": "0",
+        "git_repo_url": None
+    }
+    
+    with pytest.raises(CompatibilityError, match="was not created for SBOM import and cannot be reused for SBOM import"):
+        ensure_scan_compatibility(mock_workbench, mock_params, "test_scan_code")
+
+def test_ensure_scan_compatibility_import_sbom_with_git_scan_incompatible(mock_workbench, mock_params):
+    """Test that import-sbom cannot reuse git scans."""
+    mock_params.command = 'import-sbom'
+    mock_workbench.get_scan_information.return_value = {
+        "is_from_report": "0",
+        "git_repo_url": "https://github.com/test/repo.git"
+    }
+    
+    with pytest.raises(CompatibilityError, match="was not created for SBOM import and cannot be reused for SBOM import"):
+        ensure_scan_compatibility(mock_workbench, mock_params, "test_scan_code")
+
+def test_ensure_scan_compatibility_scan_with_report_scan_incompatible(mock_workbench, mock_params):
+    """Test that scan command cannot reuse SBOM import scans."""
+    mock_params.command = 'scan'
+    mock_workbench.get_scan_information.return_value = {
+        "is_from_report": "1"
+    }
+    
+    with pytest.raises(CompatibilityError, match="was created for SBOM import and cannot be reused for code upload"):
+        ensure_scan_compatibility(mock_workbench, mock_params, "test_scan_code")
+
+def test_ensure_scan_compatibility_scan_git_with_report_scan_incompatible(mock_workbench, mock_params):
+    """Test that scan-git command cannot reuse SBOM import scans."""
+    mock_params.command = 'scan-git'
+    mock_params.git_url = "https://github.com/test/repo.git"
+    mock_params.git_branch = "main"
+    mock_workbench.get_scan_information.return_value = {
+        "is_from_report": "1"
+    }
+    
+    with pytest.raises(CompatibilityError, match="was created for SBOM import and cannot be reused for Git scanning"):
+        ensure_scan_compatibility(mock_workbench, mock_params, "test_scan_code")
+
+def test_ensure_scan_compatibility_import_da_with_report_scan_incompatible(mock_workbench, mock_params):
+    """Test that import-da cannot reuse SBOM import scans."""
+    mock_params.command = 'import-da'
+    mock_workbench.get_scan_information.return_value = {
+        "is_from_report": "1"
+    }
+    
+    with pytest.raises(CompatibilityError, match="was created for SBOM import and cannot be reused for dependency analysis import"):
+        ensure_scan_compatibility(mock_workbench, mock_params, "test_scan_code") 

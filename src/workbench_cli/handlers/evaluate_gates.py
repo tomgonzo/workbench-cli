@@ -14,7 +14,7 @@ from ..exceptions import (
     ProcessTimeoutError,
     ValidationError
 )
-from ..utilities.scan_workflows import wait_for_scan_completion, get_workbench_links
+from ..utilities.scan_workflows import get_workbench_links
 
 # Get logger from the handlers package
 from . import logger
@@ -362,12 +362,13 @@ def handle_evaluate_gates(workbench: "WorkbenchAPI", params: "argparse.Namespace
         params=params
     )
     
-    # Wait for scan and dependency analysis to complete
-    print("\nVerifying scan completion...")
-    scan_completed, da_completed, _ = wait_for_scan_completion(workbench, params, scan_code)
-    
-    if not scan_completed:
-        print("\n❌ Gate Evaluation Failed: KB Scan has not completed successfully.")
+    # Ensure scan processes are idle before evaluating gates
+    print("\nEnsuring scans finished before evaluating gates...")
+    try:
+        workbench.ensure_scan_is_idle(scan_code, params, ["SCAN", "DEPENDENCY_ANALYSIS"])
+        print("Verified all Scan processes are idle. Proceeding with gate evaluation...")
+    except (ProcessTimeoutError, ProcessError, ApiError, NetworkError) as e:
+        print(f"\n❌ Gate Evaluation Failed: Could not verify scan completion: {e}")
         return False
     
     # Generate all Workbench links once for use throughout the handler

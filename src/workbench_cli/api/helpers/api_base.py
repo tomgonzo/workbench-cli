@@ -183,5 +183,9 @@ class APIBase(ProcessWaiters, StatusCheckers):
             logger.error("API request timed out: %s", e, exc_info=True)
             raise NetworkError("Request to API server timed out", details={"error": str(e)})
         except requests.exceptions.RequestException as e:
+            # Handle network-level errors (e.g., DNS failure, refused connection)
+            raise NetworkError(f"Network error while calling API: {e}") from e
+
+        except requests.exceptions.RequestException as e:
             logger.error("API request failed: %s", e, exc_info=True)
             raise NetworkError(f"API request failed: {str(e)}", details={"error": str(e)}) 

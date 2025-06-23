@@ -17,7 +17,6 @@ from ..exceptions import (
     FileSystemError,
 )
 from ..utilities.scan_workflows import (
-    assert_scan_is_idle, 
     wait_for_scan_completion, 
     print_operation_summary,
     fetch_display_save_results
@@ -81,9 +80,9 @@ def handle_import_da(workbench: "WorkbenchAPI", params: argparse.Namespace) -> b
     # Ensure scan is compatible with the current operation
     ensure_scan_compatibility(workbench, params, scan_code)
 
-    # Assert scan is idle before starting dependency analysis import
+    # Ensure scan is idle before starting dependency analysis import
     print("\nEnsuring the Scan is idle before starting dependency analysis import...")
-    assert_scan_is_idle(workbench, scan_code, params, ["DEPENDENCY_ANALYSIS"])
+    workbench.ensure_scan_is_idle(scan_code, params, ["DEPENDENCY_ANALYSIS"])
 
     # Upload dependency analysis file
     print("\n--- Uploading Dependency Analysis File ---")
@@ -96,20 +95,7 @@ def handle_import_da(workbench: "WorkbenchAPI", params: argparse.Namespace) -> b
 
     # Start dependency analysis import
     print("\n--- Starting Dependency Analysis Import ---")
-    
-    # Verify DA import can start - CRITICAL: Match old implementation  
-    print("Verifying Dependency Analysis can start...")
-    try:
-        workbench.ensure_process_can_start(
-            "DEPENDENCY_ANALYSIS",
-            scan_code,
-            wait_max_tries=params.scan_number_of_tries,
-            wait_interval=params.scan_wait_time
-        )
-    except Exception as e:
-        logger.error(f"Cannot start dependency analysis import for '{scan_code}': {e}", exc_info=True)
-        raise WorkbenchCLIError(f"Cannot start dependency analysis import: {e}", details={"error": str(e)}) from e
-        
+            
     try:
         workbench.start_dependency_analysis(scan_code=scan_code, import_only=True)
         print("Dependency analysis import initiated successfully.")

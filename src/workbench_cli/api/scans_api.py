@@ -341,7 +341,8 @@ class ScansAPI(APIBase, ReportHelper):
         git_branch: Optional[str] = None,
         git_tag: Optional[str] = None,
         git_commit: Optional[str] = None,
-        git_depth: Optional[int] = None
+        git_depth: Optional[int] = None,
+        import_from_report: bool = False
     ) -> bool:
         """
         Creates a new webapp scan inside a project, handling Git parameters as needed.
@@ -354,6 +355,7 @@ class ScansAPI(APIBase, ReportHelper):
             git_tag: Optional tag name (if git_url is provided, alternative to branch).
             git_commit: Optional commit hash (if git_url is provided, alternative to branch or tag).
             git_depth: Optional git clone depth (if git_url is provided).
+            import_from_report: Whether to import the scan from an existing report
             
         Returns:
             True if the scan was successfully created, raises exception otherwise.
@@ -369,6 +371,11 @@ class ScansAPI(APIBase, ReportHelper):
             "scan_name": scan_name,
             "project_code": project_code,
         }
+        
+        # Add import_from_report parameter if specified
+        if import_from_report:
+            payload_data["import_from_report"] = "1"
+            logger.debug("  Setting scan for report import mode")
         
         # --- Correct Git Parameter Handling ---
         git_ref_value = None
@@ -632,12 +639,13 @@ class ScansAPI(APIBase, ReportHelper):
             NetworkError: If there are network issues
         """
         try:
-            self.ensure_process_can_start(
-                "SCAN",
-                scan_code,
-                wait_max_tries=60, # Use a fixed reasonable default
-                wait_interval=30
+            # Create a minimal params namespace for ensure_scan_is_idle
+            import argparse
+            params_for_idle_check = argparse.Namespace(
+                scan_number_of_tries=60,
+                scan_wait_time=30
             )
+            self.ensure_scan_is_idle(scan_code, params_for_idle_check, ["SCAN"])
         except Exception as e:
             logger.error(f"Pre-scan check failed for '{scan_code}': {e}")
             raise
@@ -720,12 +728,13 @@ class ScansAPI(APIBase, ReportHelper):
             NetworkError: If there are network issues
         """
         try:
-            self.ensure_process_can_start(
-                "DEPENDENCY_ANALYSIS",
-                scan_code,
-                wait_max_tries=60, # Use a fixed reasonable default
-                wait_interval=30
+            # Create a minimal params namespace for ensure_scan_is_idle
+            import argparse
+            params_for_idle_check = argparse.Namespace(
+                scan_number_of_tries=60,
+                scan_wait_time=30
             )
+            self.ensure_scan_is_idle(scan_code, params_for_idle_check, ["DEPENDENCY_ANALYSIS"])
         except Exception as e:
             logger.error(f"Pre-analysis check failed for '{scan_code}': {e}")
             raise
@@ -836,3 +845,31 @@ class ScansAPI(APIBase, ReportHelper):
         else:
             error_msg = response.get("error", f"Unexpected response: {response}")
             raise ApiError(f"Failed to check report status for process {process_id} (scan '{scan_code}'): {error_msg}", details=response)
+
+    def import_report(self, scan_code: str):
+        """
+        Imports an SBOM report into a scan.
+
+        Args:
+            scan_code: Code of the scan to import the report into
+
+        Raises:
+            ApiError: If there are API issues
+            ScanNotFoundError: If the scan doesn't exist
+            NetworkError: If there are network issues
+        """
+        logger.info(f"Starting SBOM report import for '{scan_code}'...")
+        payload = {
+            "group": "scans",
+            "action": "import_report",
+            "data": {
+                "scan_code": scan_code
+            },
+        }
+        response = self._send_request(payload)
+        if response.get("status") != "1":
+            error_msg = response.get("error", "Unknown API error")
+            if "Scan not found" in error_msg or "row_not_found" in error_msg:
+                raise ScanNotFoundError(f"Scan '{scan_code}' not found")
+            raise ApiError(f"Failed to start SBOM report import for '{scan_code}': {error_msg}", details=response)
+        logger.info(f"SBOM report import for '{scan_code}' started successfully.")

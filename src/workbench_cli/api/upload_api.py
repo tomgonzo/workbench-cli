@@ -8,7 +8,8 @@ from ..utilities.prep_upload_archive import UploadArchivePrep
 from ..exceptions import (
     NetworkError,
     FileSystemError,
-    WorkbenchCLIError
+    WorkbenchCLIError,
+    ApiError
 )
 
 # Assume logger is configured in main.py
@@ -53,6 +54,13 @@ class UploadAPI(UploadHelper):
             
             self._perform_upload(upload_path, headers)
 
+        except (ApiError, NetworkError) as e:
+            # Re-raise known exceptions
+            raise
+        except Exception as e:
+            # Wrap unexpected exceptions
+            raise WorkbenchCLIError(f"An unexpected error occurred during the upload process: {e}") from e
+
         finally:
             if archive_path and os.path.exists(archive_path):
                 os.remove(archive_path)
@@ -82,5 +90,26 @@ class UploadAPI(UploadHelper):
         }
 
         self._perform_upload(path, headers)
-    
 
+    def upload_sbom_file(self, scan_code: str, path: str):
+        """
+        Uploads an SBOM file to a scan.
+
+        Args:
+            scan_code: Code of the scan to upload to
+            path: Path to the SBOM file to upload
+        """
+        if not os.path.exists(path) or not os.path.isfile(path):
+            raise FileSystemError(f"SBOM file does not exist: {path}")
+
+        upload_basename = os.path.basename(path)
+        name_b64 = base64.b64encode(upload_basename.encode()).decode("utf-8")
+        scan_code_b64 = base64.b64encode(scan_code.encode()).decode("utf-8")
+            
+        headers = {
+            "FOSSID-SCAN-CODE": scan_code_b64,
+            "FOSSID-FILE-NAME": name_b64,
+            "Accept": "*/*"
+        }
+
+        self._perform_upload(path, headers)
