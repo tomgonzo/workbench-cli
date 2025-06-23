@@ -51,24 +51,16 @@ class SBOMValidator:
         logger.debug(f"Validating SBOM file: {file_path}")
         
         # Detect format by content, not extension
-        try:
-            sbom_format = SBOMValidator._detect_sbom_format(file_path)
-            logger.debug(f"Detected SBOM format: {sbom_format}")
-            
-            if sbom_format == "cyclonedx":
-                format_name, version, metadata, parsed_document = SBOMValidator._validate_cyclonedx(file_path)
-            elif sbom_format == "spdx":
-                format_name, version, metadata, parsed_document = SBOMValidator._validate_spdx(file_path)
-            else:
-                raise ValidationError(f"Unable to determine SBOM format for file: {file_path}")
-            
-            return format_name, version, metadata, parsed_document
-            
-        except Exception as e:
-            if isinstance(e, (ValidationError, FileSystemError)):
-                raise
-            logger.error(f"Error validating SBOM file '{file_path}': {e}", exc_info=True)
-            raise ValidationError(f"Failed to validate SBOM file: {e}") from e
+        sbom_format = SBOMValidator._detect_sbom_format(file_path)
+        logger.debug(f"Detected SBOM format: {sbom_format}")
+        
+        if sbom_format == "cyclonedx":
+            return SBOMValidator._validate_cyclonedx(file_path)
+        elif sbom_format == "spdx":
+            return SBOMValidator._validate_spdx(file_path)
+        
+        # This case is defensive, as _detect_sbom_format should have already raised an error
+        raise ValidationError(f"Unable to determine SBOM format for file: {file_path}")
     
     @staticmethod
     def prepare_sbom_for_upload(file_path: str, sbom_format: str, parsed_document: Any) -> str:

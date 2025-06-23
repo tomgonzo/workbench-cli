@@ -77,17 +77,9 @@ class TestValidationRules:
     def test_import_da_non_existent_path(self, args, arg_parser):
         """Test validation when import-da path doesn't exist."""
         with patch('os.path.exists', return_value=False):
-            cmd_args = args().import_da(path='/non/existent/file.json').build()
-            
-            with pytest.raises(ValidationError, match=re.escape("Path does not exist: /non/existent/file.json")):
-                arg_parser(cmd_args)
+            cmd_args = args().import_da(path='/non/existent/analyzer.json').build()
     
-    def test_import_sbom_non_existent_path(self, args, arg_parser):
-        """Test validation when import-sbom path doesn't exist."""
-        with patch('os.path.exists', return_value=False):
-            cmd_args = args().import_sbom(path='/non/existent/sbom.json').build()
-            
-            with pytest.raises(ValidationError, match=re.escape("Path does not exist: /non/existent/sbom.json")):
+            with pytest.raises(ValidationError, match=re.escape("Path does not exist: /non/existent/analyzer.json")):
                 arg_parser(cmd_args)
 
 

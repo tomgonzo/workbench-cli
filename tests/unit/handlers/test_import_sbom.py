@@ -68,7 +68,16 @@ class TestImportSBOMHandler:
         mock_fetch.assert_called_once()
         mock_print_summary.assert_called_once()
 
+    @patch('os.path.exists', return_value=False)
+    def test_handle_import_sbom_path_not_exists(self, mock_exists, mock_workbench, mock_params):
+        """Tests file system error when path doesn't exist."""
+        # Configure params
+        mock_params.command = 'import-sbom'
+        mock_params.path = "/nonexistent/path"
 
+        # Execute and verify exception
+        with pytest.raises(FileSystemError, match="does not exist"):
+            handle_import_sbom(mock_workbench, mock_params)
 
     @patch('workbench_cli.handlers.import_sbom._validate_sbom_file')
     @patch('os.path.exists', return_value=True)
@@ -113,16 +122,6 @@ class TestImportSBOMHandler:
         with pytest.raises(ProjectNotFoundError):
             handle_import_sbom(mock_workbench, mock_params)
 
-    def test_handle_import_sbom_no_path(self, mock_workbench, mock_params):
-        """Tests validation error when no path is provided."""
-        # Configure params
-        mock_params.command = 'import-sbom'
-        mock_params.path = None
-
-        # Execute and verify exception
-        with pytest.raises(ValidationError, match="A path must be provided for the import-sbom command"):
-            handle_import_sbom(mock_workbench, mock_params)
-
     @patch('os.path.exists', return_value=False)
     def test_handle_import_sbom_path_not_exists(self, mock_exists, mock_workbench, mock_params):
         """Tests file system error when path doesn't exist."""
@@ -157,9 +156,9 @@ class TestImportSBOMHandler:
         # Configure params
         mock_params.command = 'import-sbom'
         mock_params.path = "/path/to/invalid.json"
-
+    
         # Execute and verify exception
-        with pytest.raises(ValidationError, match="SBOM validation failed"):
+        with pytest.raises(ValidationError, match="Invalid SBOM format"):
             handle_import_sbom(mock_workbench, mock_params)
 
     @patch('workbench_cli.handlers.import_sbom.fetch_display_save_results', 

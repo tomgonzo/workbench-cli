@@ -347,13 +347,6 @@ Example Usage:
         if not os.path.exists(args.path):
             raise ValidationError(f"Path does not exist: {args.path}")
     
-    elif args.command == 'import-sbom':
-        # Validate path for import-sbom
-        if not args.path:
-            raise ValidationError("Path is required for import-sbom command")
-        if not os.path.exists(args.path):
-            raise ValidationError(f"Path does not exist: {args.path}")
-    
     elif args.command == 'download-reports':
         # Validate project name for project scope
         if args.report_scope == 'project' and not args.project_name:

@@ -17,7 +17,6 @@ from ..exceptions import (
     FileSystemError,
 )
 from ..utilities.scan_workflows import (
-    wait_for_scan_completion, 
     print_operation_summary,
     fetch_display_save_results,
     get_workbench_links
@@ -99,6 +98,20 @@ def _get_project_and_scan_codes(workbench: "WorkbenchAPI", params: argparse.Name
     )
     return project_code, scan_code
 
+def _print_validation_summary(sbom_format: str, version: str, metadata: Dict):
+    """Prints a summary of the SBOM validation results."""
+    print(f"SBOM validation successful:")
+    print(f"  Format: {sbom_format.upper()}")
+    print(f"  Version: {version}")
+    if sbom_format == "cyclonedx":
+        print(f"  Components: {metadata.get('components_count', 'Unknown')}")
+        if metadata.get('serial_number'):
+            print(f"  Serial Number: {metadata['serial_number']}")
+    elif sbom_format == "spdx":
+        print(f"  Document Name: {metadata.get('name', 'Unknown')}")
+        print(f"  Packages: {metadata.get('packages_count', 'Unknown')}")
+        print(f"  Files: {metadata.get('files_count', 'Unknown')}")
+
 @handler_error_wrapper
 def handle_import_sbom(workbench: "WorkbenchAPI", params: argparse.Namespace) -> bool:
     """
@@ -123,48 +136,19 @@ def handle_import_sbom(workbench: "WorkbenchAPI", params: argparse.Namespace) ->
     temp_file_created = False
     
     try:
-        # Validate scan parameters - CRITICAL: Match import-da implementation
-        if not params.path:
-            raise ValidationError("A path must be provided for the import-sbom command.")
-        if not os.path.exists(params.path):
-            raise FileSystemError(f"The provided path does not exist: {params.path}")
-        if not os.path.isfile(params.path):
-            raise ValidationError(f"The provided path must be a file: {params.path}")
-        
         # Validate SBOM file FIRST - before any project/scan creation
         print("\n--- Validating SBOM File ---")
-        try:
-            sbom_format, version, metadata, parsed_document = _validate_sbom_file(params.path)
-            
-            print(f"SBOM validation successful:")
-            print(f"  Format: {sbom_format.upper()}")
-            print(f"  Version: {version}")
-            if sbom_format == "cyclonedx":
-                print(f"  Components: {metadata.get('components_count', 'Unknown')}")
-                if metadata.get('serial_number'):
-                    print(f"  Serial Number: {metadata['serial_number']}")
-            elif sbom_format == "spdx":
-                print(f"  Document Name: {metadata.get('name', 'Unknown')}")
-                print(f"  Packages: {metadata.get('packages_count', 'Unknown')}")
-                print(f"  Files: {metadata.get('files_count', 'Unknown')}")
-                
-        except Exception as e:
-            logger.error(f"SBOM validation failed: {e}")
-            raise ValidationError(f"SBOM validation failed: {e}") from e
+        sbom_format, version, metadata, parsed_document = _validate_sbom_file(params.path)
+        _print_validation_summary(sbom_format, version, metadata)
         
         # Prepare SBOM file for upload (convert if needed)
         print("\n--- Preparing SBOM for Upload ---")
-        try:
-            upload_path, temp_file_created = _prepare_sbom_for_upload(params.path, sbom_format, parsed_document)
-            
-            if temp_file_created:
-                print(f"  Converted for upload: {os.path.basename(upload_path)}")
-            else:
-                print(f"  Using original file format")
-                
-        except Exception as e:
-            logger.error(f"SBOM preparation failed: {e}")
-            raise ValidationError(f"SBOM preparation failed: {e}") from e
+        upload_path, temp_file_created = _prepare_sbom_for_upload(params.path, sbom_format, parsed_document)
+        
+        if temp_file_created:
+            print(f"  Converted for upload: {os.path.basename(upload_path)}")
+        else:
+            print(f"  Using original file format")
         
         # Resolve project and scan (find or create) - AFTER validation and preparation
         print("\nChecking if the Project and Scan exist or need to be created...")
@@ -204,7 +188,7 @@ def handle_import_sbom(workbench: "WorkbenchAPI", params: argparse.Namespace) ->
         try:
             print("\nWaiting for SBOM import to complete...")
             # Use optimized 2-second wait interval for import-only mode
-            import_status_data, import_duration = workbench.wait_for_scan_to_finish(
+            _, import_duration = workbench.wait_for_scan_to_finish(
                 "REPORT_IMPORT", 
                 scan_code, 
                 params.scan_number_of_tries, 
