@@ -8,7 +8,8 @@ from ..utilities.prep_upload_archive import UploadArchivePrep
 from ..exceptions import (
     NetworkError,
     FileSystemError,
-    WorkbenchCLIError
+    WorkbenchCLIError,
+    ApiError
 )
 
 # Assume logger is configured in main.py
@@ -52,6 +53,13 @@ class UploadAPI(UploadHelper):
             }
             
             self._perform_upload(upload_path, headers)
+
+        except (ApiError, NetworkError) as e:
+            # Re-raise known exceptions
+            raise
+        except Exception as e:
+            # Wrap unexpected exceptions
+            raise WorkbenchCLIError(f"An unexpected error occurred during the upload process: {e}") from e
 
         finally:
             if archive_path and os.path.exists(archive_path):
@@ -105,5 +113,3 @@ class UploadAPI(UploadHelper):
         }
 
         self._perform_upload(path, headers)
-    
-

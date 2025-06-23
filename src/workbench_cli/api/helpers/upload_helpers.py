@@ -211,3 +211,4 @@ class UploadHelper(APIBase):
         finally:
             if file_handle and not file_handle.closed:
                 file_handle.close()
+                
