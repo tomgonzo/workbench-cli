@@ -536,4 +536,3 @@ def print_operation_summary(params: argparse.Namespace, da_completed: bool, proj
         print(f"  - Dependency Analysis: No")
     
     print("------------------------------------") 
-    

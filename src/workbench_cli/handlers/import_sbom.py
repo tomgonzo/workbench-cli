@@ -243,4 +243,3 @@ def handle_import_sbom(workbench: "WorkbenchAPI", params: argparse.Namespace) ->
             except Exception as e:
                 logger.warning(f"Failed to clean up temporary file: {e}")
                 # Don't fail the operation if cleanup fails 
-                

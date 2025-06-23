@@ -402,4 +402,3 @@ class SBOMValidator:
         logger.warning("This validate_sbom_file method is deprecated. Use the new validate_sbom_file or validate_and_prepare_sbom instead.")
         format_name, version, metadata, _ = SBOMValidator.validate_sbom_file(file_path)
         return format_name, version, metadata 
-    

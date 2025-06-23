@@ -189,4 +189,3 @@ class APIBase(ProcessWaiters, StatusCheckers):
         except requests.exceptions.RequestException as e:
             logger.error("API request failed: %s", e, exc_info=True)
             raise NetworkError(f"API request failed: {str(e)}", details={"error": str(e)}) 
-        
