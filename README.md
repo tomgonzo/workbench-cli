@@ -184,7 +184,7 @@ Import-SBOM takes a Project Name, Scan Name, and a path to a SPDX or CycloneDX S
 
 #### Import a SPDX SBOM and show Vulnerabilities
 ```bash
-workbench-cli import-da \
+workbench-cli import-sbom \
     --project-name MYPROJ --scan-name MYSCAN03 \
     --path ./tests/fixtures/spdx-document.rdf \
     --show-vulnerabilities
@@ -192,7 +192,7 @@ workbench-cli import-da \
 
 #### Import a CycloneDX SBOM and show Policy Warnings
 ```bash
-workbench-cli import-da \
+workbench-cli import-sbom \
     --project-name ApplicationName --scan-name SupplierBOM \
     --path ./tests/fixtures/cyclonedx-bom.json \
     --show-policy-warnings
