@@ -9,6 +9,7 @@ A prototype CLI inspired by the official [Workbench Agent](https://github.com/fo
 *   Upload directories or files for scanning.
 *   Pull Git repositories (branches or tags) for scanning.
 *   Import Dependency Analysis results (e.g., `analyzer-result.json`) from FossID-DA or ORT.
+*   Import SPDX or CycloneDX SBOMs as Workbench Scans - with built-in validation.
 
 ### Results Options
 *   Fetch scan results (scan metrics, components, licenses, dependencies, policy violations, vulnerabilities) and save as JSON.
@@ -24,8 +25,9 @@ workbench-cli <COMMAND> [OPTIONS...]
 
 ### Commands:
 * scan: Upload local code files or directories for scanning. 
-* scan-git: Clone a Git branch or tag to scan it.
-* import-da: Import Dependency Analysis results. (from FossID-DA or ORT)
+* scan-git: Clone a Git branch, tag, or commit to scan it.
+* import-da: Import Dependency Analysis results into a Scan. (from FossID-DA or ORT)
+* import-sbom: Import a SPDX or CycloneDX SBOM as a Scan.
 * show-results: Fetch and display results for an existing scan.
 * evaluate-gates: Check pending IDs, policy violations, and vulnerabilities.
 * download-reports: download reports for a scan or project.
@@ -175,6 +177,25 @@ workbench-cli import-da \
     --project-name MYPROJ --scan-name MYSCAN03 \
     --path ./ort-test-data/analyzer-result.json \
     --show-dependencies --show-vulnerabilities
+```
+
+## Examples for IMPORT-SBOM Command
+Import-SBOM takes a Project Name, Scan Name, and a path to a SPDX or CycloneDX SBOM. It also supports various `show-*` arguments for showing results after the scan is done. 
+
+#### Import a SPDX SBOM and show Vulnerabilities
+```bash
+workbench-cli import-da \
+    --project-name MYPROJ --scan-name MYSCAN03 \
+    --path ./tests/fixtures/spdx-document.rdf \
+    --show-vulnerabilities
+```
+
+#### Import a CycloneDX SBOM and show Policy Warnings
+```bash
+workbench-cli import-da \
+    --project-name ApplicationName --scan-name SupplierBOM \
+    --path ./tests/fixtures/cyclonedx-bom.json \
+    --show-policy-warnings
 ```
 
 ## Examples for SHOW-RESULTS Command
