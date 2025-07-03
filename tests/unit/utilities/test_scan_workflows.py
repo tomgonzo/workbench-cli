@@ -455,9 +455,11 @@ class TestFetchDisplaySaveResults:
     @patch('workbench_cli.utilities.scan_workflows.fetch_results')
     @patch('workbench_cli.utilities.scan_workflows.display_results')
     @patch('workbench_cli.utilities.scan_workflows.save_results_to_file')
-    def test_complete_workflow(self, mock_save, mock_display, mock_fetch, mock_workbench, mock_params):
-        """Test complete fetch, display, and save workflow."""
+    def test_complete_workflow_legacy(self, mock_save, mock_display, mock_fetch, mock_workbench, mock_params):
+        """Test complete fetch, display, and save workflow with legacy path_result."""
         mock_params.path_result = "output.json"
+        mock_params.json_result_path = None
+        mock_params.sarif_result_path = None
         mock_params.show_licenses = True
         mock_fetch.return_value = {"test": "data"}
         mock_display.return_value = True
@@ -470,9 +472,111 @@ class TestFetchDisplaySaveResults:
     
     @patch('workbench_cli.utilities.scan_workflows.fetch_results')
     @patch('workbench_cli.utilities.scan_workflows.display_results')
+    @patch('workbench_cli.utilities.scan_workflows.save_results_to_file')
+    def test_json_result_path_workflow(self, mock_save, mock_display, mock_fetch, mock_workbench, mock_params):
+        """Test fetch, display, and save workflow with JSON result path."""
+        mock_params.path_result = None
+        mock_params.json_result_path = "output.json"
+        mock_params.sarif_result_path = None
+        mock_params.show_licenses = True
+        mock_fetch.return_value = {"test": "data"}
+        mock_display.return_value = True
+        
+        fetch_display_save_results(mock_workbench, mock_params, TEST_SCAN_CODE)
+        
+        mock_fetch.assert_called_once_with(mock_workbench, mock_params, TEST_SCAN_CODE)
+        mock_display.assert_called_once_with({"test": "data"}, mock_params)
+        mock_save.assert_called_once_with("output.json", {"test": "data"}, TEST_SCAN_CODE)
+    
+    @patch('workbench_cli.utilities.scan_workflows.fetch_results')
+    @patch('workbench_cli.utilities.scan_workflows.display_results')
+    @patch('workbench_cli.utilities.sarif_converter.save_vulns_to_sarif')
+    def test_sarif_result_path_workflow(self, mock_save_sarif, mock_display, mock_fetch, mock_workbench, mock_params):
+        """Test fetch, display, and save workflow with SARIF result path."""
+        mock_params.path_result = None
+        mock_params.json_result_path = None
+        mock_params.sarif_result_path = "output.sarif"
+        mock_params.show_vulnerabilities = True
+        mock_params.show_licenses = False
+        
+        sample_vulns = [{"id": 1, "cve": "CVE-2022-12345", "severity": "HIGH"}]
+        mock_fetch.return_value = {"vulnerabilities": sample_vulns}
+        mock_display.return_value = True
+        
+        fetch_display_save_results(mock_workbench, mock_params, TEST_SCAN_CODE)
+        
+        mock_fetch.assert_called_once_with(mock_workbench, mock_params, TEST_SCAN_CODE)
+        mock_display.assert_called_once_with({"vulnerabilities": sample_vulns}, mock_params)
+        mock_save_sarif.assert_called_once_with("output.sarif", sample_vulns, TEST_SCAN_CODE, True, True, True, 30)
+    
+    @patch('workbench_cli.utilities.scan_workflows.fetch_results')
+    @patch('workbench_cli.utilities.scan_workflows.display_results')
+    def test_sarif_without_show_vulnerabilities(self, mock_display, mock_fetch, mock_workbench, mock_params):
+        """Test SARIF output warning when --show-vulnerabilities is not set."""
+        mock_params.path_result = None
+        mock_params.json_result_path = None
+        mock_params.sarif_result_path = "output.sarif"
+        mock_params.show_vulnerabilities = False
+        mock_params.show_licenses = True
+        
+        mock_fetch.return_value = {"licenses": ["MIT"]}
+        mock_display.return_value = True
+        
+        fetch_display_save_results(mock_workbench, mock_params, TEST_SCAN_CODE)
+        
+        mock_fetch.assert_called_once_with(mock_workbench, mock_params, TEST_SCAN_CODE)
+        mock_display.assert_called_once_with({"licenses": ["MIT"]}, mock_params)
+        # Should not attempt to save SARIF since show_vulnerabilities is False
+    
+    @patch('workbench_cli.utilities.scan_workflows.fetch_results')
+    @patch('workbench_cli.utilities.scan_workflows.display_results')
+    def test_sarif_with_no_vulnerabilities(self, mock_display, mock_fetch, mock_workbench, mock_params):
+        """Test SARIF output when no vulnerabilities are found."""
+        mock_params.path_result = None
+        mock_params.json_result_path = None
+        mock_params.sarif_result_path = "output.sarif"
+        mock_params.show_vulnerabilities = True
+        
+        mock_fetch.return_value = {"vulnerabilities": []}  # Empty vulnerabilities
+        mock_display.return_value = True
+        
+        fetch_display_save_results(mock_workbench, mock_params, TEST_SCAN_CODE)
+        
+        mock_fetch.assert_called_once_with(mock_workbench, mock_params, TEST_SCAN_CODE)
+        mock_display.assert_called_once_with({"vulnerabilities": []}, mock_params)
+        # Should not attempt to save SARIF since no vulnerabilities found
+    
+    @patch('workbench_cli.utilities.scan_workflows.fetch_results')
+    @patch('workbench_cli.utilities.scan_workflows.display_results')
+    @patch('workbench_cli.utilities.scan_workflows.save_results_to_file')
+    @patch('workbench_cli.utilities.sarif_converter.save_vulns_to_sarif')
+    def test_both_json_and_sarif_output(self, mock_save_sarif, mock_save_json, mock_display, mock_fetch, mock_workbench, mock_params):
+        """Test saving both JSON and SARIF outputs simultaneously."""
+        mock_params.path_result = None
+        mock_params.json_result_path = "output.json"
+        mock_params.sarif_result_path = "output.sarif"
+        mock_params.show_vulnerabilities = True
+        mock_params.show_licenses = True
+        
+        sample_vulns = [{"id": 1, "cve": "CVE-2022-12345", "severity": "HIGH"}]
+        results = {"vulnerabilities": sample_vulns, "licenses": ["MIT"]}
+        mock_fetch.return_value = results
+        mock_display.return_value = True
+        
+        fetch_display_save_results(mock_workbench, mock_params, TEST_SCAN_CODE)
+        
+        mock_fetch.assert_called_once_with(mock_workbench, mock_params, TEST_SCAN_CODE)
+        mock_display.assert_called_once_with(results, mock_params)
+        mock_save_json.assert_called_once_with("output.json", results, TEST_SCAN_CODE)
+        mock_save_sarif.assert_called_once_with("output.sarif", sample_vulns, TEST_SCAN_CODE, True, True, True, 30)
+    
+    @patch('workbench_cli.utilities.scan_workflows.fetch_results')
+    @patch('workbench_cli.utilities.scan_workflows.display_results')
     def test_no_save_specified(self, mock_display, mock_fetch, mock_workbench, mock_params):
         """Test fetch and display without saving."""
         mock_params.path_result = None
+        mock_params.json_result_path = None
+        mock_params.sarif_result_path = None
         mock_params.show_licenses = True
         mock_fetch.return_value = {"test": "data"}
         mock_display.return_value = True

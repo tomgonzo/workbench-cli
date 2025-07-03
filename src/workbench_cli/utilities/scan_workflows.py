@@ -436,11 +436,57 @@ def fetch_display_save_results(workbench: 'WorkbenchAPI', params: argparse.Names
     if any_results_requested:
         display_results(collected_results, params)
     
-    save_path = getattr(params, 'path_result', None)
-    if save_path:
+    # Handle JSON output
+    json_path = getattr(params, 'json_result_path', None)
+    if json_path:
         if collected_results:
-            print(f"\nSaving collected results to '{save_path}'...")
-            save_results_to_file(save_path, collected_results, scan_code)
+            print(f"\nSaving collected results to '{json_path}'...")
+            save_results_to_file(json_path, collected_results, scan_code)
+        else:
+            print("\nNo results were successfully collected, skipping JSON save.")
+    
+    # Handle SARIF output for vulnerabilities
+    sarif_path = getattr(params, 'sarif_result_path', None)
+    if sarif_path:
+        if not getattr(params, 'show_vulnerabilities', False):
+            print("\nWarning: --sarif-result-path requires --show-vulnerabilities flag")
+        elif not collected_results.get('vulnerabilities'):
+            print("\nNo vulnerability results to save in SARIF format")
+        else:
+            from .sarif_converter import save_vulns_to_sarif
+            print(f"\nSaving enhanced vulnerability results in SARIF format to '{sarif_path}'...")
+            try:
+                # Configure external data fetching (can be extended with CLI options later)
+                include_descriptions = True  # Fetch CVE descriptions from NVD
+                include_epss = True         # Fetch EPSS scores from FIRST
+                include_exploits = True     # Fetch CISA KEV data
+                api_timeout = 30           # API timeout in seconds
+                
+                save_vulns_to_sarif(
+                    sarif_path, 
+                    collected_results['vulnerabilities'], 
+                    scan_code,
+                    include_descriptions,
+                    include_epss,
+                    include_exploits,
+                    api_timeout,
+                    include_vex=True,
+                    include_scan_metadata=True,
+                    suppress_vex_mitigated=True,
+                    suppress_accepted_risk=True,
+                    suppress_false_positives=True,
+                    group_by_component=True,
+                    quiet=False
+                )
+            except Exception as e:
+                print(f"Error saving SARIF results: {e}")
+    
+    # Legacy support for --path-result (deprecated, use --json-result-path instead)
+    legacy_path = getattr(params, 'path_result', None)
+    if legacy_path:
+        if collected_results:
+            print(f"\nSaving collected results to '{legacy_path}'...")
+            save_results_to_file(legacy_path, collected_results, scan_code)
         else:
             print("\nNo results were successfully collected, skipping save.")
 

@@ -42,6 +42,10 @@ def handle_show_results(workbench: "WorkbenchAPI", params: argparse.Namespace) -
     if not any(show_flags):
         raise ValidationError("At least one '--show-*' flag must be provided to display results")
     
+    # Validate SARIF output requirements
+    if getattr(params, 'sarif_result_path', None) and not params.show_vulnerabilities:
+        raise ValidationError("--sarif-result-path requires --show-vulnerabilities flag")
+    
     # Resolve project and scan (find only)
     print("\nResolving scan for results display...")
     project_code = workbench.resolve_project(params.project_name, create_if_missing=False)
