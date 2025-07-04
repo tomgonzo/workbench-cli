@@ -88,6 +88,9 @@ log-agent.txt
 reports/
 results/
 results.json
+vulns.json
+vulns-basic.sarif
+vulns-enhanced.sarif
 
 # Backup files
 *.bkp
@@ -100,3 +103,5 @@ da-analyzer-results
 test-commands.txt
 
 workbench-cli-log.txt
+*.sarif
+

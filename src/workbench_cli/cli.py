@@ -52,7 +52,7 @@ def add_common_result_options(subparser):
     results_display_args.add_argument("--show-scan-metrics", help="Show metrics on file identifications (total files, pending id, identified, no matches).", action="store_true", default=False)
     results_display_args.add_argument("--show-policy-warnings", help="Shows Policy Warnings in identified components or dependencies.", action="store_true", default=False)
     results_display_args.add_argument("--show-vulnerabilities", help="Shows a summary of vulnerabilities found in the scan.", action="store_true", default=False)
-    results_display_args.add_argument("--path-result", help="Saves the requested results to this file/directory (JSON format).", metavar="PATH")
+    results_display_args.add_argument("--json-result-path", help="Saves the requested results to this file/directory (JSON format).", metavar="PATH")
 
 # --- Main Parsing Function ---
 def parse_cmdline_args():
@@ -114,6 +114,20 @@ Example Usage:
   # Download reports for a specific scan (globally)
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     download-reports --scan-name MYSCAN01 --report-scope scan --report-type html --report-save-path reports/
+
+  # Export vulnerability results in SARIF format for security tooling
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    export-sarif --project-name MYPROJ --scan-name MYSCAN01 -o security-report.sarif
+
+  # Export SARIF with custom enrichment and filtering options
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    export-sarif --project-name MYPROJ --scan-name MYSCAN01 -o vulns.sarif \\
+    --enrich-epss --enrich-cisa-kev --severity-threshold high --disable-vex-suppression
+
+  # Export SARIF without external enrichment (default behavior)
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    export-sarif --project-name MYPROJ --scan-name MYSCAN01 -o vulns.sarif \\
+    --quiet
 """
     )
 
@@ -296,6 +310,39 @@ Example Usage:
     add_common_scan_options(scan_git_parser)
     add_common_monitoring_options(scan_git_parser)
     add_common_result_options(scan_git_parser)
+
+    # --- 'export-sarif' Subcommand ---
+    export_sarif_parser = subparsers.add_parser(
+        'export-sarif',
+        help='Export vulnerability results in SARIF format for security tooling integration.',
+        description='Export vulnerability results from an existing scan in SARIF (Static Analysis Results Interchange Format) v2.1.0 format. This format is compatible with GitHub Advanced Security, security scanners, and other DevSecOps tools.',
+        formatter_class=RawTextHelpFormatter
+    )
+    
+    # Required arguments
+    required_args = export_sarif_parser.add_argument_group("Required")
+    required_args.add_argument("--project-name", help="Project name containing the scan.", type=str, required=True, metavar="NAME")
+    required_args.add_argument("--scan-name", help="Scan name to export vulnerability results from.", type=str, required=True, metavar="NAME")
+    required_args.add_argument("-o", "--output", help="Output file path for the SARIF report (Default: vulns.sarif).", type=str, default="vulns.sarif", metavar="PATH")
+    
+    # External API enrichment
+    external_api_args = export_sarif_parser.add_argument_group("External API Enrichment (Network Calls)")
+    external_api_args.add_argument("--enrich-nvd", help="Fetch CVE descriptions from NVD API (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
+    external_api_args.add_argument("--enrich-epss", help="Fetch EPSS scores from FIRST API (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
+    external_api_args.add_argument("--enrich-cisa-kev", help="Fetch CISA Known Exploited Vulnerabilities (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
+    external_api_args.add_argument("--external-timeout", help="Timeout for external API calls in seconds (Default: 30).", type=int, default=30, metavar="SECONDS")
+    
+    # Output processing & suppression
+    processing_args = export_sarif_parser.add_argument_group("Output Processing & Suppression")
+    processing_args.add_argument("--severity-threshold", help="Filter vulnerabilities by CVSS severity.", choices=["critical", "high", "medium", "low"], metavar="LEVEL")
+    processing_args.add_argument("--disable-vex-suppression", help="Disable automatic suppression of VEX-assessed findings (mitigated, accepted risk, false positives).", action="store_true")
+    
+    # Output control
+    output_control_args = export_sarif_parser.add_argument_group("Output Control")
+    output_control_args.add_argument("--quiet", help="Suppress progress output.", action="store_true")
+    output_control_args.add_argument("--validate", help="Validate SARIF schema.", action="store_true")
+    
+    add_common_monitoring_options(export_sarif_parser)
 
     # --- Validate args after parsing ---
     args = parser.parse_args()

@@ -228,4 +228,6 @@ class TestShowResultsHandler:
         
         # Verify
         assert result is True
-        mock_fetch.assert_called_once() 
+        mock_fetch.assert_called_once()
+
+ 

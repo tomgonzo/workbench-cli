@@ -8,6 +8,7 @@ from .helpers.project_scan_resolvers import ResolveWorkbenchProjectScan
 from .projects_api import ProjectsAPI
 from .scans_api import ScansAPI
 from .vulnerabilities_api import VulnerabilitiesAPI
+from .components_api import ComponentsAPI
 from ..exceptions import (
     WorkbenchCLIError,
     ApiError,
@@ -35,7 +36,7 @@ import time
 # Assume logger is configured in main.py
 logger = logging.getLogger("workbench-cli")
 
-class WorkbenchAPI(UploadAPI, ResolveWorkbenchProjectScan, ProjectsAPI, VulnerabilitiesAPI, ScansAPI):
+class WorkbenchAPI(UploadAPI, ResolveWorkbenchProjectScan, ProjectsAPI, VulnerabilitiesAPI, ScansAPI, ComponentsAPI):
     """
     Workbench API client class for interacting with the FossID Workbench API.
     This class composes all the individual API parts into a single client.
