@@ -2,14 +2,13 @@
 
 import logging
 import argparse
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Dict, Any
 
 from ..utilities.error_handling import handler_error_wrapper
-from ..utilities.sarif_converter import save_vulns_to_sarif
+from ..utilities.sarif_generation import save_vulns_to_sarif
 from ..exceptions import (
     ApiError,
     NetworkError,
-    ValidationError,
     ProcessTimeoutError,
     ProcessError
 )
@@ -32,6 +31,7 @@ def handle_export_sarif(workbench: "WorkbenchAPI", params: argparse.Namespace) -
     Returns:
         bool: True if the operation was successful
     """
+    
     print(f"\n--- Running {params.command.upper()} Command ---")
     
     # Resolve project and scan (find only)
@@ -57,11 +57,12 @@ def handle_export_sarif(workbench: "WorkbenchAPI", params: argparse.Namespace) -
     
     # Fetch vulnerability data
     if not params.quiet:
-        print("\nFetching vulnerability data for SARIF export...")
+        print("\n🔍 Fetching data from Workbench...")
     try:
         vulnerabilities = workbench.list_vulnerabilities(scan_code)
         
         # Apply severity filtering if specified
+        severity_threshold_text = ""
         if getattr(params, 'severity_threshold', None):
             severity_order = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1}
             min_severity = severity_order.get(params.severity_threshold.lower(), 0)
@@ -70,63 +71,80 @@ def handle_export_sarif(workbench: "WorkbenchAPI", params: argparse.Namespace) -
                 vuln for vuln in vulnerabilities
                 if severity_order.get(vuln.get('severity', '').lower(), 0) >= min_severity
             ]
-            if not params.quiet and original_count != len(vulnerabilities):
-                print(f"Filtered {original_count - len(vulnerabilities)} vulnerabilities below {params.severity_threshold} severity")
+            severity_threshold_text = f" (Severity Threshold: {params.severity_threshold.upper()})"
+        else:
+            severity_threshold_text = ""
+        
+        # Extract configuration values from parameters
+        nvd_enrichment = getattr(params, 'enrich_nvd', False)
+        epss_enrichment = getattr(params, 'enrich_epss', False)
+        cisa_kev_enrichment = getattr(params, 'enrich_cisa_kev', False)
+        api_timeout = getattr(params, 'external_timeout', 30)
+        enable_vex_suppression = not getattr(params, 'disable_vex_suppression', False)
+        quiet = getattr(params, 'quiet', False)
         
         if not vulnerabilities:
             if not params.quiet:
                 print("⚠️  No vulnerabilities found in the scan.")
                 print("An empty SARIF report will be generated.")
+            external_data = {}
         else:
             if not params.quiet:
-                print(f"✅ Found {len(vulnerabilities)} vulnerabilities to export.")
+                # Step 1: Show vulnerability and VEX retrieval
+                print(f"\n📋 Retrieving Vulnerabilities and VEX...")
                 
-                # Display summary of what will be included
-                severity_counts = {}
-                vex_counts = {"with_vex": 0, "without_vex": 0}
+                # Combine vulnerability count and severity breakdown in one line
+                from ..utilities.sarif_generation import _calculate_severity_distribution, _format_severity_breakdown_compact
+                severity_dist = _calculate_severity_distribution(vulnerabilities)
+                severity_breakdown = _format_severity_breakdown_compact(severity_dist)
+                print(f"   • Retrieved {len(vulnerabilities)} Vulnerabilities{severity_threshold_text} {severity_breakdown}")
+                _display_vex_summary(vulnerabilities, indent="   ")
                 
-                for vuln in vulnerabilities:
-                    severity = vuln.get("severity", "UNKNOWN")
-                    severity_counts[severity] = severity_counts.get(severity, 0) + 1
-                    
-                    # Check for VEX information
-                    if vuln.get("vuln_exp_id"):
-                        vex_counts["with_vex"] += 1
-                    else:
-                        vex_counts["without_vex"] += 1
+                # Step 2: Pre-fetch component information
+                print(f"\n🔧 Retrieving Component Information...")
+                from ..utilities.component_enrichment import prefetch_component_info
                 
-                print("\n📊 Vulnerability Summary:")
-                for severity, count in sorted(severity_counts.items()):
-                    print(f"   • {severity}: {count}")
+                # Count unique components before fetching
+                unique_components = list(set(
+                    f"{vuln.get('component_name', 'Unknown')}@{vuln.get('component_version', 'Unknown')}"
+                    for vuln in vulnerabilities 
+                    if vuln.get("component_name") and vuln.get("component_version")
+                ))
+                component_count = len(unique_components)
                 
-                if vex_counts["with_vex"] > 0:
-                    print(f"\n📋 VEX Information:")
-                    print(f"   • With VEX assessments: {vex_counts['with_vex']}")
-                    print(f"   • Without VEX assessments: {vex_counts['without_vex']}")
-        
-        # Display export configuration
-        if not params.quiet:
-            print(f"\n🔧 SARIF Export Configuration:")
-            print(f"   • Output file: {params.output}")
-            print(f"   • Include VEX assessments: {params.include_vex}")
-            if params.severity_threshold:
-                print(f"   • Severity threshold: {params.severity_threshold}")
-            print(f"   • Include scan metadata: {params.include_scan_metadata}")
-            
-            # External enrichment status
-            if params.skip_enrichment:
-                print(f"   • External enrichment: DISABLED (offline mode)")
+                prefetch_component_info(vulnerabilities, quiet=True)  # Always quiet to suppress progress messages
+                print(f"   • Component information retrieved for {component_count} Components")
+                
+                # Step 3: Perform external enrichment and display status
+                external_data = _perform_external_enrichment(
+                    vulnerabilities, 
+                    nvd_enrichment,
+                    epss_enrichment,
+                    cisa_kev_enrichment,
+                    api_timeout
+                )
+                
+                # Step 4: Show Dynamic Scoring section
+                _display_dynamic_scoring(
+                    vulnerabilities, 
+                    enable_vex_suppression,
+                    external_data
+                )
             else:
-                print(f"   • Enrich with NVD descriptions: {params.enrich_nvd}")
-                print(f"   • Enrich with EPSS scores: {params.enrich_epss}")
-                print(f"   • Enrich with CISA KEV: {params.enrich_cisa_kev}")
-                print(f"   • External API timeout: {params.external_timeout}s")
-            
-            # Suppression settings
-            print(f"   • Suppress VEX mitigated: {params.suppress_vex_mitigated}")
-            print(f"   • Suppress accepted risk: {params.suppress_accepted_risk}")
-            print(f"   • Suppress false positives: {params.suppress_false_positives}")
-            print(f"   • Group by component: {params.group_by_component}")
+                # Still need to fetch external data for SARIF generation, but quietly
+                from ..utilities.sarif_generation import _fetch_external_enrichment_data
+                from ..utilities.component_enrichment import prefetch_component_info
+                
+                # Pre-fetch component information quietly (no progress messages)
+                prefetch_component_info(vulnerabilities, quiet=True)
+                
+                external_data = _fetch_external_enrichment_data(
+                    vulnerabilities, 
+                    nvd_enrichment,
+                    epss_enrichment,
+                    cisa_kev_enrichment,
+                    api_timeout
+                )
         
         # Export to SARIF
         if not params.quiet:
@@ -135,28 +153,18 @@ def handle_export_sarif(workbench: "WorkbenchAPI", params: argparse.Namespace) -
             filepath=params.output,
             vulnerabilities=vulnerabilities,
             scan_code=scan_code,
-            include_cve_descriptions=params.enrich_nvd if not params.skip_enrichment else False,
-            include_epss_scores=params.enrich_epss if not params.skip_enrichment else False,
-            include_exploit_info=params.enrich_cisa_kev if not params.skip_enrichment else False,
-            api_timeout=params.external_timeout,
-            include_vex=params.include_vex,
-            include_scan_metadata=params.include_scan_metadata,
-            suppress_vex_mitigated=params.suppress_vex_mitigated,
-            suppress_accepted_risk=params.suppress_accepted_risk,
-            suppress_false_positives=params.suppress_false_positives,
-            group_by_component=params.group_by_component,
-            quiet=params.quiet
+            external_data=external_data,
+            nvd_enrichment=nvd_enrichment,
+            epss_enrichment=epss_enrichment,
+            cisa_kev_enrichment=cisa_kev_enrichment,
+            api_timeout=api_timeout,
+            enable_vex_suppression=enable_vex_suppression,
+            quiet=quiet
         )
         
         if not params.quiet:
             print(f"\n✅ SARIF export completed successfully!")
             print(f"📄 Report saved to: {params.output}")
-            
-            # Provide integration guidance
-            print(f"\n💡 Integration Tips:")
-            print(f"   • Upload to GitHub: Add this file to your repository for GitHub Advanced Security integration")
-            print(f"   • CI/CD Integration: Use this report in your security scanning pipeline")
-            print(f"   • Security Tools: Import into SARIF-compatible security analysis tools")
         
         return True
         
@@ -165,4 +173,119 @@ def handle_export_sarif(workbench: "WorkbenchAPI", params: argparse.Namespace) -
         if isinstance(e, (ApiError, NetworkError, ProcessTimeoutError, ProcessError)):
             raise
         else:
-            raise ProcessError(f"Failed to export vulnerability data to SARIF format: {str(e)}") 
+            raise ProcessError(f"Failed to export vulnerability data to SARIF format: {str(e)}")
+
+
+# Configuration function removed - CLI arguments now used directly
+
+
+def _perform_external_enrichment(
+    vulnerabilities: List[Dict[str, Any]], 
+    nvd_enrichment: bool,
+    epss_enrichment: bool,
+    cisa_kev_enrichment: bool,
+    api_timeout: int
+) -> Dict[str, Dict[str, Any]]:
+    """Perform external enrichment and display status messages."""
+    import os
+    from ..utilities.sarif_generation import _fetch_external_enrichment_data
+    
+    # Show enrichment status
+    enrichment_sources = []
+    if nvd_enrichment:
+        enrichment_sources.append("NVD")
+    if epss_enrichment:
+        enrichment_sources.append("EPSS")
+    if cisa_kev_enrichment:
+        enrichment_sources.append("CISA KEV")
+    
+    if enrichment_sources:
+        print(f"\n🔍 External Enrichment: {', '.join(enrichment_sources)}")
+        
+        # Get unique CVEs for display
+        from ..utilities.sarif_generation import _extract_unique_cves
+        unique_cves = _extract_unique_cves(vulnerabilities)
+        
+        # Show custom NVD message if NVD enrichment is enabled
+        if nvd_enrichment and unique_cves:
+            print(f"   📋 Fetching additional details for {len(unique_cves)} CVEs from NVD")
+            if not os.environ.get('NVD_API_KEY'):
+                print(f"   💡 For faster performance, set the 'NVD_API_KEY' environment variable")
+        
+        # Perform the actual enrichment with suppressed logging
+        # Temporarily increase logging level to suppress INFO messages
+        import logging
+        nvd_logger = logging.getLogger('workbench_cli.utilities.vulnerability_enricher')
+        original_level = nvd_logger.level
+        nvd_logger.setLevel(logging.WARNING)
+        
+        try:
+            external_data = _fetch_external_enrichment_data(
+                vulnerabilities, 
+                nvd_enrichment,
+                epss_enrichment,
+                cisa_kev_enrichment,
+                api_timeout
+            )
+        finally:
+            nvd_logger.setLevel(original_level)
+        
+        # Show EPSS results if EPSS enrichment was enabled
+        if epss_enrichment and external_data:
+            epss_count = sum(1 for cve_data in external_data.values() if cve_data.get('epss_score') is not None)
+            if epss_count > 0:
+                print(f"   📊 EPSS scores retrieved for {epss_count} CVEs")
+        
+        return external_data
+    else:
+        print(f"\n🔍 External Enrichment: DISABLED")
+        return {}
+
+
+
+
+
+def _display_vex_summary(vulnerabilities: List[Dict[str, Any]], indent: str = "") -> None:
+    """Display VEX assessment information in a concise format."""
+    from ..utilities.sarif_generation import _count_vex_assessments
+    vex_counts = _count_vex_assessments(vulnerabilities)
+    
+    if vex_counts["total_with_vex"] > 0:
+        print(f"{indent}• Retrieved VEX for {vex_counts['total_with_vex']}/{len(vulnerabilities)} CVEs [Status: {vex_counts['with_status']}, Response: {vex_counts['with_response']}]")
+
+
+def _display_dynamic_scoring(
+    vulnerabilities: List[Dict[str, Any]], 
+    enable_vex_suppression: bool,
+    external_data: Dict[str, Dict[str, Any]]
+) -> None:
+    """Display dynamic scoring information including both suppressions and promotions."""
+    from ..utilities.sarif_generation import _count_high_risk_vulnerabilities, _count_vex_assessments
+    
+    print(f"\n🔧 Dynamic Scoring:")
+    
+    # Show VEX suppression
+    vex_counts = _count_vex_assessments(vulnerabilities)
+    if enable_vex_suppression and vex_counts["total_with_vex"] > 0:
+        if vex_counts["suppressed"] > 0:
+            print(f"   • VEX Risk: {vex_counts['suppressed']} CVEs Suppressed")
+        else:
+            print(f"   • VEX Suppression: Enabled (no CVEs Suppressed)")
+    else:
+        print(f"   • VEX Suppression: {'Enabled' if enable_vex_suppression else 'Disabled'}")
+    
+    # Show high-risk vulnerability information with promotion details
+    if external_data:
+        high_risk_counts = _count_high_risk_vulnerabilities(vulnerabilities, external_data)
+        
+        # Show EPSS promotions
+        if high_risk_counts.get("high_epss", 0) > 0:
+            print(f"   • EPSS Risk: {high_risk_counts['high_epss']} CVEs Escalated")
+        
+        # Show CISA KEV if present
+        if high_risk_counts.get("cisa_kev", 0) > 0:
+            print(f"   • CISA KEV: {high_risk_counts['cisa_kev']} CVEs Escalated")
+    
+    # Show VEX-based promotions (exploitable CVEs get promoted to 'error' level)
+    if vex_counts["total_with_vex"] > 0 and vex_counts["exploitable"] > 0:
+        print(f"   • VEX Risk: {vex_counts['exploitable']} CVEs Escalated") 

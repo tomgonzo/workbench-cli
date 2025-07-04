@@ -95,23 +95,18 @@ class TestExportSarif:
         mock_workbench.ensure_scan_is_idle.assert_called_once_with("TEST_SCAN_456", mock_params, ["SCAN", "DEPENDENCY_ANALYSIS"])
         mock_workbench.list_vulnerabilities.assert_called_once_with("TEST_SCAN_456")
         
-        # Verify SARIF export
-        mock_save_sarif.assert_called_once_with(
-            filepath="test_output.sarif",
-            vulnerabilities=mock_workbench.list_vulnerabilities.return_value,
-            scan_code="TEST_SCAN_456",
-            include_cve_descriptions=True,
-            include_epss_scores=True,
-            include_exploit_info=True,
-            api_timeout=30,
-            include_vex=True,
-            include_scan_metadata=True,
-            suppress_vex_mitigated=True,
-            suppress_accepted_risk=True,
-            suppress_false_positives=True,
-            group_by_component=True,
-            quiet=False
-        )
+        # Verify SARIF export using new parameter format
+        mock_save_sarif.assert_called_once()
+        call_args = mock_save_sarif.call_args
+        assert call_args.kwargs['filepath'] == "test_output.sarif"
+        assert call_args.kwargs['scan_code'] == "TEST_SCAN_456"
+        assert call_args.kwargs['nvd_enrichment'] is True
+        assert call_args.kwargs['epss_enrichment'] is True
+        assert call_args.kwargs['cisa_kev_enrichment'] is True
+        assert call_args.kwargs['api_timeout'] == 30
+        assert call_args.kwargs['enable_vex_suppression'] is True
+        assert call_args.kwargs['quiet'] is False
+        assert 'external_data' in call_args.kwargs
 
     @patch('workbench_cli.handlers.export_sarif.save_vulns_to_sarif')
     def test_export_with_no_vulnerabilities(self, mock_save_sarif, mock_workbench, mock_params):
@@ -124,22 +119,19 @@ class TestExportSarif:
         
         # Verify
         assert result is True
-        mock_save_sarif.assert_called_once_with(
-            filepath="test_output.sarif",
-            vulnerabilities=[],
-            scan_code="TEST_SCAN_456",
-            include_cve_descriptions=True,
-            include_epss_scores=True,
-            include_exploit_info=True,
-            api_timeout=30,
-            include_vex=True,
-            include_scan_metadata=True,
-            suppress_vex_mitigated=True,
-            suppress_accepted_risk=True,
-            suppress_false_positives=True,
-            group_by_component=True,
-            quiet=False
-        )
+        # Check that save_vulns_to_sarif was called with the new parameter format
+        mock_save_sarif.assert_called_once()
+        call_args = mock_save_sarif.call_args
+        assert call_args.kwargs['filepath'] == "test_output.sarif"
+        assert call_args.kwargs['vulnerabilities'] == []
+        assert call_args.kwargs['scan_code'] == "TEST_SCAN_456"
+        assert call_args.kwargs['nvd_enrichment'] is True
+        assert call_args.kwargs['epss_enrichment'] is True
+        assert call_args.kwargs['cisa_kev_enrichment'] is True
+        assert call_args.kwargs['api_timeout'] == 30
+        assert call_args.kwargs['enable_vex_suppression'] is True
+        assert call_args.kwargs['quiet'] is False
+        assert 'external_data' in call_args.kwargs
 
     @patch('workbench_cli.handlers.export_sarif.save_vulns_to_sarif')
     def test_export_with_custom_options(self, mock_save_sarif, mock_workbench, mock_params):
@@ -156,22 +148,18 @@ class TestExportSarif:
         
         # Verify
         assert result is True
-        mock_save_sarif.assert_called_once_with(
-            filepath="custom_output.sarif",
-            vulnerabilities=mock_workbench.list_vulnerabilities.return_value,
-            scan_code="TEST_SCAN_456",
-            include_cve_descriptions=False,
-            include_epss_scores=False,
-            include_exploit_info=False,
-            api_timeout=60,
-            include_vex=True,
-            include_scan_metadata=True,
-            suppress_vex_mitigated=True,
-            suppress_accepted_risk=True,
-            suppress_false_positives=True,
-            group_by_component=True,
-            quiet=False
-        )
+        # Check that save_vulns_to_sarif was called with the new parameter format
+        mock_save_sarif.assert_called_once()
+        call_args = mock_save_sarif.call_args
+        assert call_args.kwargs['filepath'] == "custom_output.sarif"
+        assert call_args.kwargs['scan_code'] == "TEST_SCAN_456"
+        assert call_args.kwargs['nvd_enrichment'] is False
+        assert call_args.kwargs['epss_enrichment'] is False
+        assert call_args.kwargs['cisa_kev_enrichment'] is False
+        assert call_args.kwargs['api_timeout'] == 60
+        assert call_args.kwargs['enable_vex_suppression'] is True
+        assert call_args.kwargs['quiet'] is False
+        assert 'external_data' in call_args.kwargs
 
     def test_project_not_found_error(self, mock_workbench, mock_params):
         """Test handling of project not found error."""
@@ -228,12 +216,11 @@ class TestExportSarif:
         # Verify
         assert result is True
         captured = capsys.readouterr()
-        assert "Found 4 vulnerabilities to export" in captured.out
-        assert "HIGH: 2" in captured.out
-        assert "MEDIUM: 1" in captured.out
-        assert "LOW: 1" in captured.out
-        assert "With VEX assessments: 2" in captured.out
-        assert "Without VEX assessments: 2" in captured.out
+        assert "Retrieved 4 Vulnerabilities" in captured.out
+        assert "H: 2" in captured.out
+        assert "M: 1" in captured.out
+        assert "L: 1" in captured.out
+        assert "Retrieved VEX for 2/4 CVEs" in captured.out
 
     @patch('workbench_cli.handlers.export_sarif.save_vulns_to_sarif')
     def test_configuration_display(self, mock_save_sarif, mock_workbench, mock_params, capsys):
@@ -244,13 +231,11 @@ class TestExportSarif:
         # Verify
         assert result is True
         captured = capsys.readouterr()
-        assert "SARIF Export Configuration:" in captured.out
-        assert "Output file: test_output.sarif" in captured.out
-        assert "Include CVE descriptions: True" in captured.out
-        assert "Include EPSS scores: True" in captured.out
-        assert "Include exploit information: True" in captured.out
-        assert "Apply VEX suppression: True" in captured.out
-        assert "API timeout: 30s" in captured.out
+        # The current handler doesn't display a configuration section
+        # Instead it shows the enrichment sources being used
+        assert "External Enrichment: NVD, EPSS, CISA KEV" in captured.out
+        assert "Dynamic Scoring:" in captured.out
+        assert "VEX Suppression: Enabled" in captured.out
 
     @patch('workbench_cli.handlers.export_sarif.save_vulns_to_sarif')
     def test_integration_tips_display(self, mock_save_sarif, mock_workbench, mock_params, capsys):
@@ -261,10 +246,10 @@ class TestExportSarif:
         # Verify
         assert result is True
         captured = capsys.readouterr()
-        assert "Integration Tips:" in captured.out
-        assert "Upload to GitHub" in captured.out
-        assert "CI/CD Integration" in captured.out
-        assert "Security Tools" in captured.out
+        # The current handler doesn't display integration tips
+        # Instead it shows a simple success message
+        assert "SARIF export completed successfully!" in captured.out
+        assert "Report saved to: test_output.sarif" in captured.out
 
     @patch('workbench_cli.handlers.export_sarif.save_vulns_to_sarif')
     def test_default_output_file(self, mock_save_sarif, mock_workbench):
@@ -299,19 +284,14 @@ class TestExportSarif:
         assert result is True
         mock_save_sarif.assert_called_once()
         # Check that filepath was passed correctly
-        mock_save_sarif.assert_called_with(
-            filepath="vulns.sarif",
-            vulnerabilities=mock_workbench.list_vulnerabilities.return_value,
-            scan_code="TEST_SCAN_456",
-            include_cve_descriptions=True,
-            include_epss_scores=True,
-            include_exploit_info=True,
-            api_timeout=30,
-            include_vex=True,
-            include_scan_metadata=True,
-            suppress_vex_mitigated=True,
-            suppress_accepted_risk=True,
-            suppress_false_positives=True,
-            group_by_component=True,
-            quiet=False
-        ) 
+        # Check that save_vulns_to_sarif was called with the new parameter format
+        call_args = mock_save_sarif.call_args
+        assert call_args.kwargs['filepath'] == "vulns.sarif"
+        assert call_args.kwargs['scan_code'] == "TEST_SCAN_456"
+        assert call_args.kwargs['nvd_enrichment'] is True
+        assert call_args.kwargs['epss_enrichment'] is True
+        assert call_args.kwargs['cisa_kev_enrichment'] is True
+        assert call_args.kwargs['api_timeout'] == 30
+        assert call_args.kwargs['enable_vex_suppression'] is True
+        assert call_args.kwargs['quiet'] is False
+        assert 'external_data' in call_args.kwargs 

@@ -13,23 +13,20 @@ import time
 from unittest.mock import patch, mock_open
 from typing import Dict, List, Any
 
-from workbench_cli.utilities.sarif_converter import (
+from workbench_cli.utilities.sarif_generation import (
     convert_vulns_to_sarif,
     save_vulns_to_sarif,
     _map_severity_to_sarif_level,
     _generate_enhanced_rules,
     _generate_enhanced_results,
-    _create_empty_sarif_report,
-    # Legacy functions for backward compatibility
-    _generate_rules,
-    _generate_results
+    _create_empty_sarif_report
 )
 
 from workbench_cli.utilities.vulnerability_enricher import (
     enrich_vulnerabilities,
     _fetch_epss_scores,
     _fetch_cisa_kev_data,
-    _fetch_nvd_data_enhanced,
+    _fetch_nvd_data,
     _fetch_single_cve_nvd,
     _parse_nvd_vulnerability,
     _fetch_vulners_data,
@@ -76,7 +73,7 @@ class TestSarifConverter:
         ]
         
         # Mock the vulnerability enricher to avoid external API calls
-        with patch('workbench_cli.utilities.sarif_converter.enrich_vulnerabilities') as mock_enrich:
+        with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
             mock_enrich.return_value = {}
             
             sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_123")
@@ -94,19 +91,19 @@ class TestSarifConverter:
             # Validate rules
             assert len(run["tool"]["driver"]["rules"]) == 2
             rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
-            assert "CVE-2022-12345" in rule_ids
-            assert "CVE-2022-67890" in rule_ids
+            assert "CVE-2022-12345:test-package@1.0.0" in rule_ids
+            assert "CVE-2022-67890:another-package@2.1.0" in rule_ids
             
             # Validate results
             assert len(run["results"]) == 2
             result_rule_ids = [result["ruleId"] for result in run["results"]]
-            assert "CVE-2022-12345" in result_rule_ids
-            assert "CVE-2022-67890" in result_rule_ids
+            assert "CVE-2022-12345:test-package@1.0.0" in result_rule_ids
+            assert "CVE-2022-67890:another-package@2.1.0" in result_rule_ids
             
             # Validate severity mapping
-            critical_result = next(r for r in run["results"] if r["ruleId"] == "CVE-2022-12345")
-            medium_result = next(r for r in run["results"] if r["ruleId"] == "CVE-2022-67890")
-            assert critical_result["level"] == "error"
+            critical_result = next(r for r in run["results"] if r["ruleId"] == "CVE-2022-12345:test-package@1.0.0")
+            medium_result = next(r for r in run["results"] if r["ruleId"] == "CVE-2022-67890:another-package@2.1.0")
+            assert critical_result["level"] == "warning"
             assert medium_result["level"] == "warning"
 
     def test_convert_vulns_to_sarif_empty_data(self):
@@ -147,7 +144,7 @@ class TestSarifConverter:
             }
         }
         
-        with patch('workbench_cli.utilities.sarif_converter.enrich_vulnerabilities') as mock_enrich:
+        with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
             mock_enrich.return_value = mock_external_data
             
             sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_ENHANCED")
@@ -160,16 +157,18 @@ class TestSarifConverter:
             assert rule["properties"]["cisa_known_exploited"] == True
             assert rule["properties"]["cwe_ids"] == ["CWE-79"]
             
-            # Validate enhanced description
+            # External data should be in properties, not in description
+            # The fullDescription should contain the NVD description when available
             assert "Test vulnerability description" in rule["fullDescription"]["text"]
-            assert "CISA" in rule["fullDescription"]["text"]
+            assert "test-package" in rule["fullDescription"]["text"]
 
     def test_map_severity_to_sarif_level(self):
         """Test mapping of severity levels to SARIF levels."""
-        assert _map_severity_to_sarif_level("CRITICAL") == "error"
-        assert _map_severity_to_sarif_level("HIGH") == "error"
+        # New intelligent approach: defaults to WARNING for promotion/demotion logic
+        assert _map_severity_to_sarif_level("CRITICAL") == "warning"
+        assert _map_severity_to_sarif_level("HIGH") == "warning"
         assert _map_severity_to_sarif_level("MEDIUM") == "warning"
-        assert _map_severity_to_sarif_level("LOW") == "note"
+        assert _map_severity_to_sarif_level("LOW") == "warning"
         assert _map_severity_to_sarif_level("UNKNOWN") == "warning"
         assert _map_severity_to_sarif_level("INVALID") == "warning"
         assert _map_severity_to_sarif_level("") == "warning"
@@ -212,13 +211,13 @@ class TestSarifConverter:
         
         assert len(rules) == 2  # Should deduplicate CVE-2022-12345
         rule_ids = [rule["id"] for rule in rules]
-        assert "CVE-2022-12345" in rule_ids
-        assert "CVE-2022-67890" in rule_ids
+        assert "CVE-2022-12345:Unknown@Unknown" in rule_ids
+        assert "CVE-2022-67890:Unknown@Unknown" in rule_ids
         
         # Validate rule structure
-        critical_rule = next(r for r in rules if r["id"] == "CVE-2022-12345")
-        assert critical_rule["name"] == "Vulnerability CVE-2022-12345"
-        assert critical_rule["defaultConfiguration"]["level"] == "error"
+        critical_rule = next(r for r in rules if r["id"] == "CVE-2022-12345:Unknown@Unknown")
+        assert critical_rule["name"] == "CVE-2022-12345 in Unknown@Unknown"
+        assert critical_rule["defaultConfiguration"]["level"] == "warning"
         assert critical_rule["properties"]["cvss_version"] == "3.1"
         assert critical_rule["properties"]["base_score"] == "9.8"
 
@@ -248,17 +247,15 @@ class TestSarifConverter:
         assert len(results) == 1
         result = results[0]
         
-        assert result["ruleId"] == "CVE-2022-12345"
-        assert result["level"] == "error"
+        assert result["ruleId"] == "CVE-2022-12345:test-package@1.0.0"
+        assert result["level"] == "warning"
         assert "CVE-2022-12345" in result["message"]["text"]
-        assert "test-package" in result["message"]["text"]
         assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "pkg:generic/test-package@1.0.0"
         
         # Validate properties
         assert result["properties"]["component_id"] == 123
-        assert result["properties"]["scan_id"] == 456
         assert result["properties"]["vulnerability_id"] == 1
-        assert result["properties"]["base_score"] == "9.8"
+        assert result["properties"]["security-severity"] == "9.8"
 
     def test_create_empty_sarif_report(self):
         """Test creation of empty SARIF report."""
@@ -295,7 +292,7 @@ class TestSarifConverter:
         
         try:
             # Mock the enricher to avoid external API calls
-            with patch('workbench_cli.utilities.sarif_converter.enrich_vulnerabilities') as mock_enrich:
+            with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
                 mock_enrich.return_value = {}
                 
                 save_vulns_to_sarif(temp_path, sample_vulns, "TEST_SCAN")
@@ -329,7 +326,7 @@ class TestSarifConverter:
             nested_path = os.path.join(temp_dir, "nested", "subdir", "results.sarif")
             
             # Mock the enricher to avoid external API calls
-            with patch('workbench_cli.utilities.sarif_converter.enrich_vulnerabilities') as mock_enrich:
+            with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
                 mock_enrich.return_value = {}
                 
                 save_vulns_to_sarif(nested_path, sample_vulns, "TEST_SCAN")
@@ -356,7 +353,7 @@ class TestSarifConverter:
         invalid_path = "/invalid/path/that/should/not/exist/results.sarif"
         
         with pytest.raises((IOError, OSError)):
-            with patch('workbench_cli.utilities.sarif_converter.enrich_vulnerabilities') as mock_enrich:
+            with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
                 mock_enrich.return_value = {}
                 save_vulns_to_sarif(invalid_path, sample_vulns, "TEST_SCAN")
 
@@ -378,7 +375,7 @@ class TestSarifConverter:
             }
         ]
         
-        with patch('workbench_cli.utilities.sarif_converter.enrich_vulnerabilities') as mock_enrich:
+        with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
             mock_enrich.return_value = {}
             
             sarif_data = convert_vulns_to_sarif(incomplete_vulns, "TEST_SCAN")
@@ -393,11 +390,11 @@ class TestSarifConverter:
             # Verify default values are used for missing fields
             results = run["results"]
             first_result = results[0]
-            assert first_result["ruleId"] == "UNKNOWN"  # Default for missing CVE
+            assert first_result["ruleId"] == "UNKNOWN:test-package@Unknown"  # Default for missing CVE
             
             second_result = results[1]
-            assert second_result["ruleId"] == "CVE-2022-67890"
-            assert "Unknown" in second_result["message"]["text"]  # Default for missing component info
+            assert second_result["ruleId"] == "CVE-2022-67890:Unknown@Unknown"
+            assert "CVE-2022-67890" in second_result["message"]["text"]  # CVE should be in message
 
     def test_sarif_schema_compliance(self):
         """Test that generated SARIF complies with the expected schema structure."""
@@ -416,7 +413,7 @@ class TestSarifConverter:
             }
         ]
         
-        with patch('workbench_cli.utilities.sarif_converter.enrich_vulnerabilities') as mock_enrich:
+        with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
             mock_enrich.return_value = {}
             
             sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN")
@@ -458,8 +455,8 @@ class TestSarifConverter:
                 assert "artifactLocation" in location["physicalLocation"]
                 assert "uri" in location["physicalLocation"]["artifactLocation"]
 
-    def test_legacy_function_compatibility(self):
-        """Test that legacy functions still work for backward compatibility."""
+    def test_enhanced_functions_compatibility(self):
+        """Test that enhanced functions work correctly with and without external data."""
         sample_vulns = [
             {
                 "cve": "CVE-2022-12345",
@@ -471,15 +468,34 @@ class TestSarifConverter:
             }
         ]
         
-        # Test legacy _generate_rules function
-        rules = _generate_rules(sample_vulns)
+        # Test _generate_enhanced_rules function without external data
+        rules = _generate_enhanced_rules(sample_vulns, {})
         assert len(rules) == 1
-        assert rules[0]["id"] == "CVE-2022-12345"
+        assert rules[0]["id"] == "CVE-2022-12345:test-package@1.0.0"
         
-        # Test legacy _generate_results function
-        results = _generate_results(sample_vulns)
+        # Test _generate_enhanced_results function without external data
+        results = _generate_enhanced_results(sample_vulns, {})
         assert len(results) == 1
-        assert results[0]["ruleId"] == "CVE-2022-12345"
+        assert results[0]["ruleId"] == "CVE-2022-12345:test-package@1.0.0"
+        
+        # Test with external data
+        external_data = {
+            "CVE-2022-12345": {
+                "epss_score": 0.85,
+                "epss_percentile": 0.95,
+                "cisa_kev": True
+            }
+        }
+        
+        rules_with_external = _generate_enhanced_rules(sample_vulns, external_data)
+        assert len(rules_with_external) == 1
+        assert rules_with_external[0]["properties"]["epss_score"] == 0.85
+        assert rules_with_external[0]["properties"]["cisa_known_exploited"] == True
+        
+        results_with_external = _generate_enhanced_results(sample_vulns, external_data)
+        assert len(results_with_external) == 1
+        assert results_with_external[0]["properties"]["epss_score"] == 0.85
+        assert results_with_external[0]["properties"]["cisa_known_exploited"] == True
 
 
 class TestVulnerabilityEnricher:

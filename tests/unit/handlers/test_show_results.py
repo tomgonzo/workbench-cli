@@ -217,7 +217,6 @@ class TestShowResultsHandler:
         mock_params.show_scan_metrics = True
         mock_params.show_policy_warnings = True
         mock_params.show_vulnerabilities = True
-        mock_params.sarif_result_path = None
         
         # Mock the resolution functions
         mock_workbench.resolve_project.return_value = "PROJ_A_CODE"
@@ -231,74 +230,4 @@ class TestShowResultsHandler:
         assert result is True
         mock_fetch.assert_called_once()
 
-    def test_validation_error_sarif_without_vulnerabilities(self, mock_workbench, mock_params):
-        """Tests show-results when SARIF output is requested without --show-vulnerabilities."""
-        # Setup mocks
-        mock_params.command = 'show-results'
-        mock_params.project_name = "ProjA"
-        mock_params.scan_name = "Scan1"
-        mock_params.show_licenses = True
-        mock_params.show_components = False
-        mock_params.show_dependencies = False
-        mock_params.show_scan_metrics = False
-        mock_params.show_policy_warnings = False
-        mock_params.show_vulnerabilities = False  # This is False
-        mock_params.sarif_result_path = "output.sarif"  # But SARIF is requested
-        
-        # Execute and verify
-        with pytest.raises(ValidationError, match="--sarif-result-path requires --show-vulnerabilities flag"):
-            handle_show_results(mock_workbench, mock_params)
-
-    @patch('workbench_cli.handlers.show_results.fetch_display_save_results')
-    def test_handle_show_results_with_sarif_and_vulnerabilities(self, mock_fetch, mock_workbench, mock_params):
-        """Tests show-results with SARIF output and vulnerabilities enabled."""
-        # Setup mocks
-        mock_params.command = 'show-results'
-        mock_params.project_name = "ProjA"
-        mock_params.scan_name = "Scan1"
-        mock_params.show_licenses = False
-        mock_params.show_components = False
-        mock_params.show_dependencies = False
-        mock_params.show_scan_metrics = False
-        mock_params.show_policy_warnings = False
-        mock_params.show_vulnerabilities = True  # This is True
-        mock_params.sarif_result_path = "output.sarif"  # SARIF is requested
-        
-        # Mock the resolution functions
-        mock_workbench.resolve_project.return_value = "PROJ_A_CODE"
-        mock_workbench.resolve_scan.return_value = ("SCAN_1_CODE", 123)
-        mock_workbench.get_scan_status.return_value = {"status": "FINISHED"}
-        
-        # Execute
-        result = handle_show_results(mock_workbench, mock_params)
-        
-        # Verify - should succeed since both SARIF and vulnerabilities are enabled
-        assert result is True
-        mock_fetch.assert_called_once_with(mock_workbench, mock_params, "SCAN_1_CODE")
-
-    @patch('workbench_cli.handlers.show_results.fetch_display_save_results')
-    def test_handle_show_results_sarif_none_allowed(self, mock_fetch, mock_workbench, mock_params):
-        """Tests show-results when SARIF path is None (should be allowed)."""
-        # Setup mocks
-        mock_params.command = 'show-results'
-        mock_params.project_name = "ProjA"
-        mock_params.scan_name = "Scan1"
-        mock_params.show_licenses = True
-        mock_params.show_components = False
-        mock_params.show_dependencies = False
-        mock_params.show_scan_metrics = False
-        mock_params.show_policy_warnings = False
-        mock_params.show_vulnerabilities = False
-        mock_params.sarif_result_path = None  # No SARIF requested
-        
-        # Mock the resolution functions
-        mock_workbench.resolve_project.return_value = "PROJ_A_CODE"
-        mock_workbench.resolve_scan.return_value = ("SCAN_1_CODE", 123)
-        mock_workbench.get_scan_status.return_value = {"status": "FINISHED"}
-        
-        # Execute
-        result = handle_show_results(mock_workbench, mock_params)
-        
-        # Verify - should succeed since no SARIF is requested
-        assert result is True
-        mock_fetch.assert_called_once_with(mock_workbench, mock_params, "SCAN_1_CODE") 
+ 
