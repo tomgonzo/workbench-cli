@@ -2,20 +2,22 @@
 Workbench‐specific component enrichment helpers.
 
 This module centralises all logic required to enrich vulnerability results with
-component-level metadata that can be fetched from a Workbench instance.  The
-functions were previously implemented in utilities.sarif_converter but have
-been moved here for better separation of concerns.
+component-level metadata that can be fetched from a Workbench instance.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple, List, TYPE_CHECKING
+import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ...api.components_api import ComponentsAPI
 from ...exceptions import ApiError, NetworkError
+
+if TYPE_CHECKING:
+    from ...api import WorkbenchAPI
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +228,9 @@ __all__ = [
     "_detect_package_ecosystem",
     "prefetch_component_info",  # New function for pre-fetching
     "cache_components_from_cyclonedx",  # Populate cache from SBOM
+    # New generic helpers (format-dispatching)
+    "fetch_sbom",
+    "cache_components_from_sbom",
 ] 
 
 
@@ -288,6 +293,10 @@ def cache_components_from_cyclonedx(sbom_path: str, quiet: bool = False) -> int:
             "purl_namespace": comp.get("purl_namespace"),
             "purl_name": comp.get("purl_name"),
             "purl_version": comp.get("purl_version"),
+            # NEW – cache additional metadata useful for later enrichment
+            "licenses": comp.get("licenses"),
+            "author": comp.get("author") or (comp.get("supplier") or {}).get("name"),
+            "publisher": comp.get("publisher"),
         }
 
         _COMPONENT_INFO_CACHE[key] = cache_entry
@@ -297,3 +306,178 @@ def cache_components_from_cyclonedx(sbom_path: str, quiet: bool = False) -> int:
         print(f"    ✅ Loaded component metadata for {added} components from CycloneDX SBOM")
 
     return added 
+
+
+# ---------------------------------------------------------------------------
+# CycloneDX SBOM download helper (reused by handlers)
+# ---------------------------------------------------------------------------
+
+
+def download_cyclonedx_sbom(
+    workbench: "WorkbenchAPI",
+    scan_code: str,
+    *,
+    include_vex: bool = True,
+    params: Optional[argparse.Namespace] = None,
+    quiet: bool = False,
+) -> Optional[str]:
+    """Generate & download a scan-level CycloneDX SBOM from Workbench.
+
+    Returns a path to a temporary JSON file on success, or *None* on failure.
+
+    The logic mirrors the report-generation flow in *download_reports.py* but is
+    packaged as a standalone utility to avoid code duplication across
+    handlers.
+    """
+
+    import tempfile
+
+    report_type = "cyclone_dx"
+
+    try:
+        is_async = report_type in workbench.ASYNC_REPORT_TYPES
+
+        if is_async and not quiet:
+            print("    Generating CycloneDX SBOM asynchronously…")
+
+        if is_async:
+            process_id = workbench.generate_scan_report(
+                scan_code,
+                report_type=report_type,
+                include_vex=include_vex,
+            )
+
+            # Adopt the same waiting strategy as *download_reports* for
+            # consistency (3-second interval, up to scan_number_of_tries)
+            workbench._wait_for_process(
+                process_description=f"CycloneDX report generation (Process ID: {process_id})",
+                check_function=workbench.check_scan_report_status,
+                check_args={"process_id": process_id, "scan_code": scan_code},
+                status_accessor=lambda d: d.get("progress_state", "UNKNOWN"),
+                success_values={"FINISHED"},
+                failure_values={"FAILED", "CANCELLED", "ERROR"},
+                max_tries=getattr(params, "scan_number_of_tries", 60) if params else 60,
+                wait_interval=3,
+                progress_indicator=not quiet,
+            )
+
+            response = workbench.download_scan_report(process_id)
+        else:
+            if not quiet:
+                print("    Generating CycloneDX SBOM (synchronous)…")
+            response = workbench.generate_scan_report(
+                scan_code,
+                report_type=report_type,
+                include_vex=include_vex,
+            )
+
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tmp:
+            if hasattr(response, "content") and response.content is not None:
+                tmp.write(response.content.decode("utf-8"))
+            else:
+                tmp.write(getattr(response, "text", str(response)))
+
+            if not quiet:
+                print(f"    ✅ SBOM downloaded → {tmp.name}")
+
+            return tmp.name
+
+    except Exception as exc:
+        logger.debug(f"CycloneDX SBOM download failed: {exc}")
+        return None 
+
+
+# ---------------------------------------------------------------------------
+# Generic SBOM helpers (format-dispatching)
+# ---------------------------------------------------------------------------
+
+
+def fetch_sbom(
+    workbench: "WorkbenchAPI",
+    scan_code: str,
+    *,
+    sbom_format: str = "cyclonedx",
+    include_vex: bool = True,
+    params: Optional[argparse.Namespace] = None,
+    quiet: bool = False,
+) -> Optional[str]:
+    """Download a scan-level SBOM in *sbom_format* from Workbench.
+
+    At present only the *cyclonedx* format is fully supported. Additional
+    formats (e.g. *spdx3*) will be added incrementally – callers should be
+    prepared for the function to return *None* when the requested format is
+    not yet implemented.
+
+    The returned value is a path to a temporary file holding the SBOM JSON
+    content (or *None* on failure).
+    """
+
+    fmt_normalised = sbom_format.lower()
+
+    if fmt_normalised in {"cyclonedx", "cyclone_dx", "cdx"}:
+        # Delegate to the existing CycloneDX helper for now – we keep the
+        # original function so that other modules remain backwards compatible.
+        path = download_cyclonedx_sbom(
+            workbench,
+            scan_code,
+            include_vex=include_vex,
+            params=params,
+            quiet=quiet,
+        )
+
+        # Expose on *params* for downstream reuse (optional)
+        if path and params is not None:
+            setattr(params, "_cyclonedx_sbom_path", path)
+
+        return path
+
+    elif fmt_normalised in {"spdx3", "spdx"}:
+        if not quiet:
+            print("    ℹ️  SPDX SBOM download not yet implemented – skipping")
+        return None
+
+    else:
+        raise ValueError(f"Unsupported SBOM format '{sbom_format}' requested")
+
+
+def cache_components_from_sbom(
+    sbom_path: str,
+    *,
+    sbom_format: str = "cyclonedx",
+    quiet: bool = False,
+) -> int:
+    """Populate the component-info cache from *sbom_path*.
+
+    The helper dispatches to format-specific caching functions.  It returns the
+    number of component records added to the cache.
+    """
+
+    fmt_normalised = sbom_format.lower()
+
+    if fmt_normalised in {"cyclonedx", "cyclone_dx", "cdx"}:
+        return cache_components_from_cyclonedx(sbom_path, quiet=quiet)
+
+    elif fmt_normalised in {"spdx3", "spdx", "spdx_json"}:
+        return cache_components_from_spdx(sbom_path, quiet=quiet)
+
+    else:
+        raise ValueError(f"Unsupported SBOM format '{sbom_format}' for caching")
+
+
+# ---------------------------------------------------------------------------
+# SPDX helper – *stub* implementation (to be expanded in follow-up work)
+# ---------------------------------------------------------------------------
+
+
+def cache_components_from_spdx(sbom_path: str, quiet: bool = False) -> int:  # pragma: no cover – stub
+    """Parse an SPDX 3.0 JSON SBOM and cache components.
+
+    The current implementation is a *stub* that simply returns 0 so that the
+    rest of the export pipeline functions even when SPDX support is not yet
+    available.
+    """
+
+    if not quiet:
+        logger.debug("SPDX SBOM parsing not yet implemented – nothing cached")
+    return 0 

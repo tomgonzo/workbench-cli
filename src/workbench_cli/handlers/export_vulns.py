@@ -11,7 +11,11 @@ from ..utilities.vuln_report.sarif_generator import save_vulns_to_sarif
 from ..utilities.vuln_report.cyclonedx_generator import save_vulns_to_cyclonedx, build_cyclonedx_from_components
 from ..utilities.vuln_report.spdx_generator import save_vulns_to_spdx
 from ..utilities.vuln_report.vulnerability_enricher import enrich_vulnerabilities
-from ..utilities.vuln_report.component_enrichment import prefetch_component_info, cache_components_from_cyclonedx
+from ..utilities.vuln_report.component_enrichment import (
+    prefetch_component_info,
+    cache_components_from_sbom,
+    fetch_sbom,
+)
 from ..exceptions import (
     ApiError,
     NetworkError,
@@ -69,8 +73,25 @@ def handle_export_vulns(workbench: "WorkbenchAPI", params: argparse.Namespace) -
         if not params.quiet:
             print("\nWarning: Could not verify scan completion status. Results may be incomplete.")
     
-    # Fetch and enrich vulnerability data (applies to all formats)
-    vulnerabilities, external_data = _fetch_and_enrich_vulnerabilities(workbench, scan_code, params)
+    # ------------------------------------------------------------------
+    # 1. Fetch vulnerability list & built-in VEX
+    # ------------------------------------------------------------------
+    vulnerabilities = _fetch_vulnerabilities_and_vex(workbench, scan_code, params)
+
+    # ------------------------------------------------------------------
+    # 2. Enrich component metadata (Workbench Components API or SBOM cache)
+    # ------------------------------------------------------------------
+    _enrich_components(workbench, vulnerabilities, scan_code, params)
+
+    # ------------------------------------------------------------------
+    # 3. External vulnerability enrichment (NVD / EPSS / KEV)
+    # ------------------------------------------------------------------
+    external_data = _perform_external_vulnerability_enrichment(vulnerabilities, params)
+
+    # ------------------------------------------------------------------
+    # 4. Apply dynamic scoring (VEX suppression, EPSS / KEV promotion)
+    # ------------------------------------------------------------------
+    _apply_dynamic_scoring(vulnerabilities, external_data, params)
 
     # Handle CycloneDX export first because it uses a slightly different generation flow
     if params.format == 'cyclonedx':
@@ -100,7 +121,7 @@ def handle_export_vulns(workbench: "WorkbenchAPI", params: argparse.Namespace) -
                 epss_enrichment=getattr(params, 'enrich_epss', False),
                 cisa_kev_enrichment=getattr(params, 'enrich_cisa_kev', False),
                 api_timeout=getattr(params, 'external_timeout', 30),
-                enable_vex_suppression=not getattr(params, 'disable_vex_suppression', False),
+                enable_vex_suppression=not getattr(params, 'disable_dynamic_risk_scoring', False),
                 quiet=getattr(params, 'quiet', False)
             )
         elif params.format == 'spdx3':
@@ -113,7 +134,7 @@ def handle_export_vulns(workbench: "WorkbenchAPI", params: argparse.Namespace) -
                 epss_enrichment=getattr(params, 'enrich_epss', False),
                 cisa_kev_enrichment=getattr(params, 'enrich_cisa_kev', False),
                 api_timeout=getattr(params, 'external_timeout', 30),
-                enable_vex_suppression=not getattr(params, 'disable_vex_suppression', False),
+                enable_vex_suppression=not getattr(params, 'disable_dynamic_risk_scoring', False),
                 quiet=getattr(params, 'quiet', False)
             )
         
@@ -153,191 +174,105 @@ def _check_format_dependencies(format_name: str) -> None:
             )
     # SARIF format has no external dependencies
 
-
-def _fetch_and_enrich_vulnerabilities(
-    workbench: "WorkbenchAPI", 
-    scan_code: str, 
-    params: argparse.Namespace
-) -> tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
-    """
-    Fetch vulnerability data from Workbench and enrich it with external data.
-    
-    Returns:
-        Tuple of (vulnerabilities, external_data)
-    """
-    # Fetch vulnerability data
+def _fetch_vulnerabilities_and_vex(
+    workbench: "WorkbenchAPI",
+    scan_code: str,
+    params: argparse.Namespace,
+) -> List[Dict[str, Any]]:
+    """Retrieve vulnerabilities from Workbench (with severity filter) and print VEX summary."""
     if not params.quiet:
-        print("\n🔍 Fetching data from Workbench...")
-    
+        print("\n🔍 Fetching data from Workbench…")
+
     vulnerabilities = workbench.list_vulnerabilities(scan_code)
-    
-    # Apply severity filtering if specified
-    severity_threshold_text = ""
-    if getattr(params, 'severity_threshold', None):
-        severity_order = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1}
-        min_severity = severity_order.get(params.severity_threshold.lower(), 0)
-        original_count = len(vulnerabilities)
-        vulnerabilities = [
-            vuln for vuln in vulnerabilities
-            if severity_order.get(vuln.get('severity', '').lower(), 0) >= min_severity
-        ]
-        severity_threshold_text = f" (Severity Threshold: {params.severity_threshold.upper()})"
-    
-    # Extract configuration values from parameters
-    nvd_enrichment = getattr(params, 'enrich_nvd', False)
-    epss_enrichment = getattr(params, 'enrich_epss', False)
-    cisa_kev_enrichment = getattr(params, 'enrich_cisa_kev', False)
-    api_timeout = getattr(params, 'external_timeout', 30)
-    enable_vex_suppression = not getattr(params, 'disable_vex_suppression', False)
-    quiet = getattr(params, 'quiet', False)
-    
+
+    # Severity filter
+    if getattr(params, "severity_threshold", None):
+        sev_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        min_level = sev_order.get(params.severity_threshold.lower(), 0)
+        vulnerabilities = [v for v in vulnerabilities if sev_order.get(v.get("severity", "").lower(), 0) >= min_level]
+
+    if not params.quiet:
+        from ..utilities.vuln_report.sarif_generator import (
+            _calculate_severity_distribution,
+            _format_severity_breakdown_compact,
+        )
+        dist = _calculate_severity_distribution(vulnerabilities)
+        print(
+            f"📋 Retrieved {len(vulnerabilities)} Vulnerabilities {_format_severity_breakdown_compact(dist)}"
+        )
+        _display_vex_summary(vulnerabilities, indent="   ")
+
+    return vulnerabilities
+
+
+def _enrich_components(
+    workbench: "WorkbenchAPI",
+    vulnerabilities: List[Dict[str, Any]],
+    scan_code: str,
+    params: argparse.Namespace,
+) -> None:
+    """Prefetch component info via Components API or SBOM cache."""
     if not vulnerabilities:
-        if not params.quiet:
-            print("⚠️  No vulnerabilities found in the scan.")
-            print("An empty report will be generated.")
-        external_data = {}
-    else:
-        if not params.quiet:
-            # Step 1: Show vulnerability and VEX retrieval
-            print(f"\n📋 Retrieving Vulnerabilities and VEX...")
-            
-            # Combine vulnerability count and severity breakdown in one line
-            from ..utilities.vuln_report.sarif_generator import _calculate_severity_distribution, _format_severity_breakdown_compact
-            severity_dist = _calculate_severity_distribution(vulnerabilities)
-            severity_breakdown = _format_severity_breakdown_compact(severity_dist)
-            print(f"   • Retrieved {len(vulnerabilities)} Vulnerabilities{severity_threshold_text} {severity_breakdown}")
-            _display_vex_summary(vulnerabilities, indent="   ")
-            
-            # Step 2: Pre-fetch component information
-            print(f"\n🔧 Retrieving Component Information...")
+        return
 
-            # ------------------------------------------------------------
-            # CycloneDX: attempt to download SBOM early so we can populate
-            # the component-info cache before hitting the API. This avoids
-            # unnecessary network calls when the SBOM already has the data.
-            # ------------------------------------------------------------
-            if params.format == "cyclonedx":
-                sbom_path = _attempt_download_cyclonedx_sbom(workbench, scan_code, params)
-                if sbom_path:
-                    cache_components_from_cyclonedx(sbom_path, quiet=True)
-                    # The helper stores the temp file path on *params* for
-                    # later reuse by _handle_cyclonedx_export.
+    if not params.quiet:
+        print("\n🔧 Retrieving Component Information…")
 
-            # Count unique components before fetching
-            unique_components = list(set(
-                f"{vuln.get('component_name', 'Unknown')}@{vuln.get('component_version', 'Unknown')}"
-                for vuln in vulnerabilities 
-                if vuln.get("component_name") and vuln.get("component_version")
-            ))
-            component_count = len(unique_components)
-            
-            prefetch_component_info(vulnerabilities, quiet=True)  # Always quiet to suppress progress messages
-            print(f"   • Component information retrieved for {component_count} Components")
-            
-            # Step 3: Perform external enrichment and display status
-            external_data = _perform_external_enrichment(
-                vulnerabilities, 
-                nvd_enrichment,
-                epss_enrichment,
-                cisa_kev_enrichment,
-                api_timeout
-            )
-            
-            # Step 4: Show Dynamic Scoring section
-            _display_dynamic_scoring(
-                vulnerabilities, 
-                enable_vex_suppression,
-                external_data
-            )
-        else:
-            # Still need to fetch external data for report generation, but quietly
-            from ..utilities.vuln_report.sarif_generator import _fetch_external_enrichment_data
-            
-            # Pre-fetch component information quietly (no progress messages)
-            prefetch_component_info(vulnerabilities, quiet=True)
-            
-            # Fetch external data if any enrichment is enabled
-            if nvd_enrichment or epss_enrichment or cisa_kev_enrichment:
-                from ..utilities.vuln_report.sarif_generator import _extract_unique_cves
-                unique_cves = _extract_unique_cves(vulnerabilities)
-                external_data = enrich_vulnerabilities(
-                    unique_cves, 
-                    nvd_enrichment, 
-                    epss_enrichment, 
-                    cisa_kev_enrichment,
-                    api_timeout
-                )
-            else:
-                external_data = {}
-    
-    return vulnerabilities, external_data
+    # CycloneDX: early SBOM download → cache components
+    if params.format in {"cyclonedx", "spdx3"}:
+        sbom_path = fetch_sbom(
+            workbench,
+            scan_code,
+            sbom_format=params.format,
+            include_vex=True,
+            params=params,
+            quiet=True,
+        )
+        if sbom_path:
+            cache_components_from_sbom(sbom_path, sbom_format=params.format, quiet=True)
+
+    # Parallel Components API prefetch
+    unique = {
+        (v.get("component_name"), v.get("component_version"))
+        for v in vulnerabilities
+        if v.get("component_name") and v.get("component_version")
+    }
+    prefetch_component_info(vulnerabilities, quiet=True)
+    if not params.quiet:
+        print(f"   • Component information retrieved for {len(unique)} Components")
+
+
+def _perform_external_vulnerability_enrichment(
+    vulnerabilities: List[Dict[str, Any]],
+    params: argparse.Namespace,
+) -> Dict[str, Dict[str, Any]]:
+    nvd = getattr(params, "enrich_nvd", False)
+    epss = getattr(params, "enrich_epss", False)
+    kev = getattr(params, "enrich_cisa_kev", False)
+    timeout = getattr(params, "external_timeout", 30)
+
+    ext_data = _perform_external_enrichment(
+        vulnerabilities,
+        nvd,
+        epss,
+        kev,
+        timeout,
+    )
+    return ext_data
+
+
+def _apply_dynamic_scoring(
+    vulnerabilities: List[Dict[str, Any]],
+    external_data: Dict[str, Dict[str, Any]],
+    params: argparse.Namespace,
+) -> None:
+    enable_vex_suppression = not getattr(params, "disable_dynamic_risk_scoring", False)
+    _display_dynamic_scoring(vulnerabilities, enable_vex_suppression, external_data)
 
 
 # ---------------------------------------------------------------------------
 # Helper: Download CycloneDX SBOM (best-effort)
 # ---------------------------------------------------------------------------
-
-
-def _attempt_download_cyclonedx_sbom(
-    workbench: "WorkbenchAPI",
-    scan_code: str,
-    params: argparse.Namespace,
-) -> Optional[str]:
-    """Return path to a temporary CycloneDX SBOM or *None* on failure.
-
-    If we already downloaded the SBOM earlier in this session the cached path
-    stored on *params* (``_cyclonedx_sbom_path``) is returned.
-    """
-
-    if getattr(params, "_cyclonedx_sbom_path", None):
-        return params._cyclonedx_sbom_path  # type: ignore[attr-defined]
-
-    try:
-        report_type = "cyclone_dx"
-        is_async = report_type in workbench.ASYNC_REPORT_TYPES
-
-        if not params.quiet:
-            print("    📦 Downloading CycloneDX SBOM from Workbench …")
-
-        if is_async:
-            process_id = workbench.generate_scan_report(
-                scan_code, report_type=report_type, include_vex=True
-            )
-
-            workbench._wait_for_process(
-                process_description=f"CycloneDX report generation (Process ID: {process_id})",
-                check_function=workbench.check_scan_report_status,
-                check_args={"process_id": process_id, "scan_code": scan_code},
-                status_accessor=lambda d: d.get("progress_state", "UNKNOWN"),
-                success_values={"FINISHED"},
-                failure_values={"FAILED", "CANCELLED", "ERROR"},
-                max_tries=getattr(params, "scan_number_of_tries", 60),
-                wait_interval=3,
-                progress_indicator=False,
-            )
-
-            response = workbench.download_scan_report(process_id)
-        else:
-            response = workbench.generate_scan_report(
-                scan_code, report_type=report_type, include_vex=True
-            )
-
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tmp:
-            if hasattr(response, "content") and response.content is not None:
-                tmp.write(response.content.decode("utf-8"))
-            else:
-                tmp.write(getattr(response, "text", str(response)))
-
-            sbom_path = tmp.name
-
-        params._cyclonedx_sbom_path = sbom_path  # cache for later reuse
-        return sbom_path
-
-    except Exception as exc:
-        logger.debug(f"CycloneDX SBOM download failed: {exc}")
-        return None
 
 
 def _handle_cyclonedx_export(
@@ -377,7 +312,7 @@ def _handle_cyclonedx_export(
          nvd_enrichment=getattr(params, "enrich_nvd", False),
          epss_enrichment=getattr(params, "enrich_epss", False),
          cisa_kev_enrichment=getattr(params, "enrich_cisa_kev", False),
-         enable_vex_suppression=not getattr(params, "disable_vex_suppression", False),
+         enable_vex_suppression=not getattr(params, "disable_dynamic_risk_scoring", False),
          quiet=getattr(params, "quiet", False),
          base_sbom_path=base_sbom_path,
      )
@@ -394,168 +329,6 @@ def _handle_cyclonedx_export(
              pass  # ignore cleanup errors
 
      return True
-
-
-def _extract_vulnerabilities_from_cyclonedx_report(cyclonedx_path: str) -> List[Dict[str, Any]]:
-    """
-    Extract vulnerability data from a CycloneDX report for external enrichment.
-    
-    Args:
-        cyclonedx_path: Path to the CycloneDX JSON file
-        
-    Returns:
-        List of vulnerability dictionaries compatible with enrichment functions
-    """
-    import json
-    
-    vulnerabilities = []
-    
-    try:
-        with open(cyclonedx_path, 'r', encoding='utf-8') as f:
-            cyclonedx_data = json.load(f)
-        
-        # Create component lookup by bom-ref
-        components_by_ref = {}
-        if 'components' in cyclonedx_data:
-            for component in cyclonedx_data['components']:
-                bom_ref = component.get('bom-ref')
-                if bom_ref:
-                    components_by_ref[bom_ref] = component
-        
-        # Extract vulnerabilities
-        if 'vulnerabilities' in cyclonedx_data:
-            for vuln in cyclonedx_data['vulnerabilities']:
-                cve = vuln.get('id', 'UNKNOWN')
-                
-                # Find affected components
-                affected_components = []
-                if 'affects' in vuln:
-                    for affect in vuln['affects']:
-                        ref = affect.get('ref')
-                        if ref and ref in components_by_ref:
-                            affected_components.append(components_by_ref[ref])
-                
-                # Create vulnerability records for each affected component
-                for component in affected_components:
-                    vuln_record = {
-                        'cve': cve,
-                        'component_name': component.get('name', 'Unknown'),
-                        'component_version': component.get('version', 'Unknown'),
-                        'id': f"{cve}-{component.get('name', 'Unknown')}-{component.get('version', 'Unknown')}",
-                    }
-                    
-                    # Extract severity and score from ratings
-                    if 'ratings' in vuln and vuln['ratings']:
-                        # Use the first rating as base
-                        first_rating = vuln['ratings'][0]
-                        if 'severity' in first_rating:
-                            vuln_record['severity'] = first_rating['severity'].lower()
-                        if 'score' in first_rating:
-                            vuln_record['base_score'] = str(first_rating['score'])
-                    
-                    # Extract VEX analysis state
-                    if 'analysis' in vuln:
-                        analysis = vuln['analysis']
-                        if 'state' in analysis:
-                            vuln_record['vex_assessment'] = {
-                                'status': analysis['state'],
-                                'response': analysis.get('response', []),
-                                'justification': analysis.get('justification', ''),
-                                'detail': analysis.get('detail', ''),
-                            }
-                    
-                    vulnerabilities.append(vuln_record)
-        
-        logger.debug(f"Extracted {len(vulnerabilities)} vulnerabilities from CycloneDX report")
-        return vulnerabilities
-        
-    except Exception as e:
-        logger.error(f"Failed to extract vulnerabilities from CycloneDX report: {e}")
-        return []
-
-
-def _perform_external_enrichment_for_cyclonedx(
-    vulnerabilities: List[Dict[str, Any]], 
-    params: argparse.Namespace,
-    quiet: bool = False
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Perform external enrichment for CycloneDX vulnerabilities.
-    
-    Args:
-        vulnerabilities: List of vulnerability dictionaries
-        params: Command line parameters
-        quiet: Whether to suppress output messages
-        
-    Returns:
-        Dictionary of external enrichment data keyed by CVE
-    """
-    # Extract configuration values from parameters
-    nvd_enrichment = getattr(params, 'enrich_nvd', False)
-    epss_enrichment = getattr(params, 'enrich_epss', False)
-    cisa_kev_enrichment = getattr(params, 'enrich_cisa_kev', False)
-    api_timeout = getattr(params, 'external_timeout', 30)
-    
-    if not (nvd_enrichment or epss_enrichment or cisa_kev_enrichment):
-        if not quiet:
-            print(f"\n🔍 External Enrichment: DISABLED")
-        return {}
-    
-    # Show enrichment status
-    enrichment_sources = []
-    if nvd_enrichment:
-        enrichment_sources.append("NVD")
-    if epss_enrichment:
-        enrichment_sources.append("EPSS")
-    if cisa_kev_enrichment:
-        enrichment_sources.append("CISA KEV")
-    
-    if not quiet:
-        print(f"\n🔍 External Enrichment: {', '.join(enrichment_sources)}")
-    
-    # Get unique CVEs for enrichment
-    unique_cves = list(set(
-        vuln.get('cve', 'UNKNOWN') 
-        for vuln in vulnerabilities 
-        if vuln.get('cve') and vuln.get('cve') != 'UNKNOWN'
-    ))
-    
-    if not unique_cves:
-        if not quiet:
-            print("   • No CVEs found for enrichment")
-        return {}
-    
-    # Show custom NVD message if NVD enrichment is enabled
-    if nvd_enrichment and unique_cves:
-        if not quiet:
-            print(f"   📋 Fetching additional details for {len(unique_cves)} CVEs from NVD")
-            if not os.environ.get('NVD_API_KEY'):
-                print(f"   💡 For faster performance, set the 'NVD_API_KEY' environment variable")
-    
-    # Perform the actual enrichment with suppressed logging
-    # Temporarily increase logging level to suppress INFO messages
-    nvd_logger = logging.getLogger('workbench_cli.utilities.vuln_report.vulnerability_enricher')
-    original_level = nvd_logger.level
-    nvd_logger.setLevel(logging.WARNING)
-    
-    try:
-        external_data = enrich_vulnerabilities(
-            unique_cves, 
-            nvd_enrichment,
-            epss_enrichment,
-            cisa_kev_enrichment,
-            api_timeout
-        )
-    finally:
-        nvd_logger.setLevel(original_level)
-    
-    # Show EPSS results if EPSS enrichment was enabled
-    if epss_enrichment and external_data and not quiet:
-        epss_count = sum(1 for cve_data in external_data.values() if cve_data.get('epss_score') is not None)
-        if epss_count > 0:
-            print(f"   📊 EPSS scores retrieved for {epss_count} CVEs")
-    
-    return external_data
 
 
 def _perform_external_enrichment(

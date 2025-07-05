@@ -240,10 +240,10 @@ def build_cyclonedx_from_components(
     cisa_kev_enrichment: bool = False,
     enable_vex_suppression: bool = True
 ) -> Bom:
-    """Build a brand-new CycloneDX 1.6 BOM while retaining component list & dependency graph from
-    a pre-existing Workbench SBOM (typically 1.5).  This is the preferred middle-ground refactor –
-    we ignore legacy metadata quirks and simply copy components & edges, then inject enriched
-    vulnerability data.
+    """
+    Build a brand-new CycloneDX 1.6 BOM while retaining component list & dependency graph from
+    a pre-existing Workbench SBOM (typically 1.5).  This helps ignore legacy metadata quirks and 
+    simply copies components & edges, then injects enriched vulnerability data.
     """
 
     if not CYCLONEDX_AVAILABLE:
@@ -297,16 +297,42 @@ def build_cyclonedx_from_components(
             bom_ref=bom_ref_val,
         )
 
-        # Best-effort: copy licenses if an SPDX id is present
+        # Copy author/publisher information when present (NEW)
+        author_val = comp_data.get("author")
+        publisher_val = comp_data.get("publisher")
+        supplier_data = comp_data.get("supplier") or {}
+        supplier_name = supplier_data.get("name")
+        if author_val:
+            component.author = author_val  # type: ignore[attr-defined]
+        if publisher_val:
+            component.publisher = publisher_val  # type: ignore[attr-defined]
+        if supplier_name:
+            try:
+                from cyclonedx.model.component import OrganizationalEntity
+                component.supplier = OrganizationalEntity(name=supplier_name)  # type: ignore[attr-defined]
+            except Exception:
+                # Fallback: store supplier as author if supplier field not supported
+                if not author_val:
+                    component.author = supplier_name  # type: ignore[attr-defined]
+
+        # Best-effort: copy licenses if an SPDX id or expression is present (improved)
         if comp_data.get("licenses"):
             try:
-                from cyclonedx.model.license import LicenseChoice, DisjunctiveLicenseSet, License, SpdxLicense
+                from cyclonedx.model.license import (
+                    LicenseChoice,
+                    DisjunctiveLicenseSet,
+                    SpdxLicense,
+                    LicenseExpression,
+                )
 
                 lic_objs = []
                 for lic in comp_data["licenses"]:
-                    lic_id = lic.get("license", {}).get("id")
-                    if lic_id:
-                        lic_objs.append(SpdxLicense(lic_id))
+                    lic_info = lic.get("license")
+                    if lic_info and lic_info.get("id"):
+                        lic_objs.append(SpdxLicense(lic_info["id"]))
+                    elif lic.get("expression"):
+                        lic_objs.append(LicenseExpression(value=lic["expression"]))
+
                 if lic_objs:
                     component.licenses = LicenseChoice(DisjunctiveLicenseSet(licenses=lic_objs))
             except Exception:
@@ -378,249 +404,6 @@ def build_cyclonedx_from_components(
 
     return new_bom
 
-
-def augment_existing_cyclonedx_sbom(
-    base_sbom_path: str,
-    vulnerabilities: List[Dict[str, Any]],
-    scan_code: str,
-    external_data: Optional[Dict[str, Dict[str, Any]]] = None,
-    nvd_enrichment: bool = False,
-    epss_enrichment: bool = False,
-    cisa_kev_enrichment: bool = False,
-    enable_vex_suppression: bool = True
-) -> Bom:
-    """
-    Augment an existing CycloneDX SBOM with vulnerability data.
-    
-    This approach preserves all the rich component metadata from the existing SBOM
-    (licenses, suppliers, dependencies, etc.) while adding vulnerability information.
-    
-    Args:
-        base_sbom_path: Path to the existing CycloneDX SBOM file
-        vulnerabilities: List of vulnerability dictionaries from the API
-        scan_code: The scan code for reference
-        external_data: Pre-fetched external enrichment data (optional)
-        nvd_enrichment: Whether NVD enrichment was enabled
-        epss_enrichment: Whether EPSS enrichment was enabled
-        cisa_kev_enrichment: Whether CISA KEV enrichment was enabled
-        enable_vex_suppression: Whether VEX suppression is enabled
-        
-    Returns:
-        Augmented CycloneDX BOM object with vulnerability information
-        
-    Raises:
-        FileNotFoundError: If the base SBOM file doesn't exist
-        ValueError: If the base SBOM cannot be parsed
-    """
-    if not CYCLONEDX_AVAILABLE:
-        raise ImportError("CycloneDX support requires the 'cyclonedx-python-lib' package")
-    
-    if external_data is None:
-        external_data = {}
-    
-    # Load existing SBOM
-    try:
-        with open(base_sbom_path, 'r', encoding='utf-8') as f:
-            json_data = json.load(f)
-        
-        # Create a new BOM and populate it with existing data
-        existing_bom = Bom()
-        
-        # Set metadata from existing SBOM
-        if 'metadata' in json_data:
-            metadata = json_data['metadata']
-            if 'timestamp' in metadata:
-                try:
-                    existing_bom.metadata.timestamp = datetime.fromisoformat(metadata['timestamp'].replace('Z', '+00:00'))
-                except:
-                    existing_bom.metadata.timestamp = datetime.utcnow()
-            else:
-                existing_bom.metadata.timestamp = datetime.utcnow()
-        
-        # Add existing components
-        if 'components' in json_data:
-            for comp_data in json_data['components']:
-                try:
-                    component = Component(
-                        name=comp_data.get('name', 'Unknown'),
-                        version=comp_data.get('version', ''),
-                        type=ComponentType.LIBRARY,
-                        bom_ref=comp_data.get('bom-ref') or None,
-                    )
-                    
-                    # Set PURL if available
-                    if 'purl' in comp_data:
-                        try:
-                            component.purl = PackageURL.from_string(comp_data['purl'])
-                        except:
-                            pass  # Skip invalid PURLs
-                    
-                    # Set bom-ref if available
-                    if 'bom-ref' in comp_data:
-                        component.bom_ref = comp_data['bom-ref']
-                    
-                    existing_bom.components.add(component)
-                except:
-                    # Skip components that can't be parsed
-                    continue
-        
-        # Add existing vulnerabilities
-        if 'vulnerabilities' in json_data:
-            for vuln_data in json_data['vulnerabilities']:
-                try:
-                    vulnerability = Vulnerability(
-                        bom_ref=vuln_data.get('bom-ref', f"vuln-{vuln_data.get('id', 'unknown')}"),
-                        id=vuln_data.get('id', 'UNKNOWN')
-                    )
-                    
-                    # Set description
-                    if 'description' in vuln_data:
-                        vulnerability.description = vuln_data['description']
-                    
-                    # Add affects relationships
-                    if 'affects' in vuln_data:
-                        affects = []
-                        for affect in vuln_data['affects']:
-                            if 'ref' in affect:
-                                affects.append(BomTarget(ref=affect['ref']))
-                        if affects:
-                            vulnerability.affects = affects
-                    
-                    existing_bom.vulnerabilities.add(vulnerability)
-                except:
-                    # Skip vulnerabilities that can't be parsed
-                    continue
-        
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Base SBOM file not found: {base_sbom_path}")
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in base SBOM file: {e}")
-    except Exception as e:
-        raise ValueError(f"Failed to parse base SBOM file: {e}")
-    
-    # Create component lookup for matching vulnerabilities to existing components
-    component_lookup = {}
-    for component in existing_bom.components:
-        # Create multiple lookup keys for flexible matching
-        keys = [
-            component.name,  # Simple name match
-            f"{component.name}@{component.version}" if component.version else component.name,  # Name@version
-        ]
-        
-        # Add PURL-based matching if available
-        if component.purl:
-            keys.append(str(component.purl))
-            keys.append(component.purl.name)  # Just the name part of PURL
-        
-        for key in keys:
-            if key:
-                component_lookup[key.lower()] = component
-    
-    # Process vulnerabilities and match to existing components
-    vulnerabilities_to_add = []
-    unmatched_vulnerabilities = []
-    
-    for vuln in vulnerabilities:
-        component_name = vuln.get("component_name", "Unknown")
-        component_version = vuln.get("component_version", "Unknown")
-        cve = vuln.get("cve", "UNKNOWN")
-        
-        # Try to match vulnerability to existing component
-        matched_component = None
-        
-        # Try different matching strategies
-        match_keys = [
-            component_name.lower(),
-            f"{component_name}@{component_version}".lower(),
-            f"{component_name}-{component_version}".lower(),
-        ]
-        
-        for key in match_keys:
-            if key in component_lookup:
-                matched_component = component_lookup[key]
-                break
-        
-        if matched_component:
-            # Create vulnerability and link to existing component
-            vulnerability = _create_cyclonedx_vulnerability(vuln, external_data.get(cve, {}))
-
-            # Ensure the bom-ref is a plain string for JSON serialization
-            ref_id = matched_component.bom_ref
-            if not isinstance(ref_id, str):
-                ref_id = str(ref_id)
-            
-            # Add BOM target to link vulnerability to component
-            vulnerability.affects = [BomTarget(ref=ref_id)]
-            
-            vulnerabilities_to_add.append(vulnerability)
-        else:
-            # Component not found in existing SBOM
-            unmatched_vulnerabilities.append(vuln)
-    
-    # Add matched vulnerabilities to the BOM
-    for vulnerability in vulnerabilities_to_add:
-        existing_bom.vulnerabilities.add(vulnerability)
-    
-    # Handle unmatched vulnerabilities by creating minimal components
-    if unmatched_vulnerabilities:
-        logger.warning(f"Found {len(unmatched_vulnerabilities)} vulnerabilities for components not in base SBOM")
-        
-        for vuln in unmatched_vulnerabilities:
-            component_name = vuln.get("component_name", "Unknown")
-            component_version = vuln.get("component_version", "Unknown")
-            cve = vuln.get("cve", "UNKNOWN")
-            
-            # Create minimal component for unmatched vulnerability
-            ecosystem = _detect_package_ecosystem(component_name, component_version)
-            
-            try:
-                purl = PackageURL(
-                    type=ecosystem,
-                    name=component_name,
-                    version=component_version
-                )
-                component = Component(
-                    name=component_name,
-                    version=component_version,
-                    type=ComponentType.LIBRARY,
-                    purl=purl
-                )
-            except Exception:
-                component = Component(
-                    name=component_name,
-                    version=component_version,
-                    type=ComponentType.LIBRARY
-                )
-            
-            # Add component to BOM
-            existing_bom.components.add(component)
-            
-            # Create and add vulnerability
-            vulnerability = _create_cyclonedx_vulnerability(vuln, external_data.get(cve, {}))
-
-            # Ensure bom-ref serializes as a string
-            ref_id = component.bom_ref if isinstance(component.bom_ref, str) else str(component.bom_ref)
-            vulnerability.affects = [BomTarget(ref=ref_id)]
-            existing_bom.vulnerabilities.add(vulnerability)
-    
-    # Update BOM metadata to reflect augmentation
-    existing_bom.metadata.timestamp = datetime.utcnow()
-    
-    # Add properties to indicate this is an augmented SBOM
-    # Note: existing_bom.metadata.properties is a SortedSet, so we use update() with Property objects
-    properties_to_add = [
-        Property(name="augmented_with_vulnerabilities", value="true"),
-        Property(name="augmentation_timestamp", value=datetime.utcnow().isoformat() + "Z"),
-        Property(name="vulnerability_count", value=str(len(vulnerabilities))),
-        Property(name="unmatched_vulnerabilities", value=str(len(unmatched_vulnerabilities))),
-        Property(name="scan_code", value=scan_code),
-    ]
-    
-    existing_bom.metadata.properties.update(properties_to_add)
-    
-    return existing_bom
-
-
 def _create_cyclonedx_vulnerability(
     vuln: Dict[str, Any], 
     ext_data: Dict[str, Any]
@@ -683,10 +466,10 @@ def _create_cyclonedx_vulnerability(
         
         ratings.append(dynamic_rating)
     
-    # EPSS rating
+    # EPSS rating (explicit source so ingest tools recognise it)
     if ext_data.get("epss_score") is not None:
         epss_rating = VulnerabilityRating(
-            source=None,
+            source=VulnerabilitySource(name="EPSS", url="https://www.first.org/epss"),
             score=ext_data["epss_score"],
             method=VulnerabilityScoreSource.OTHER,
         )
@@ -748,41 +531,93 @@ def _create_cyclonedx_vulnerability(
     # ------------------------------------------------------------------
     # References & Metadata
     # ------------------------------------------------------------------
-    # Add references
-    references = []
+    # Add references (initialised above but we will continue to append)
+    # Map NVD tags to ExternalReferenceType for richer context
+    tag_map = {
+        "Vendor Advisory": ExternalReferenceType.ADVISORIES,
+        "Patch": ExternalReferenceType.PATCH if hasattr(ExternalReferenceType, "PATCH") else ExternalReferenceType.OTHER,
+        "Exploit": ExternalReferenceType.EXPLOITABILITY_STATEMENT,
+        "Release Notes": ExternalReferenceType.RELEASE_NOTES,
+    }
 
-    # NVD reference
+    # Ensure external_references structure exists
+    from sortedcontainers import SortedSet
+    if not getattr(vulnerability, "external_references", None):
+        vulnerability.external_references = SortedSet()
+
+    # Primary NVD advisory
     if cve != "UNKNOWN":
-        nvd_ref = VulnerabilityReference(
-            id=cve,
-            source=VulnerabilitySource(name="NVD", url=f"https://nvd.nist.gov/vuln/detail/{cve}")
-        )
-        references.append(nvd_ref)
-    
-    # Additional NVD references
-    if ext_data.get("nvd_references"):
-        for ref in ext_data["nvd_references"][:5]:  # Limit to 5 references
-            ref_obj = VulnerabilityReference(
-                source=VulnerabilitySource(
-                    name=ref.get("source", "Unknown"),
-                    url=ref.get("url", "")
+        try:
+            vulnerability.external_references.add(
+                ExternalReference(
+                    type=ExternalReferenceType.ADVISORIES,
+                    url=f"https://nvd.nist.gov/vuln/detail/{cve}",
+                    comment="NVD"
                 )
             )
-            references.append(ref_obj)
-    
-    vulnerability.references = references
-    
+        except Exception:
+            pass
+
+    if ext_data.get("nvd_references"):
+        from sortedcontainers import SortedSet
+        for idx, ref in enumerate(ext_data["nvd_references"]):
+            url = ref.get("url")
+            if not url:
+                continue
+            tags = ref.get("tags", [])
+            matched_type = None
+            for t in tags:
+                if t in tag_map:
+                    matched_type = tag_map[t]
+                    break
+            if not matched_type:
+                matched_type = ExternalReferenceType.OTHER
+            try:
+                vulnerability.external_references.add(
+                    ExternalReference(
+                        type=matched_type,
+                        url=url,
+                        comment=ref.get("source", "")
+                    )
+                )  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
     # Add CWE information
     if ext_data.get("nvd_cwe"):
         vulnerability.cwes = [int(cwe.replace("CWE-", "")) for cwe in ext_data["nvd_cwe"] if cwe.startswith("CWE-")]
     
     # Add properties for additional metadata
     properties = []
-    
+
+    # CISA KEV flag
     if ext_data.get("cisa_kev"):
         properties.append({"name": "cisa_known_exploited", "value": "true"})
-    
-    if ext_data.get("epss_percentile"):
+
+        # Ensure vulnerability is marked exploitable if not already
+        try:
+            from cyclonedx.model.impact_analysis import ImpactAnalysisState
+            if not vulnerability.analysis:
+                from cyclonedx.model.vulnerability import VulnerabilityAnalysis
+                vulnerability.analysis = VulnerabilityAnalysis(state=ImpactAnalysisState.EXPLOITABLE)
+            else:
+                vulnerability.analysis.state = ImpactAnalysisState.EXPLOITABLE  # type: ignore[attr-defined]
+        except Exception:
+            pass  # non-critical
+
+        # Add advisory reference
+        try:
+            kev_ref = ExternalReference(
+                type=ExternalReferenceType.ADVISORIES,
+                url="https://www.cisa.gov/known-exploited-vulnerabilities",
+                comment="CISA Known Exploited Vulnerabilities catalog"
+            )
+            vulnerability.external_references.add(kev_ref)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    # EPSS percentile property
+    if ext_data.get("epss_percentile") is not None:
         properties.append({"name": "epss_percentile", "value": str(ext_data["epss_percentile"])})
     
     # VEX properties
@@ -806,8 +641,49 @@ def _create_cyclonedx_vulnerability(
         if risk_adjustment.priority_context:
             properties.append({"name": "risk_priority_context", "value": risk_adjustment.priority_context})
     
-    # Note: CycloneDX doesn't have a direct properties field on Vulnerability
-    # These would typically be added as external references or in the BOM metadata
+    # ------------------------------------------------------------------
+    # Publication & temporal data (from NVD)
+    # ------------------------------------------------------------------
+    from datetime import datetime, timezone
+    if ext_data.get("nvd_published") and not getattr(vulnerability, "published", None):
+        try:
+            vulnerability.published = datetime.fromisoformat(ext_data["nvd_published"].replace("Z", "+00:00"))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    if ext_data.get("nvd_last_modified") and not getattr(vulnerability, "updated", None):
+        try:
+            vulnerability.updated = datetime.fromisoformat(ext_data["nvd_last_modified"].replace("Z", "+00:00"))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Exploitability / impact sub-scores
+    # ------------------------------------------------------------------
+    if ext_data.get("exploitability_score") is not None:
+        try:
+            vulnerability.ratings.add(
+                VulnerabilityRating(
+                    source=VulnerabilitySource(name="NVD Exploitability"),
+                    score=float(ext_data["exploitability_score"]),
+                    method=VulnerabilityScoreSource.OTHER,
+                )
+            )  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    if ext_data.get("impact_score") is not None:
+        properties.append({"name": "nvd_impact_score", "value": str(ext_data["impact_score"])})
+
+    # ------------------------------------------------------------------
+    # Detailed CVSS v3 metrics as properties
+    # ------------------------------------------------------------------
+    if ext_data.get("cvss3_metrics"):
+        for m_key, m_val in ext_data["cvss3_metrics"].items():
+            properties.append({"name": f"cvss3_{m_key}", "value": m_val})
+
+    # Assign accumulated properties
+    vulnerability.properties = [Property(name=p["name"], value=p["value"]) for p in properties]
     
     return vulnerability
 

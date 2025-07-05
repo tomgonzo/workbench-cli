@@ -160,7 +160,21 @@ class SBOMValidator:
         if ('<rdf:' in content_lower or '<RDF:' in content_lower) and 'spdx' in content_lower:
             return "spdx"
         
-        raise ValidationError("Unable to detect SBOM format. File does not appear to be CycloneDX or SPDX.")
+        # Fallback: Try full JSON parse for large single-line files
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f_full:
+                full_content = f_full.read()
+            data = json.loads(full_content)
+            # CycloneDX detection
+            if isinstance(data, dict) and data.get("bomFormat", "").lower() == "cyclonedx":
+                return "cyclonedx"
+            # SPDX detection (JSON)
+            if isinstance(data, dict) and any(key.lower() == "spdxversion" for key in data.keys()):
+                return "spdx"
+        except Exception:
+            pass  # Fall through to error below if parsing fails
+        
+        raise ValidationError("Unable to detect SBOM format even after full file scan.")
     
     @staticmethod
     def _validate_cyclonedx(file_path: str) -> Tuple[str, str, Dict[str, Any], Dict]:

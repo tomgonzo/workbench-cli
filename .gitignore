@@ -105,3 +105,8 @@ test-commands.txt
 workbench-cli-log.txt
 *.sarif
 
+vuln-report-epss-kev.json
+vuln-report-epss.json
+vuln-report-nvd-epss-kev.json
+vuln-report.json
+vuln-report-epss.json

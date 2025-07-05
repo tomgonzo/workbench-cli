@@ -115,20 +115,6 @@ Example Usage:
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     download-reports --scan-name MYSCAN01 --report-scope scan --report-type html --report-save-path reports/
 
-  # Export vulnerability results in SARIF format for security tooling
-  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
-    export-sarif --project-name MYPROJ --scan-name MYSCAN01 -o security-report.sarif
-
-  # Export SARIF with custom enrichment and filtering options
-  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
-    export-sarif --project-name MYPROJ --scan-name MYSCAN01 -o vulns.sarif \\
-    --enrich-epss --enrich-cisa-kev --severity-threshold high --disable-vex-suppression
-
-  # Export SARIF without external enrichment (default behavior)
-  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
-    export-sarif --project-name MYPROJ --scan-name MYSCAN01 -o vulns.sarif \\
-    --quiet
-
   # Export vulnerability results in CycloneDX format
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format cyclonedx -o vulns.cdx.json
@@ -349,7 +335,7 @@ Example Usage:
     # Output processing & suppression
     processing_args = export_sarif_parser.add_argument_group("Output Processing & Suppression")
     processing_args.add_argument("--severity-threshold", help="Filter vulnerabilities by CVSS severity.", choices=["critical", "high", "medium", "low"], metavar="LEVEL")
-    processing_args.add_argument("--disable-vex-suppression", help="Disable automatic suppression of VEX-assessed findings (mitigated, accepted risk, false positives).", action="store_true")
+    processing_args.add_argument("--disable-dynamic-risk-scoring", dest="disable_dynamic_risk_scoring", help="Disable Dynamic Risk Scoring (VEX suppression and EPSS / KEV escalation).", action="store_true")
     
     # Output control
     output_control_args = export_sarif_parser.add_argument_group("Output Control")
@@ -387,7 +373,7 @@ Example Usage:
     # Output processing & suppression
     processing_args = export_vulns_parser.add_argument_group("Output Processing & Suppression")
     processing_args.add_argument("--severity-threshold", help="Filter vulnerabilities by CVSS severity.", choices=["critical", "high", "medium", "low"], metavar="LEVEL")
-    processing_args.add_argument("--disable-vex-suppression", help="Disable automatic suppression of VEX-assessed findings (mitigated, accepted risk, false positives).", action="store_true")
+    processing_args.add_argument("--disable-dynamic-risk-scoring", dest="disable_dynamic_risk_scoring", help="Disable Dynamic Risk Scoring (VEX suppression and EPSS / KEV escalation).", action="store_true")
     
     # CycloneDX-specific options
     cyclonedx_args = export_vulns_parser.add_argument_group("CycloneDX Format Options")
