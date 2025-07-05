@@ -27,51 +27,6 @@ from .component_enrichment import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class SarifConfig:
-    """Configuration for SARIF generation"""
-    nvd_enrichment: bool = False
-    epss_enrichment: bool = False
-    cisa_kev_enrichment: bool = False
-    api_timeout: int = 30
-    enable_vex_suppression: bool = True
-    quiet: bool = False
-
-
-@dataclass
-class VulnerabilityInfo:
-    """Processed vulnerability information"""
-    cve: str
-    component_name: str
-    component_version: str
-    severity: str
-    base_score: str
-    rule_id: str
-    vex_info: Optional[Dict[str, Any]] = None
-    
-    @classmethod
-    def from_vuln_dict(cls, vuln: Dict[str, Any]) -> 'VulnerabilityInfo':
-        """Create VulnerabilityInfo from vulnerability dictionary"""
-        cve = vuln.get("cve", "UNKNOWN")
-        component_name = vuln.get("component_name", "Unknown")
-        component_version = vuln.get("component_version", "Unknown")
-        severity = vuln.get("severity", "UNKNOWN")
-        base_score = vuln.get("base_score", "N/A")
-        
-        # Create unique rule ID combining CVE, component, and version
-        rule_id = f"{cve}:{component_name}@{component_version}" if cve != "UNKNOWN" else f"UNKNOWN:{component_name}@{component_version}"
-        
-        return cls(
-            cve=cve,
-            component_name=component_name,
-            component_version=component_version,
-            severity=severity,
-            base_score=base_score,
-            rule_id=rule_id,
-            vex_info=get_vex_info(vuln)
-        )
-
-
 # Configuration removed - CLI arguments now drive behavior directly
 
 
@@ -136,7 +91,13 @@ def convert_vulns_to_sarif(
     vulnerabilities: List[Dict[str, Any]],
     scan_code: str,
     external_data: Optional[Dict[str, Dict[str, Any]]] = None,
-    config: Optional[SarifConfig] = None,
+    *,
+    nvd_enrichment: bool = False,
+    epss_enrichment: bool = False,
+    cisa_kev_enrichment: bool = False,
+    api_timeout: int = 30,
+    enable_vex_suppression: bool = True,
+    quiet: bool = False,
 ) -> Dict[str, Any]:
     """
     Convert vulnerability data to SARIF v2.1.0 format with sensible defaults.
@@ -148,7 +109,12 @@ def convert_vulns_to_sarif(
         vulnerabilities: List of vulnerability dictionaries from the Workbench API
         scan_code: The scan code for reference
         external_data: Pre-fetched external enrichment data (optional)
-        config: SARIF generation configuration (optional, uses defaults if None)
+        include_cve_descriptions: Fetch CVE descriptions from NVD (default: False)
+        include_epss_scores: Fetch EPSS scores from FIRST (default: False)
+        include_exploit_info: Fetch exploit info from CISA KEV (default: False)
+        api_timeout: Timeout for external API calls in seconds (default: 30)
+        enable_vex_suppression: Apply VEX-based suppression (default: True)
+        quiet: Suppress progress messages (default: False)
         
     Returns:
         Dict containing SARIF-formatted data compatible with GitHub Advanced Security,
@@ -159,33 +125,49 @@ def convert_vulns_to_sarif(
         sarif_data = convert_vulns_to_sarif(vulnerabilities, scan_code)
         
         # Full enrichment with external API calls
-        config = SarifConfig(nvd_enrichment=True, epss_enrichment=True, cisa_kev_enrichment=True)
-        sarif_data = convert_vulns_to_sarif(vulnerabilities, scan_code, config=config)
+        sarif_data = convert_vulns_to_sarif(
+            vulnerabilities, scan_code,
+            nvd_enrichment=True,
+            epss_enrichment=True,
+            cisa_kev_enrichment=True
+        )
         
         # With pre-fetched external data (avoids duplicate enrichment)
-        external_data = _fetch_external_enrichment_data(vulnerabilities, config)
-        sarif_data = convert_vulns_to_sarif(vulnerabilities, scan_code, external_data, config)
+        external_data = _fetch_external_enrichment_data(vulnerabilities, True, True, True, 30)
+        sarif_data = convert_vulns_to_sarif(vulnerabilities, scan_code, external_data)
     """
     if not vulnerabilities:
         return _create_empty_sarif_report(scan_code)
     
-    # Use default config if none provided
-    if config is None:
-        config = SarifConfig()
-    
     # Use pre-fetched external data if provided, otherwise fetch it
     if external_data is None:
-        external_data = _fetch_external_enrichment_data(vulnerabilities, config)
+        external_data = _fetch_external_enrichment_data(
+            vulnerabilities, 
+            nvd_enrichment, 
+            epss_enrichment, 
+            cisa_kev_enrichment,
+            api_timeout
+        )
     
     # Build SARIF structure
-    sarif_data = _build_sarif_structure(vulnerabilities, scan_code, external_data, config)
+    sarif_data = _build_sarif_structure(
+        vulnerabilities, scan_code, external_data,
+        nvd_enrichment=nvd_enrichment,
+        epss_enrichment=epss_enrichment,
+        cisa_kev_enrichment=cisa_kev_enrichment,
+        enable_vex_suppression=enable_vex_suppression,
+        quiet=quiet
+    )
     
     return sarif_data
 
 
 def _fetch_external_enrichment_data(
     vulnerabilities: List[Dict[str, Any]], 
-    config: SarifConfig
+    nvd_enrichment: bool,
+    epss_enrichment: bool,
+    cisa_kev_enrichment: bool,
+    api_timeout: int
 ) -> Dict[str, Dict[str, Any]]:
     """Fetch external enrichment data for vulnerabilities."""
     unique_cves = _extract_unique_cves(vulnerabilities)
@@ -195,10 +177,10 @@ def _fetch_external_enrichment_data(
         try:
             external_data = enrich_vulnerabilities(
                 unique_cves, 
-                config.nvd_enrichment, 
-                config.epss_enrichment, 
-                config.cisa_kev_enrichment,
-                config.api_timeout
+                nvd_enrichment, 
+                epss_enrichment, 
+                cisa_kev_enrichment,
+                api_timeout
             )
         except Exception as e:
             logger.warning(f"Failed to fetch external vulnerability data: {e}")
@@ -210,7 +192,11 @@ def _build_sarif_structure(
     vulnerabilities: List[Dict[str, Any]], 
     scan_code: str, 
     external_data: Dict[str, Dict[str, Any]],
-    config: SarifConfig
+    nvd_enrichment: bool,
+    epss_enrichment: bool,
+    cisa_kev_enrichment: bool,
+    enable_vex_suppression: bool,
+    quiet: bool
 ) -> Dict[str, Any]:
     """Build the main SARIF structure with notifications and metadata."""
     # Count VEX statements for reporting
@@ -316,7 +302,13 @@ def save_vulns_to_sarif(
     vulnerabilities: List[Dict[str, Any]],
     scan_code: str,
     external_data: Optional[Dict[str, Dict[str, Any]]] = None,
-    config: Optional[SarifConfig] = None,
+    *,
+    nvd_enrichment: bool = False,
+    epss_enrichment: bool = False,
+    cisa_kev_enrichment: bool = False,
+    api_timeout: int = 30,
+    enable_vex_suppression: bool = True,
+    quiet: bool = False,
 ) -> None:
     """
     Save vulnerability results in SARIF format with sensible defaults.
@@ -329,19 +321,28 @@ def save_vulns_to_sarif(
         vulnerabilities: List of vulnerability dictionaries from the API
         scan_code: The scan code for reference
         external_data: Pre-fetched external enrichment data (optional)
-        config: SARIF generation configuration (optional, uses defaults if None)
+        nvd_enrichment: Fetch CVE descriptions from NVD (default: False)
+        epss_enrichment: Fetch EPSS scores from FIRST (default: False)
+        cisa_kev_enrichment: Fetch exploit info from CISA KEV (default: False)
+        api_timeout: Timeout for external API calls in seconds (default: 30)
+        enable_vex_suppression: Apply VEX-based suppression (default: True)
+        quiet: Suppress progress messages (default: False)
         
     Examples:
         # Simple usage with defaults (VEX assessments enabled, no external enrichment)
         save_vulns_to_sarif("vulns.sarif", vulnerabilities, scan_code)
         
         # Full enrichment with external API calls
-        config = SarifConfig(nvd_enrichment=True, epss_enrichment=True, cisa_kev_enrichment=True)
-        save_vulns_to_sarif("vulns.sarif", vulnerabilities, scan_code, config=config)
+        save_vulns_to_sarif(
+            "vulns.sarif", vulnerabilities, scan_code,
+            nvd_enrichment=True,
+            epss_enrichment=True,
+            cisa_kev_enrichment=True
+        )
         
         # With pre-fetched external data (avoids duplicate enrichment)
-        external_data = _fetch_external_enrichment_data(vulnerabilities, config)
-        save_vulns_to_sarif("vulns.sarif", vulnerabilities, scan_code, external_data, config)
+        external_data = _fetch_external_enrichment_data(vulnerabilities, True, True, True, 30)
+        save_vulns_to_sarif("vulns.sarif", vulnerabilities, scan_code, external_data)
         
     Raises:
         IOError: If the file cannot be written
@@ -349,27 +350,31 @@ def save_vulns_to_sarif(
     """
     output_dir = os.path.dirname(filepath) or "."
     
-    # Use default config if none provided
-    if config is None:
-        config = SarifConfig()
-    
     try:
         os.makedirs(output_dir, exist_ok=True)
         
         # Calculate how many findings would be suppressed by VEX
         original_count = len(vulnerabilities)
         suppressed_count = 0
-        if config.enable_vex_suppression:
+        if enable_vex_suppression:
             suppressed_count = original_count - len(apply_vex_suppression(vulnerabilities))
         
-        sarif_data = convert_vulns_to_sarif(vulnerabilities, scan_code, external_data, config)
+        sarif_data = convert_vulns_to_sarif(
+            vulnerabilities, scan_code, external_data,
+            nvd_enrichment=nvd_enrichment,
+            epss_enrichment=epss_enrichment,
+            cisa_kev_enrichment=cisa_kev_enrichment,
+            api_timeout=api_timeout,
+            enable_vex_suppression=enable_vex_suppression,
+            quiet=quiet
+        )
         
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(sarif_data, f, indent=2, ensure_ascii=False)
             
         # Only print messages if not quiet and external_data wasn't pre-provided
         # (indicating the handler is managing output)
-        if not config.quiet and external_data is None:
+        if not quiet and external_data is None:
             print(f"Saved enhanced SARIF results to: {filepath}")
             
             # Print summary of external data sources used
@@ -378,47 +383,9 @@ def save_vulns_to_sarif(
                 print(f"External data sources used: {', '.join(props['external_data_sources'])}")
         
     except (IOError, OSError) as e:
-        if not config.quiet:
+        if not quiet:
             print(f"\nWarning: Failed to save SARIF results to {filepath}: {e}")
         raise
-
-
-# ---------------------------------------------------------------------------
-# Helper Functions
-# ---------------------------------------------------------------------------
-
-def _build_external_data_properties(ext_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Build external data properties for SARIF output"""
-    properties = {}
-    
-    # EPSS properties
-    if ext_data.get("epss_score") is not None:
-        properties["epss_score"] = ext_data["epss_score"]
-        properties["epss_percentile"] = ext_data["epss_percentile"]
-    
-    # CISA KEV properties
-    if ext_data.get("cisa_kev"):
-        properties["cisa_known_exploited"] = True
-    
-    # NVD properties
-    if ext_data.get("nvd_cwe"):
-        properties["cwe_ids"] = ext_data["nvd_cwe"]
-    
-    if ext_data.get("nvd_description"):
-        properties["nvd_description"] = ext_data["nvd_description"]
-    
-    if ext_data.get("full_cvss_vector"):
-        properties["full_cvss_vector"] = ext_data["full_cvss_vector"]
-    
-    # NVD references
-    if ext_data.get("nvd_references"):
-        properties["nvd_reference_count"] = len(ext_data["nvd_references"])
-        properties["nvd_vendor_advisories"] = len([
-            ref for ref in ext_data["nvd_references"] 
-            if "vendor advisory" in [tag.lower() for tag in ref.get("tags", [])]
-        ])
-    
-    return properties
 
 
 # ---------------------------------------------------------------------------
@@ -755,34 +722,6 @@ def _extract_version_ranges(references: List[Dict[str, Any]]) -> str:
         return "; ".join(set(version_patterns))  # Remove duplicates
     
     return ""
-
-
-def _build_rule_description(vuln_info: VulnerabilityInfo, ext_data: Dict[str, Any]) -> Dict[str, str]:
-    """Build short and full descriptions for SARIF rule."""
-    # Create enhanced descriptions using NVD data
-    short_desc = f"{vuln_info.cve} in {vuln_info.component_name}@{vuln_info.component_version} (CVSS {vuln_info.base_score})"
-    if ext_data.get("nvd_cwe"):
-        cwe_list = ext_data["nvd_cwe"][:2]  # Show first 2 CWEs to keep it concise
-        cwe_text = ", ".join(cwe_list)
-        short_desc += f" - {cwe_text}"
-    
-    # Use NVD description if available, otherwise fall back to generic description
-    nvd_desc = ext_data.get("nvd_description")
-    if nvd_desc and nvd_desc.strip() and nvd_desc != "No description available":
-        full_desc = nvd_desc
-    else:
-        full_desc = f"Security vulnerability {vuln_info.cve} affecting {vuln_info.component_name} with CVSS score {vuln_info.base_score}"
-    
-    # Add component context to NVD description
-    if ext_data.get("nvd_description") and ext_data["nvd_description"] != "No description available":
-        full_desc += f"\n\nAffected Component: {vuln_info.component_name} version {vuln_info.component_version}"
-        
-        # Add affected version ranges if we can extract them from references
-        version_info = _extract_version_ranges(ext_data.get("nvd_references", []))
-        if version_info:
-            full_desc += f"\nKnown Affected Versions: {version_info}"
-    
-    return {"short": short_desc, "full": full_desc}
 
 
 def _generate_enhanced_rules(vulnerabilities: List[Dict[str, Any]], 

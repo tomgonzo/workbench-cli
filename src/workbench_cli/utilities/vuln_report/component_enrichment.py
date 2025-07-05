@@ -14,8 +14,8 @@ import os
 from typing import Dict, Any, Optional, Tuple, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..api.components_api import ComponentsAPI
-from ..exceptions import ApiError, NetworkError
+from ...api.components_api import ComponentsAPI
+from ...exceptions import ApiError, NetworkError
 
 logger = logging.getLogger(__name__)
 
@@ -225,4 +225,75 @@ __all__ = [
     "_get_component_info",
     "_detect_package_ecosystem",
     "prefetch_component_info",  # New function for pre-fetching
+    "cache_components_from_cyclonedx",  # Populate cache from SBOM
 ] 
+
+
+# ---------------------------------------------------------------------------
+# CycloneDX SBOM helper
+# ---------------------------------------------------------------------------
+
+def cache_components_from_cyclonedx(sbom_path: str, quiet: bool = False) -> int:
+    """Parse *sbom_path* and cache component records.
+
+    The function iterates through each *component* entry in the JSON SBOM and
+    populates the ``_COMPONENT_INFO_CACHE`` so that later calls to
+    :pyfunc:`prefetch_component_info` / :pyfunc:`_get_component_info` do not
+    need to hit the Workbench API.
+
+    It is *best effort* – if the file cannot be parsed the cache remains
+    unchanged and the function returns 0.
+
+    Parameters
+    ----------
+    sbom_path:
+        Path to a CycloneDX JSON file.
+    quiet:
+        Suppress informational output when *True*.
+
+    Returns
+    -------
+    int
+        Number of component entries added to the cache.
+    """
+    import json
+
+    added = 0
+
+    if not os.path.isfile(sbom_path):
+        return 0
+
+    try:
+        with open(sbom_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        logger.debug(f"Failed to parse CycloneDX SBOM at {sbom_path}: {exc}")
+        return 0
+
+    for comp in data.get("components", []):
+        name = comp.get("name")
+        version = comp.get("version")
+        if not name or not version:
+            continue
+
+        key = (name, version)
+        if key in _COMPONENT_INFO_CACHE:
+            continue  # already cached
+
+        # Only store a subset of fields that the rest of the codebase relies on
+        cache_entry: Dict[str, Any] = {
+            "purl": comp.get("purl"),
+            # Older SBOMs might store purl_type/namespace/name/version separately
+            "purl_type": comp.get("purl_type"),
+            "purl_namespace": comp.get("purl_namespace"),
+            "purl_name": comp.get("purl_name"),
+            "purl_version": comp.get("purl_version"),
+        }
+
+        _COMPONENT_INFO_CACHE[key] = cache_entry
+        added += 1
+
+    if added and not quiet:
+        print(f"    ✅ Loaded component metadata for {added} components from CycloneDX SBOM")
+
+    return added 

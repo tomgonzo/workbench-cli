@@ -32,6 +32,7 @@ from .handlers import (
     handle_download_reports,
     handle_scan_git,
     handle_export_sarif,
+    handle_export_vulns,
 )
 
 
@@ -91,6 +92,7 @@ def main() -> int:
             "download-reports": handle_download_reports,
             "scan-git": handle_scan_git,
             "export-sarif": handle_export_sarif,
+            "export-vulns": handle_export_vulns,
         }
 
         handler = COMMAND_HANDLERS.get(params.command)

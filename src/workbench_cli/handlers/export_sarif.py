@@ -5,7 +5,7 @@ import argparse
 from typing import TYPE_CHECKING, List, Dict, Any
 
 from ..utilities.error_handling import handler_error_wrapper
-from ..utilities.sarif_generation import save_vulns_to_sarif
+from ..utilities.vuln_report.sarif_generator import save_vulns_to_sarif
 from ..exceptions import (
     ApiError,
     NetworkError,
@@ -94,7 +94,7 @@ def handle_export_sarif(workbench: "WorkbenchAPI", params: argparse.Namespace) -
                 print(f"\n📋 Retrieving Vulnerabilities and VEX...")
                 
                 # Combine vulnerability count and severity breakdown in one line
-                from ..utilities.sarif_generation import _calculate_severity_distribution, _format_severity_breakdown_compact
+                from ..utilities.vuln_report.sarif_generator import _calculate_severity_distribution, _format_severity_breakdown_compact
                 severity_dist = _calculate_severity_distribution(vulnerabilities)
                 severity_breakdown = _format_severity_breakdown_compact(severity_dist)
                 print(f"   • Retrieved {len(vulnerabilities)} Vulnerabilities{severity_threshold_text} {severity_breakdown}")
@@ -102,7 +102,7 @@ def handle_export_sarif(workbench: "WorkbenchAPI", params: argparse.Namespace) -
                 
                 # Step 2: Pre-fetch component information
                 print(f"\n🔧 Retrieving Component Information...")
-                from ..utilities.component_enrichment import prefetch_component_info
+                from ..utilities.vuln_report.component_enrichment import prefetch_component_info
                 
                 # Count unique components before fetching
                 unique_components = list(set(
@@ -132,8 +132,8 @@ def handle_export_sarif(workbench: "WorkbenchAPI", params: argparse.Namespace) -
                 )
             else:
                 # Still need to fetch external data for SARIF generation, but quietly
-                from ..utilities.sarif_generation import _fetch_external_enrichment_data
-                from ..utilities.component_enrichment import prefetch_component_info
+                from ..utilities.vuln_report.sarif_generator import _fetch_external_enrichment_data
+                from ..utilities.vuln_report.component_enrichment import prefetch_component_info
                 
                 # Pre-fetch component information quietly (no progress messages)
                 prefetch_component_info(vulnerabilities, quiet=True)
@@ -188,7 +188,7 @@ def _perform_external_enrichment(
 ) -> Dict[str, Dict[str, Any]]:
     """Perform external enrichment and display status messages."""
     import os
-    from ..utilities.sarif_generation import _fetch_external_enrichment_data
+    from ..utilities.vuln_report.sarif_generator import _fetch_external_enrichment_data
     
     # Show enrichment status
     enrichment_sources = []
@@ -203,7 +203,7 @@ def _perform_external_enrichment(
         print(f"\n🔍 External Enrichment: {', '.join(enrichment_sources)}")
         
         # Get unique CVEs for display
-        from ..utilities.sarif_generation import _extract_unique_cves
+        from ..utilities.vuln_report.sarif_generator import _extract_unique_cves
         unique_cves = _extract_unique_cves(vulnerabilities)
         
         # Show custom NVD message if NVD enrichment is enabled
@@ -247,7 +247,7 @@ def _perform_external_enrichment(
 
 def _display_vex_summary(vulnerabilities: List[Dict[str, Any]], indent: str = "") -> None:
     """Display VEX assessment information in a concise format."""
-    from ..utilities.sarif_generation import _count_vex_assessments
+    from ..utilities.vuln_report.sarif_generator import _count_vex_assessments
     vex_counts = _count_vex_assessments(vulnerabilities)
     
     if vex_counts["total_with_vex"] > 0:
@@ -260,7 +260,7 @@ def _display_dynamic_scoring(
     external_data: Dict[str, Dict[str, Any]]
 ) -> None:
     """Display dynamic scoring information including both suppressions and promotions."""
-    from ..utilities.sarif_generation import _count_high_risk_vulnerabilities, _count_vex_assessments
+    from ..utilities.vuln_report.sarif_generator import _count_high_risk_vulnerabilities, _count_vex_assessments
     
     print(f"\n🔧 Dynamic Scoring:")
     
