@@ -6,8 +6,10 @@ into CycloneDX format, which is a software bill of materials (SBOM) format that 
 vulnerability information.
 
 The module supports two approaches:
-1. Building a new SBOM from vulnerability data (current approach)
-2. Augmenting an existing CycloneDX SBOM with vulnerability data (NEW)
+1. Building a new SBOM from vulnerability data (generation approach)
+2. Augmenting an existing CycloneDX SBOM with vulnerability data (augmentation approach)
+
+Both approaches use the unified enrichment flow from cyclonedx_enrichment.py
 """
 
 import json
@@ -33,6 +35,7 @@ try:
     from cyclonedx.model.bom import Bom
     from cyclonedx.output.json import JsonV1Dot6
     from cyclonedx.model import ExternalReference, ExternalReferenceType, Property
+    from cyclonedx.model.license import DisjunctiveLicense, LicenseRepository
     from packageurl import PackageURL
     CYCLONEDX_AVAILABLE = True
 except ImportError:
@@ -48,13 +51,22 @@ except ImportError:
     JsonV1Dot6 = Any
     ExternalReference = Any
     ExternalReferenceType = Any
+    DisjunctiveLicense = Any
+    LicenseRepository = Any
     PackageURL = Any
     BomTarget = Any
     Property = Any
     CYCLONEDX_AVAILABLE = False
 
-from .component_enrichment import _detect_package_ecosystem
-from .risk_adjustments import calculate_dynamic_risk, risk_level_to_cyclonedx_severity
+# Import shared enrichment functionality
+from .cyclonedx_enrichment import (
+    augment_cyclonedx_sbom_from_file,
+    _validate_external_data,
+)
+
+# Added get_component_info for richer component metadata
+from .bootstrap_bom import get_component_info
+from .risk_adjustments import calculate_dynamic_risk, RiskAdjustment
 
 
 def save_vulns_to_cyclonedx(
@@ -65,10 +77,10 @@ def save_vulns_to_cyclonedx(
     nvd_enrichment: bool = False,
     epss_enrichment: bool = False,
     cisa_kev_enrichment: bool = False,
-    api_timeout: int = 30,
-    enable_vex_suppression: bool = True,
+    enable_dynamic_risk_scoring: bool = True,
     quiet: bool = False,
-    base_sbom_path: Optional[str] = None
+    base_sbom_path: Optional[str] = None,
+    all_components: Optional[List[Dict[str, Any]]] = None
 ) -> None:
     """
     Save vulnerability results in CycloneDX format.
@@ -81,10 +93,10 @@ def save_vulns_to_cyclonedx(
         nvd_enrichment: Whether NVD enrichment was enabled
         epss_enrichment: Whether EPSS enrichment was enabled
         cisa_kev_enrichment: Whether CISA KEV enrichment was enabled
-        api_timeout: API timeout used for enrichment
-        enable_vex_suppression: Whether VEX suppression is enabled
+        enable_dynamic_risk_scoring: Whether dynamic risk scoring is enabled
         quiet: Whether to suppress output messages
         base_sbom_path: Path to existing CycloneDX SBOM to augment (optional)
+        all_components: List of all components from scan when --augment-full-bom is used (optional)
         
     Raises:
         ImportError: If cyclonedx-python-lib is not installed
@@ -103,43 +115,74 @@ def save_vulns_to_cyclonedx(
     
     try:
         os.makedirs(output_dir, exist_ok=True)
-        
+
+        # Choose between augmentation and building approach
         if base_sbom_path and os.path.exists(base_sbom_path):
-            # NEW: Augment existing SBOM approach
-            cyclonedx_data = build_cyclonedx_from_components(
-                base_sbom_path,
-                vulnerabilities, 
-                scan_code, 
-                external_data,
-                nvd_enrichment,
-                epss_enrichment,
-                cisa_kev_enrichment,
-                enable_vex_suppression
-            )
+            # Use SBOM augmentation approach (maintains original format)
             if not quiet:
-                print(f"Augmented existing SBOM from: {base_sbom_path}")
+                print(f"   • Augmenting existing SBOM from {os.path.basename(base_sbom_path)}")
+            
+            augment_cyclonedx_sbom_from_file(
+                sbom_path=base_sbom_path,
+                filepath=filepath,
+                scan_code=scan_code,
+                external_data=external_data,
+                nvd_enrichment=nvd_enrichment,
+                epss_enrichment=epss_enrichment,
+                cisa_kev_enrichment=cisa_kev_enrichment,
+                enable_dynamic_risk_scoring=enable_dynamic_risk_scoring,
+                quiet=quiet
+            )
+            return  # Exit early, augmentation is complete
         else:
-            # Original: Build new SBOM approach
-            cyclonedx_data = convert_vulns_to_cyclonedx(
-                vulnerabilities, 
-                scan_code, 
-                external_data,
+            # Use BOM generation approach (creates CycloneDX 1.6)
+            if base_sbom_path and not quiet:
+                print(f"   • Warning: Base SBOM not found at {base_sbom_path}, building from vulnerabilities only")
+            
+            # Build basic BOM structure
+            start_time = datetime.utcnow()
+            
+            cyclonedx_data = _build_basic_cyclonedx_bom(
+                vulnerabilities,
+                scan_code,
+                all_components
+            )
+            
+            # Add vulnerabilities with enrichment directly
+            _add_vulnerabilities_to_bom(
+                bom=cyclonedx_data,
+                vulnerabilities=vulnerabilities,
+                external_data=external_data,
+                enable_dynamic_risk_scoring=enable_dynamic_risk_scoring,
+                quiet=quiet
+            )
+            
+            # Add enrichment metadata
+            _add_enrichment_metadata(
+                cyclonedx_data,
+                scan_code,
                 nvd_enrichment,
                 epss_enrichment,
-                cisa_kev_enrichment,
-                enable_vex_suppression
+                cisa_kev_enrichment
             )
-            if base_sbom_path and not quiet:
-                print(f"Warning: Base SBOM not found at {base_sbom_path}, creating new SBOM")
+            
+            build_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.debug(f"BOM building and enrichment completed in {build_time:.2f} seconds")
         
-        # Use CycloneDX JSON serializer
+        # Use CycloneDX JSON serializer with optimized output
         json_serializer = JsonV1Dot6(cyclonedx_data)
         
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(json_serializer.output_as_string())
+        # Parse the JSON to reorder fields (put schema info at the beginning)
+        cyclonedx_json = json.loads(json_serializer.output_as_string())
+        
+        # Create ordered dictionary with schema fields first
+        ordered_json = _optimize_cyclonedx_output(cyclonedx_json)
+        
+        # Use memory-efficient JSON writing for large files
+        _write_cyclonedx_json(ordered_json, filepath)
             
         if not quiet:
-            print(f"Saved CycloneDX SBOM to: {filepath}")
+            print(f"   • CycloneDX SBOM saved to: {filepath}")
         
     except (IOError, OSError) as e:
         if not quiet:
@@ -147,268 +190,278 @@ def save_vulns_to_cyclonedx(
         raise
 
 
-def convert_vulns_to_cyclonedx(
+def _optimize_cyclonedx_output(cyclonedx_json: Dict[str, Any]) -> Dict[str, Any]:
+    """Optimize CycloneDX JSON output for better readability and performance."""
+    # Create ordered dictionary with schema fields first
+    ordered_json = {}
+    
+    # Schema fields first (for better readability and convention compliance)
+    if "$schema" in cyclonedx_json:
+        ordered_json["$schema"] = cyclonedx_json["$schema"]
+    if "bomFormat" in cyclonedx_json:
+        ordered_json["bomFormat"] = cyclonedx_json["bomFormat"]
+    if "specVersion" in cyclonedx_json:
+        ordered_json["specVersion"] = cyclonedx_json["specVersion"]
+    
+    # Add all other fields in their original order
+    for key, value in cyclonedx_json.items():
+        if key not in ["$schema", "bomFormat", "specVersion"]:
+            ordered_json[key] = value
+    
+    return ordered_json
+
+
+def _write_cyclonedx_json(data: Dict[str, Any], filepath: str) -> None:
+    """Write CycloneDX JSON with memory-efficient streaming for large files."""
+    import json
+    
+    # Estimate size to determine writing strategy
+    estimated_size = len(str(data))
+    
+    # Use streaming for large files (>10MB estimated)
+    if estimated_size > 10 * 1024 * 1024:
+        logger.info(f"Writing large CycloneDX file ({estimated_size / (1024*1024):.1f}MB) with streaming")
+        
+        # Create a backup if the file exists
+        if os.path.exists(filepath):
+            backup_path = f"{filepath}.backup"
+            try:
+                import shutil
+                shutil.copy2(filepath, backup_path)
+                logger.info(f"Created backup at {backup_path}")
+            except Exception as e:
+                logger.warning(f"Could not create backup: {e}")
+        
+        # Write with streaming
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    else:
+        # Standard writing for smaller files
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _build_basic_cyclonedx_bom(
     vulnerabilities: List[Dict[str, Any]],
     scan_code: str,
-    external_data: Optional[Dict[str, Dict[str, Any]]] = None,
-    nvd_enrichment: bool = False,
-    epss_enrichment: bool = False,
-    cisa_kev_enrichment: bool = False,
-    enable_vex_suppression: bool = True
+    all_components: Optional[List[Dict[str, Any]]] = None
 ) -> Bom:
     """
-    Convert vulnerability data to CycloneDX BOM format.
+    Build a basic CycloneDX BOM with components from the bootstrapped BOM.
     
-    Args:
-        vulnerabilities: List of vulnerability dictionaries from the Workbench API
-        scan_code: The scan code for reference
-        external_data: Pre-fetched external enrichment data (optional)
-        nvd_enrichment: Whether NVD enrichment was enabled
-        epss_enrichment: Whether EPSS enrichment was enabled
-        cisa_kev_enrichment: Whether CISA KEV enrichment was enabled
-        enable_vex_suppression: Whether VEX suppression is enabled
-        
-    Returns:
-        CycloneDX BOM object containing vulnerability information
+    This function now uses the all_components that were already bootstrapped by 
+    the export_vulns handler, eliminating duplicate component creation logic.
     """
-    if not CYCLONEDX_AVAILABLE:
-        raise ImportError("CycloneDX support requires the 'cyclonedx-python-lib' package which should be installed automatically")
-    
-    if external_data is None:
-        external_data = {}
-    
-    # Create BOM
+    # Create the BOM
     bom = Bom()
-    bom.metadata.timestamp = datetime.utcnow()
     
-    # Create components and vulnerabilities
-    components = {}
-    vulnerabilities_list = []
-    
-    for vuln in vulnerabilities:
-        component_name = vuln.get("component_name", "Unknown")
-        component_version = vuln.get("component_version", "Unknown")
-        cve = vuln.get("cve", "UNKNOWN")
+    # Use bootstrapped components if provided
+    if all_components:
+        component_lookup: Dict[str, Component] = {}
         
-        # Create component if not exists
-        component_key = f"{component_name}@{component_version}"
-        if component_key not in components:
-            ecosystem = _detect_package_ecosystem(component_name, component_version)
+        for comp_data in all_components:
+            comp_name = comp_data.get("name", "Unknown")
+            comp_version = comp_data.get("version", "")
+            comp_key = f"{comp_name}:{comp_version}"
             
-            try:
-                purl = PackageURL(
-                    type=ecosystem,
-                    name=component_name,
-                    version=component_version
-                )
+            if comp_key not in component_lookup:
+                component = _create_cyclonedx_component_from_bootstrap_data(comp_data)
+                component_lookup[comp_key] = component
+                bom.components.add(component)
+    else:
+        # Fallback: create minimal components from vulnerability data
+        # This should rarely be used since all_components should always be provided
+        component_lookup: Dict[str, Component] = {}
+        
+        for vuln in vulnerabilities:
+            comp_name = vuln.get("component_name", "Unknown")
+            comp_version = vuln.get("component_version", "")
+            comp_key = f"{comp_name}:{comp_version}"
+            
+            if comp_key not in component_lookup:
+                # Create minimal component without enrichment
                 component = Component(
-                    name=component_name,
-                    version=component_version,
+                    name=comp_name,
+                    version=comp_version,
                     type=ComponentType.LIBRARY,
-                    purl=purl
+                    bom_ref=f"pkg:{comp_name}@{comp_version}"
                 )
-            except Exception:
-                # Fallback if PackageURL creation fails
-                component = Component(
-                    name=component_name,
-                    version=component_version,
-                    type=ComponentType.LIBRARY
-                )
-            
-            components[component_key] = component
-            bom.components.add(component)
-        
-        # Create vulnerability
-        vulnerability = _create_cyclonedx_vulnerability(vuln, external_data.get(cve, {}))
-        vulnerabilities_list.append(vulnerability)
-        
-        # Add vulnerability to BOM
-        bom.vulnerabilities.add(vulnerability)
+                component_lookup[comp_key] = component
+                bom.components.add(component)
     
     return bom
 
 
-# NEW builder function that creates a fresh BOM using components & dependencies from an existing SBOM
-
-def build_cyclonedx_from_components(
-    base_sbom_path: str,
-    vulnerabilities: List[Dict[str, Any]],
-    scan_code: str,
-    external_data: Optional[Dict[str, Dict[str, Any]]] = None,
-    nvd_enrichment: bool = False,
-    epss_enrichment: bool = False,
-    cisa_kev_enrichment: bool = False,
-    enable_vex_suppression: bool = True
-) -> Bom:
-    """
-    Build a brand-new CycloneDX 1.6 BOM while retaining component list & dependency graph from
-    a pre-existing Workbench SBOM (typically 1.5).  This helps ignore legacy metadata quirks and 
-    simply copies components & edges, then injects enriched vulnerability data.
-    """
-
-    if not CYCLONEDX_AVAILABLE:
-        raise ImportError("CycloneDX support requires the 'cyclonedx-python-lib' package")
-
-    if external_data is None:
-        external_data = {}
-
-    # 1. Load the source SBOM (expected JSON)
-    try:
-        with open(base_sbom_path, "r", encoding="utf-8") as f:
-            source_json = json.load(f)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Base SBOM not found at: {base_sbom_path}")
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in base SBOM {base_sbom_path}: {exc}")
-
-    # 2. Start a fresh BOM (defaults to latest, i.e. 1.6)
-    new_bom: Bom = Bom()
-    new_bom.metadata.timestamp = datetime.utcnow()
-
-    # 3. Copy components – retain basic identity info plus purl & bom-ref
-    component_lookup: Dict[str, Component] = {}
-
-    for comp_data in source_json.get("components", []):
-        name = comp_data.get("name", "Unknown")
-        version = comp_data.get("version", "")
-        comp_type_raw = comp_data.get("type", "library").upper()
-        comp_type = ComponentType.LIBRARY
-        try:
-            comp_type = ComponentType[comp_type_raw]
-        except Exception:
-            pass  # default stays LIBRARY
-
-        # Coerce bom-ref to pure string (handles object refs in legacy SBOMs)
-        bom_ref_val = str(comp_data.get("bom-ref", f"{name}_{version}"))
-
-        # Attempt to parse PURL
-        purl_obj = None
-        if comp_data.get("purl"):
+def _create_cyclonedx_component_from_bootstrap_data(comp_data: Dict[str, Any]) -> Component:
+    """Create a CycloneDX Component from bootstrapped component data with all enrichment."""
+    name = comp_data.get("name", "Unknown")
+    version = comp_data.get("version", "")
+    
+    # Create basic component
+    component = Component(
+        name=name,
+        version=version,
+        type=ComponentType.LIBRARY,
+        bom_ref=f"pkg:{name}@{version}"
+    )
+    
+    # Get enrichment data from cache (already fetched by bootstrap_bom.py)
+    component_info = get_component_info(name, version)
+    
+    if component_info:
+        # Add CPE if available
+        if component_info.get("cpe"):
+            component.cpe = component_info["cpe"]
+        
+        # Add PURL from API response
+        if component_info.get("purl"):
             try:
-                purl_obj = PackageURL.from_string(comp_data["purl"])
+                component.purl = PackageURL.from_string(component_info["purl"])
             except Exception:
-                purl_obj = None
-
-        component = Component(
-            name=name,
-            version=version,
-            type=comp_type,
-            purl=purl_obj,
-            bom_ref=bom_ref_val,
-        )
-
-        # Copy author/publisher information when present (NEW)
-        author_val = comp_data.get("author")
-        publisher_val = comp_data.get("publisher")
-        supplier_data = comp_data.get("supplier") or {}
-        supplier_name = supplier_data.get("name")
-        if author_val:
-            component.author = author_val  # type: ignore[attr-defined]
-        if publisher_val:
-            component.publisher = publisher_val  # type: ignore[attr-defined]
-        if supplier_name:
+                pass
+        
+        # Add external references
+        if component_info.get("url"):
             try:
-                from cyclonedx.model.component import OrganizationalEntity
-                component.supplier = OrganizationalEntity(name=supplier_name)  # type: ignore[attr-defined]
-            except Exception:
-                # Fallback: store supplier as author if supplier field not supported
-                if not author_val:
-                    component.author = supplier_name  # type: ignore[attr-defined]
-
-        # Best-effort: copy licenses if an SPDX id or expression is present (improved)
-        if comp_data.get("licenses"):
-            try:
-                from cyclonedx.model.license import (
-                    LicenseChoice,
-                    DisjunctiveLicenseSet,
-                    SpdxLicense,
-                    LicenseExpression,
+                component.external_references.add(
+                    ExternalReference(
+                        type=ExternalReferenceType.WEBSITE,
+                        url=component_info["url"]
+                    )
                 )
-
-                lic_objs = []
-                for lic in comp_data["licenses"]:
-                    lic_info = lic.get("license")
-                    if lic_info and lic_info.get("id"):
-                        lic_objs.append(SpdxLicense(lic_info["id"]))
-                    elif lic.get("expression"):
-                        lic_objs.append(LicenseExpression(value=lic["expression"]))
-
-                if lic_objs:
-                    component.licenses = LicenseChoice(DisjunctiveLicenseSet(licenses=lic_objs))
             except Exception:
-                pass  # ignore license copy issues
-
-        # Supplier and other metadata are skipped to keep implementation lean
-
-        new_bom.components.add(component)
-
-        # lookup keys for later vuln matching
-        component_lookup[f"{name.lower()}@{version.lower()}"] = component
-        component_lookup[name.lower()] = component
-        if purl_obj:
-            component_lookup[str(purl_obj)] = component
-            component_lookup[purl_obj.name.lower()] = component
-
-    # 4. Copy dependency graph edges (if present)
-    if source_json.get("dependencies"):
-        try:
-            from cyclonedx.model.dependency import Dependency
-            for dep in source_json["dependencies"]:
-                ref_id = str(dep.get("ref"))
-                depends_on = [str(d) for d in dep.get("dependsOn", [])]
-                new_bom.dependencies.add(Dependency(ref=ref_id, depends_on=set(depends_on)))
-        except Exception:
-            # If dependency model not available, silently skip – components are still present
-            pass
-
-    # 5. Process vulnerabilities – enrich & attach
-    unmatched_vulns: List[Dict[str, Any]] = []
-    for vuln in vulnerabilities:
-        cve = vuln.get("cve", "UNKNOWN")
-        component_name = vuln.get("component_name", "Unknown")
-        component_version = vuln.get("component_version", "Unknown")
-
-        match_key = f"{component_name.lower()}@{component_version.lower()}"
-        matched_component = component_lookup.get(match_key) or component_lookup.get(component_name.lower())
-
-        if not matched_component:
-            # create minimal component for edge case
-            ecosystem = _detect_package_ecosystem(component_name, component_version)
+                pass
+        
+        if component_info.get("download_url"):
             try:
-                purl_tmp = PackageURL(type=ecosystem, name=component_name, version=component_version)
+                component.external_references.add(
+                    ExternalReference(
+                        type=ExternalReferenceType.DISTRIBUTION,
+                        url=component_info["download_url"]
+                    )
+                )
             except Exception:
-                purl_tmp = None
-            matched_component = Component(name=component_name, version=component_version, type=ComponentType.LIBRARY, purl=purl_tmp)
-            new_bom.components.add(matched_component)
-            component_lookup[match_key] = matched_component
+                pass
+        
+        if component_info.get("supplier_url"):
+            try:
+                component.external_references.add(
+                    ExternalReference(
+                        type=ExternalReferenceType.WEBSITE,
+                        url=component_info["supplier_url"]
+                    )
+                )
+            except Exception:
+                pass
+        
+        if component_info.get("community_url"):
+            try:
+                component.external_references.add(
+                    ExternalReference(
+                        type=ExternalReferenceType.WEBSITE,
+                        url=component_info["community_url"]
+                    )
+                )
+            except Exception:
+                pass
+        
+        # Add description if available
+        if component_info.get("description"):
+            component.description = component_info["description"]
+        
+        # Add license information
+        if component_info.get("license_identifier") or component_info.get("license_name"):
+            license_repo = LicenseRepository()
+            
+            # Create DisjunctiveLicense with appropriate fields
+            license_obj = DisjunctiveLicense(
+                id=component_info.get("license_identifier"),
+                name=component_info.get("license_name")
+            )
+            license_repo.add(license_obj)
+            component.licenses = license_repo
+    
+    return component
 
-        vuln_obj = _create_cyclonedx_vulnerability(vuln, external_data.get(cve, {}))
-        vuln_obj.affects = [BomTarget(ref=str(matched_component.bom_ref))]
-        new_bom.vulnerabilities.add(vuln_obj)
 
-    # 6. Annotate metadata to indicate augmentation & counts
-    props = [
-        Property(name="augmented_with_vulnerabilities", value="true"),
-        Property(name="augmentation_timestamp", value=datetime.utcnow().isoformat() + "Z"),
-        Property(name="vulnerability_count", value=str(len(vulnerabilities))),
-        Property(name="scan_code", value=scan_code),
-    ]
-    try:
-        new_bom.metadata.properties.update(props)
-    except Exception:
-        # Some library versions require .properties to be initialised first
-        if not getattr(new_bom.metadata, "properties", None):
-            from sortedcontainers import SortedSet  # type: ignore
-            new_bom.metadata.properties = SortedSet()
-        new_bom.metadata.properties.update(props)
+def _add_vulnerabilities_to_bom(
+    bom: Bom,
+    vulnerabilities: List[Dict[str, Any]],
+    external_data: Optional[Dict[str, Dict[str, Any]]] = None,
+    enable_dynamic_risk_scoring: bool = True,
+    quiet: bool = False
+) -> None:
+    """
+    Add vulnerabilities to a CycloneDX BOM with enrichment and dynamic risk scoring.
+    
+    Args:
+        bom: The CycloneDX BOM to add vulnerabilities to
+        vulnerabilities: List of vulnerabilities in internal format
+        external_data: Pre-fetched external enrichment data (optional)
+        enable_dynamic_risk_scoring: Whether to apply dynamic risk scoring
+        quiet: Whether to suppress output messages
+    """
+    if not vulnerabilities:
+        if not quiet:
+            print("   • No vulnerabilities to add")
+        return
+    
+    # Validate external data
+    external_data = _validate_external_data(external_data)
+    
+    # Process vulnerabilities in batches for better performance
+    batch_size = 500
+    total_vulnerabilities = len(vulnerabilities)
+    
+    if not quiet and total_vulnerabilities > batch_size:
+        print(f"   • Processing {total_vulnerabilities} vulnerabilities in batches of {batch_size}")
+    
+    enriched_count = 0
+    for i in range(0, total_vulnerabilities, batch_size):
+        batch = vulnerabilities[i:i + batch_size]
+        
+        for vuln in batch:
+            try:
+                cve = vuln.get("cve", "UNKNOWN")
+                ext_data = external_data.get(cve, {})
+                
+                # Calculate dynamic risk if enabled
+                dynamic_risk_adjustment = None
+                if enable_dynamic_risk_scoring and cve != "UNKNOWN":
+                    try:
+                        dynamic_risk_adjustment = calculate_dynamic_risk(vuln, ext_data)
+                    except Exception as e:
+                        logger.warning(f"Failed to calculate dynamic risk for {cve}: {e}")
+                
+                # Create enriched vulnerability
+                enriched_vuln = _create_cyclonedx_vulnerability(
+                    vuln, ext_data, dynamic_risk_adjustment
+                )
+                
+                # Add to BOM
+                bom.vulnerabilities.add(enriched_vuln)
+                enriched_count += 1
+                
+            except Exception as e:
+                logger.error(f"Failed to create vulnerability {vuln.get('cve', 'UNKNOWN')}: {e}")
+                continue
+        
+        if not quiet and total_vulnerabilities > batch_size:
+            progress = min(i + batch_size, total_vulnerabilities)
+            print(f"   • Processed {progress}/{total_vulnerabilities} vulnerabilities")
+    
+    if not quiet:
+        print(f"   • Added {enriched_count} vulnerabilities with enrichment")
 
-    return new_bom
 
 def _create_cyclonedx_vulnerability(
     vuln: Dict[str, Any], 
-    ext_data: Dict[str, Any]
+    ext_data: Dict[str, Any],
+    dynamic_risk_adjustment: Optional[RiskAdjustment] = None
 ) -> Vulnerability:
     """Create a CycloneDX Vulnerability object from vulnerability data."""
+    from .cve_data_gathering import build_cvss_vector
+    
     cve = vuln.get("cve", "UNKNOWN")
     component_name = vuln.get("component_name", "Unknown")
     component_version = vuln.get("component_version", "Unknown")
@@ -418,6 +471,10 @@ def _create_cyclonedx_vulnerability(
         bom_ref=f"vuln-{cve}-{component_name}-{component_version}",
         id=cve if cve != "UNKNOWN" else f"UNKNOWN-{vuln.get('id', 'unknown')}"
     )
+    
+    # Add affects relationship to link vulnerability to component
+    component_bom_ref = f"pkg:{component_name}@{component_version}"
+    vulnerability.affects = [BomTarget(ref=component_bom_ref)]
     
     # Add description from NVD if available
     if ext_data.get("nvd_description"):
@@ -434,7 +491,6 @@ def _create_cyclonedx_vulnerability(
         try:
             score_value = float(base_score)
             rating = VulnerabilityRating(
-                # No specific originating source for this rating
                 source=None,
                 score=score_value,
                 severity=_map_severity_to_cyclonedx(vuln.get("severity", "UNKNOWN")),
@@ -442,7 +498,7 @@ def _create_cyclonedx_vulnerability(
             )
             
             # Add CVSS vector if available
-            cvss_vector = ext_data.get("full_cvss_vector") or _build_cvss_vector(vuln)
+            cvss_vector = ext_data.get("full_cvss_vector") or build_cvss_vector(vuln)
             if cvss_vector and cvss_vector != "CVSS vector not available":
                 rating.vector = cvss_vector
             
@@ -450,37 +506,92 @@ def _create_cyclonedx_vulnerability(
         except (ValueError, TypeError):
             pass
     
-    # Dynamic Risk rating (NEW - applies intelligent prioritization)
-    risk_adjustment = calculate_dynamic_risk(vuln, ext_data, enable_vex_suppression=True)
-    if risk_adjustment.adjusted_level != risk_adjustment.original_level:
-        # Add dynamic risk rating when risk level was adjusted
-        dynamic_rating = VulnerabilityRating(
-            source=None,
-            severity=_map_severity_to_cyclonedx(risk_level_to_cyclonedx_severity(risk_adjustment.adjusted_level)),
-            method=VulnerabilityScoreSource.OTHER,
-        )
-        
-        # Add a score based on risk level for sorting
-        risk_scores = {"critical": 10.0, "high": 8.0, "medium": 5.0, "low": 3.0, "info": 1.0}
-        dynamic_rating.score = risk_scores.get(risk_adjustment.adjusted_level.value, 5.0)
-        
-        ratings.append(dynamic_rating)
-    
-    # EPSS rating (explicit source so ingest tools recognise it)
-    if ext_data.get("epss_score") is not None:
+    # EPSS rating
+    epss_score = ext_data.get("epss_score")
+    if epss_score is not None and epss_score > 0.0:
         epss_rating = VulnerabilityRating(
             source=VulnerabilitySource(name="EPSS", url="https://www.first.org/epss"),
-            score=ext_data["epss_score"],
+            score=epss_score,
             method=VulnerabilityScoreSource.OTHER,
         )
         ratings.append(epss_rating)
- 
+    
+    # Apply dynamic risk adjustment if provided
+    if dynamic_risk_adjustment:
+        try:
+            from .cyclonedx_enrichment import apply_dynamic_risk_to_cyclonedx_vuln
+            # Convert to dict format for the function
+            vuln_dict = {"ratings": []}
+            for rating in ratings:
+                vuln_dict["ratings"].append({
+                    "score": rating.score,
+                    "severity": rating.severity.value if hasattr(rating.severity, 'value') else str(rating.severity),
+                    "method": rating.method.value if hasattr(rating.method, 'value') else str(rating.method),
+                    "source": {"name": rating.source.name, "url": rating.source.url} if rating.source else None
+                })
+            
+            # Apply dynamic risk
+            apply_dynamic_risk_to_cyclonedx_vuln(vuln_dict, dynamic_risk_adjustment)
+            
+            # Update ratings from the modified dict
+            if vuln_dict.get("ratings"):
+                ratings = []
+                for rating_dict in vuln_dict["ratings"]:
+                    source = None
+                    if rating_dict.get("source"):
+                        source = VulnerabilitySource(
+                            name=rating_dict["source"]["name"],
+                            url=rating_dict["source"]["url"]
+                        )
+                    
+                    method = VulnerabilityScoreSource.OTHER
+                    if rating_dict.get("method"):
+                        method_str = rating_dict["method"].lower()
+                        if "cvss" in method_str:
+                            method = VulnerabilityScoreSource.CVSS_V3
+                    
+                    severity = VulnerabilitySeverity.UNKNOWN
+                    if rating_dict.get("severity"):
+                        severity = _map_severity_to_cyclonedx(rating_dict["severity"])
+                    
+                    rating = VulnerabilityRating(
+                        source=source,
+                        score=rating_dict.get("score", 0.0),
+                        severity=severity,
+                        method=method,
+                    )
+                    ratings.append(rating)
+                    
+        except Exception as e:
+            logger.warning(f"Failed to apply dynamic risk adjustment: {e}")
+    
     vulnerability.ratings = ratings
- 
-    # ------------------------------------------------------------------
-    # VEX / Impact Analysis
-    # ------------------------------------------------------------------
+    
+    # Add VEX analysis if available
+    _add_vex_analysis(vulnerability, vuln)
+    
+    # Add external references
+    _add_external_references(vulnerability, cve, ext_data)
+    
+    return vulnerability
 
+
+def _map_severity_to_cyclonedx(severity: str) -> "VulnerabilitySeverity":
+    """Map string severity to CycloneDX VulnerabilitySeverity enum."""
+    severity_map = {
+        "critical": VulnerabilitySeverity.CRITICAL,
+        "high": VulnerabilitySeverity.HIGH,
+        "medium": VulnerabilitySeverity.MEDIUM,
+        "low": VulnerabilitySeverity.LOW,
+        "info": VulnerabilitySeverity.INFO,
+        "informational": VulnerabilitySeverity.INFO,
+        "none": VulnerabilitySeverity.NONE,
+    }
+    return severity_map.get(severity.lower(), VulnerabilitySeverity.UNKNOWN)
+
+
+def _add_vex_analysis(vulnerability: Vulnerability, vuln: Dict[str, Any]) -> None:
+    """Add VEX analysis to vulnerability if available."""
     try:
         from cyclonedx.model.impact_analysis import (
             ImpactAnalysisState,
@@ -507,41 +618,42 @@ def _create_cyclonedx_vulnerability(
         if just_enum:
             analysis_kwargs["justification"] = just_enum
 
-        # Map responses (list)
+        # Map responses
         mapped_responses = []
-        for item in vex_response:
-            item_lower = str(item).lower()
-            enum_match = next((r for r in ImpactAnalysisResponse if r.value == item_lower), None)
-            if enum_match:
-                mapped_responses.append(enum_match)
+        if vex_response:
+            response_items = []
+            if isinstance(vex_response, str):
+                response_items = [r.strip() for r in vex_response.split(',')]
+            elif isinstance(vex_response, list):
+                response_items = vex_response
+            
+            for item in response_items:
+                item_lower = str(item).lower().strip()
+                enum_match = next((r for r in ImpactAnalysisResponse if r.value == item_lower), None)
+                if enum_match:
+                    mapped_responses.append(enum_match)
+        
         if mapped_responses:
             analysis_kwargs["responses"] = mapped_responses
 
         # Detail (if present)
-        if vuln.get("vuln_exp_detail"):
-            analysis_kwargs["detail"] = vuln["vuln_exp_detail"]
+        vex_details = vuln.get("vuln_exp_details") or vuln.get("vuln_exp_detail")
+        if vex_details:
+            analysis_kwargs["detail"] = vex_details
 
         if analysis_kwargs:
-            vulnerability.analysis = VulnerabilityAnalysis(**analysis_kwargs)  # type: ignore[arg-type]
+            vulnerability.analysis = VulnerabilityAnalysis(**analysis_kwargs)
 
     except Exception:
         # Best-effort; don't fail report generation if mapping fails
         pass
 
-    # ------------------------------------------------------------------
-    # References & Metadata
-    # ------------------------------------------------------------------
-    # Add references (initialised above but we will continue to append)
-    # Map NVD tags to ExternalReferenceType for richer context
-    tag_map = {
-        "Vendor Advisory": ExternalReferenceType.ADVISORIES,
-        "Patch": ExternalReferenceType.PATCH if hasattr(ExternalReferenceType, "PATCH") else ExternalReferenceType.OTHER,
-        "Exploit": ExternalReferenceType.EXPLOITABILITY_STATEMENT,
-        "Release Notes": ExternalReferenceType.RELEASE_NOTES,
-    }
 
-    # Ensure external_references structure exists
+def _add_external_references(vulnerability: Vulnerability, cve: str, ext_data: Dict[str, Any]) -> None:
+    """Add external references to vulnerability."""
     from sortedcontainers import SortedSet
+    
+    # Ensure external_references structure exists
     if not getattr(vulnerability, "external_references", None):
         vulnerability.external_references = SortedSet()
 
@@ -558,9 +670,16 @@ def _create_cyclonedx_vulnerability(
         except Exception:
             pass
 
+    # Additional NVD references
     if ext_data.get("nvd_references"):
-        from sortedcontainers import SortedSet
-        for idx, ref in enumerate(ext_data["nvd_references"]):
+        tag_map = {
+            "Vendor Advisory": ExternalReferenceType.ADVISORIES,
+            "Patch": ExternalReferenceType.PATCH if hasattr(ExternalReferenceType, "PATCH") else ExternalReferenceType.OTHER,
+            "Exploit": ExternalReferenceType.EXPLOITABILITY_STATEMENT,
+            "Release Notes": ExternalReferenceType.RELEASE_NOTES,
+        }
+        
+        for ref in ext_data["nvd_references"]:
             url = ref.get("url")
             if not url:
                 continue
@@ -579,151 +698,98 @@ def _create_cyclonedx_vulnerability(
                         url=url,
                         comment=ref.get("source", "")
                     )
-                )  # type: ignore[attr-defined]
+                )
             except Exception:
                 pass
 
-    # Add CWE information
-    if ext_data.get("nvd_cwe"):
-        vulnerability.cwes = [int(cwe.replace("CWE-", "")) for cwe in ext_data["nvd_cwe"] if cwe.startswith("CWE-")]
-    
-    # Add properties for additional metadata
+
+def _add_enrichment_metadata(
+    bom: Bom,
+    scan_code: str,
+    nvd_enrichment: bool,
+    epss_enrichment: bool,
+    cisa_kev_enrichment: bool
+    ) -> None:
+    """Add enrichment metadata to the BOM."""
     properties = []
-
-    # CISA KEV flag
-    if ext_data.get("cisa_kev"):
-        properties.append({"name": "cisa_known_exploited", "value": "true"})
-
-        # Ensure vulnerability is marked exploitable if not already
-        try:
-            from cyclonedx.model.impact_analysis import ImpactAnalysisState
-            if not vulnerability.analysis:
-                from cyclonedx.model.vulnerability import VulnerabilityAnalysis
-                vulnerability.analysis = VulnerabilityAnalysis(state=ImpactAnalysisState.EXPLOITABLE)
-            else:
-                vulnerability.analysis.state = ImpactAnalysisState.EXPLOITABLE  # type: ignore[attr-defined]
-        except Exception:
-            pass  # non-critical
-
-        # Add advisory reference
-        try:
-            kev_ref = ExternalReference(
-                type=ExternalReferenceType.ADVISORIES,
-                url="https://www.cisa.gov/known-exploited-vulnerabilities",
-                comment="CISA Known Exploited Vulnerabilities catalog"
-            )
-            vulnerability.external_references.add(kev_ref)  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
-    # EPSS percentile property
-    if ext_data.get("epss_percentile") is not None:
-        properties.append({"name": "epss_percentile", "value": str(ext_data["epss_percentile"])})
     
-    # VEX properties
-    vex_status = vuln.get("vuln_exp_status")
-    if vex_status:
-        properties.append({"name": "vex_status", "value": vex_status})
+    # Scan code
+    properties.append(Property(name="workbench_scan_code", value=scan_code))
     
-    vex_response = vuln.get("vuln_exp_response")
-    if vex_response:
-        properties.append({"name": "vex_response", "value": vex_response})
+    # Enrichment flags
+    properties.append(Property(name="nvd_enrichment", value=str(nvd_enrichment)))
+    properties.append(Property(name="epss_enrichment", value=str(epss_enrichment)))
+    properties.append(Property(name="cisa_kev_enrichment", value=str(cisa_kev_enrichment)))
     
-    vex_justification = vuln.get("vuln_exp_justification")
-    if vex_justification:
-        properties.append({"name": "vex_justification", "value": vex_justification})
+    # Generation metadata
+    properties.append(Property(name="generation_timestamp", value=datetime.utcnow().isoformat() + "Z"))
     
-    # Dynamic risk properties (NEW)
-    risk_adjustment = calculate_dynamic_risk(vuln, ext_data, enable_vex_suppression=True)
-    if risk_adjustment.adjusted_level != risk_adjustment.original_level:
-        properties.append({"name": "dynamic_risk_level", "value": risk_adjustment.adjusted_level.value})
-        properties.append({"name": "risk_adjustment_reason", "value": risk_adjustment.adjustment_reason})
-        if risk_adjustment.priority_context:
-            properties.append({"name": "risk_priority_context", "value": risk_adjustment.priority_context})
+    bom.properties = properties
+
+def _validate_cyclonedx_sbom(sbom_json: Dict[str, Any], sbom_path: str) -> None:
+    """
+    Validate CycloneDX SBOM structure and content.
     
-    # ------------------------------------------------------------------
-    # Publication & temporal data (from NVD)
-    # ------------------------------------------------------------------
-    from datetime import datetime, timezone
-    if ext_data.get("nvd_published") and not getattr(vulnerability, "published", None):
-        try:
-            vulnerability.published = datetime.fromisoformat(ext_data["nvd_published"].replace("Z", "+00:00"))  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
-    if ext_data.get("nvd_last_modified") and not getattr(vulnerability, "updated", None):
-        try:
-            vulnerability.updated = datetime.fromisoformat(ext_data["nvd_last_modified"].replace("Z", "+00:00"))  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------------
-    # Exploitability / impact sub-scores
-    # ------------------------------------------------------------------
-    if ext_data.get("exploitability_score") is not None:
-        try:
-            vulnerability.ratings.add(
-                VulnerabilityRating(
-                    source=VulnerabilitySource(name="NVD Exploitability"),
-                    score=float(ext_data["exploitability_score"]),
-                    method=VulnerabilityScoreSource.OTHER,
-                )
-            )  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
-    if ext_data.get("impact_score") is not None:
-        properties.append({"name": "nvd_impact_score", "value": str(ext_data["impact_score"])})
-
-    # ------------------------------------------------------------------
-    # Detailed CVSS v3 metrics as properties
-    # ------------------------------------------------------------------
-    if ext_data.get("cvss3_metrics"):
-        for m_key, m_val in ext_data["cvss3_metrics"].items():
-            properties.append({"name": f"cvss3_{m_key}", "value": m_val})
-
-    # Assign accumulated properties
-    vulnerability.properties = [Property(name=p["name"], value=p["value"]) for p in properties]
+    Args:
+        sbom_json: Parsed SBOM JSON data
+        sbom_path: Path to SBOM file (for error reporting)
+        
+    Raises:
+        ValueError: If SBOM structure is invalid
+    """
+    # Check required top-level fields
+    required_fields = ["bomFormat", "specVersion"]
+    missing_fields = [field for field in required_fields if field not in sbom_json]
+    if missing_fields:
+        raise ValueError(f"Invalid SBOM structure: missing required fields {missing_fields} in {sbom_path}")
     
-    return vulnerability
-
-
-def _map_severity_to_cyclonedx(severity: str) -> "VulnerabilitySeverity":
-    """Map severity string to CycloneDX VulnerabilitySeverity enum."""
-    severity_map = {
-        "NONE": VulnerabilitySeverity.NONE,
-        "INFO": VulnerabilitySeverity.INFO,
-        "LOW": VulnerabilitySeverity.LOW,
-        "MEDIUM": VulnerabilitySeverity.MEDIUM,
-        "HIGH": VulnerabilitySeverity.HIGH,
-        "CRITICAL": VulnerabilitySeverity.CRITICAL,
-        "UNKNOWN": VulnerabilitySeverity.UNKNOWN,
-    }
-    return severity_map.get(severity.upper(), VulnerabilitySeverity.UNKNOWN)
+    # Validate BOM format
+    bom_format = sbom_json.get("bomFormat", "").lower()
+    if bom_format != "cyclonedx":
+        raise ValueError(f"Invalid SBOM format: expected 'CycloneDX', got '{sbom_format}' in {sbom_path}")
+    
+    # Validate spec version
+    spec_version = sbom_json.get("specVersion", "")
+    supported_versions = ["1.4", "1.5", "1.6"]
+    if spec_version not in supported_versions:
+        logger.warning(f"SBOM spec version '{spec_version}' may not be fully supported. Supported versions: {supported_versions}")
+    
+    # Validate components structure if present
+    components = sbom_json.get("components", [])
+    if not isinstance(components, list):
+        raise ValueError(f"Invalid components structure: expected list, got {type(components)} in {sbom_path}")
+    
+    # Validate vulnerabilities structure if present
+    vulnerabilities = sbom_json.get("vulnerabilities", [])
+    if not isinstance(vulnerabilities, list):
+        raise ValueError(f"Invalid vulnerabilities structure: expected list, got {type(vulnerabilities)} in {sbom_path}")
+    
+    # Validate component structure (sample validation)
+    invalid_components = []
+    for i, comp in enumerate(components[:10]):  # Check first 10 components for performance
+        if not isinstance(comp, dict):
+            invalid_components.append(f"Component {i}: not a dictionary")
+            continue
+        
+        if not comp.get("name"):
+            invalid_components.append(f"Component {i}: missing name")
+    
+    if invalid_components:
+        raise ValueError(f"Invalid component structure in {sbom_path}: {'; '.join(invalid_components)}")
+    
+    # Validate vulnerability structure (sample validation)
+    invalid_vulns = []
+    for i, vuln in enumerate(vulnerabilities[:10]):  # Check first 10 vulnerabilities for performance
+        if not isinstance(vuln, dict):
+            invalid_vulns.append(f"Vulnerability {i}: not a dictionary")
+            continue
+        
+        if not vuln.get("id"):
+            invalid_vulns.append(f"Vulnerability {i}: missing id")
+    
+    if invalid_vulns:
+        raise ValueError(f"Invalid vulnerability structure in {sbom_path}: {'; '.join(invalid_vulns)}")
 
 
-def _build_cvss_vector(vuln: Dict[str, Any]) -> str:
-    """Build a CVSS vector string from available vulnerability data."""
-    version = vuln.get("cvss_version", "3.1")
-    
-    vector_parts = [f"CVSS:{version}"]
-    
-    # Attack Vector
-    av = vuln.get("attack_vector", "")
-    if av:
-        av_map = {"NETWORK": "N", "ADJACENT_NETWORK": "A", "LOCAL": "L", "PHYSICAL": "P"}
-        vector_parts.append(f"AV:{av_map.get(av, av[0] if av else 'N')}")
-    
-    # Attack Complexity
-    ac = vuln.get("attack_complexity", "")
-    if ac:
-        ac_map = {"LOW": "L", "HIGH": "H"}
-        vector_parts.append(f"AC:{ac_map.get(ac, ac[0] if ac else 'L')}")
-    
-    # Availability Impact
-    a = vuln.get("availability_impact", "")
-    if a:
-        a_map = {"NONE": "N", "LOW": "L", "HIGH": "H"}
-        vector_parts.append(f"A:{a_map.get(a, a[0] if a else 'N')}")
-    
-    return "/".join(vector_parts) if len(vector_parts) > 1 else "CVSS vector not available" 
+
+

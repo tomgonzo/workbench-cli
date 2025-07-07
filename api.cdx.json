@@ -1,0 +1,4267 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "components": [
+    {
+      "bom-ref": "pkg:adm-zip@0.4.7",
+      "cpe": "cpe:2.3:a:adm-zip_project:adm-zip:0.4.7:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "adm-zip",
+      "purl": "pkg:npm/adm-zip@0.4.7",
+      "type": "library",
+      "version": "0.4.7"
+    },
+    {
+      "bom-ref": "pkg:ansi-regex@3.0.0",
+      "cpe": "cpe:2.3:a:ansi-regex_project:ansi-regex:3.0.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "ansi-regex",
+      "purl": "pkg:npm/ansi-regex@3.0.0",
+      "type": "library",
+      "version": "3.0.0"
+    },
+    {
+      "bom-ref": "pkg:bootstrap@3.0.0",
+      "cpe": "cpe:2.3:a:getbootstrap:bootstrap:3.0.0:-:*:*:*:*:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "bootstrap",
+      "purl": "pkg:github/twbs/bootstrap@3.0.0",
+      "type": "library",
+      "version": "3.0.0"
+    },
+    {
+      "bom-ref": "pkg:bson@0.4.23",
+      "cpe": "cpe:2.3:a:mongodb:js-bson:0.4.23:*:*:*:*:*:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "bson",
+      "purl": "pkg:npm/bson@0.4.23",
+      "type": "library",
+      "version": "0.4.23"
+    },
+    {
+      "bom-ref": "pkg:debug@2.2.0",
+      "cpe": "cpe:2.3:a:debug_project:debug:2.2.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "debug",
+      "purl": "pkg:npm/debug@2.2.0",
+      "type": "library",
+      "version": "2.2.0"
+    },
+    {
+      "bom-ref": "pkg:decode-uri-component@0.2.0",
+      "cpe": "cpe:2.3:a:decode-uri-component_project:decode-uri-component:0.2.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "decode-uri-component",
+      "purl": "pkg:npm/decode-uri-component@0.2.0",
+      "type": "library",
+      "version": "0.2.0"
+    },
+    {
+      "bom-ref": "pkg:express@4.12.4",
+      "cpe": "cpe:2.3:a:openjsf:express:4.12.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "express",
+      "purl": "pkg:npm/express@4.12.4",
+      "type": "library",
+      "version": "4.12.4"
+    },
+    {
+      "bom-ref": "pkg:file-type@8.1.0",
+      "cpe": "cpe:2.3:a:file-type_project:file-type:8.1.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "file-type",
+      "purl": "pkg:npm/file-type@8.1.0",
+      "type": "library",
+      "version": "8.1.0"
+    },
+    {
+      "bom-ref": "pkg:fresh@0.2.4",
+      "cpe": "cpe:2.3:a:fresh_project:fresh:0.2.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "fresh",
+      "purl": "pkg:npm/fresh@0.2.4",
+      "type": "library",
+      "version": "0.2.4"
+    },
+    {
+      "bom-ref": "pkg:handlebars@4.0.11",
+      "cpe": "cpe:2.3:a:handlebars.js_project:handlebars.js:4.0.11:-:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "handlebars",
+      "purl": "pkg:npm/handlebars@4.0.11",
+      "type": "library",
+      "version": "4.0.11"
+    },
+    {
+      "bom-ref": "pkg:ini@1.1.0",
+      "cpe": "cpe:2.3:a:ini_project:ini:1.1.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "N/A"
+          }
+        }
+      ],
+      "name": "ini",
+      "purl": "pkg:npm/ini@1.1.0",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "bom-ref": "pkg:jquery@2.2.4",
+      "cpe": "cpe:2.3:a:jquery:jquery:2.2.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "jquery",
+      "purl": "pkg:npm/jquery@2.2.4",
+      "type": "library",
+      "version": "2.2.4"
+    },
+    {
+      "bom-ref": "pkg:kerberos@0.0.24",
+      "cpe": "cpe:2.3:a:kerberos_project:kerberos:0.0.24:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "kerberos",
+      "purl": "pkg:npm/kerberos@0.0.24",
+      "type": "library",
+      "version": "0.0.24"
+    },
+    {
+      "bom-ref": "pkg:lodash@4.17.10",
+      "cpe": "cpe:2.3:a:lodash:lodash:4.17.10:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "lodash",
+      "purl": "pkg:npm/lodash@4.17.10",
+      "type": "library",
+      "version": "4.17.10"
+    },
+    {
+      "bom-ref": "pkg:lodash@4.17.4",
+      "cpe": "cpe:2.3:a:lodash:lodash:4.17.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "lodash",
+      "purl": "pkg:npm/lodash@4.17.4",
+      "type": "library",
+      "version": "4.17.4"
+    },
+    {
+      "bom-ref": "pkg:marked@0.3.5",
+      "cpe": "cpe:2.3:a:marked_project:marked:0.3.5:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "marked",
+      "purl": "pkg:npm/marked@0.3.5",
+      "type": "library",
+      "version": "0.3.5"
+    },
+    {
+      "bom-ref": "pkg:mime@1.2.11",
+      "cpe": "cpe:2.3:a:mime_project:mime:1.2.11:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "N/A"
+          }
+        }
+      ],
+      "name": "mime",
+      "purl": "pkg:npm/mime@1.2.11",
+      "type": "library",
+      "version": "1.2.11"
+    },
+    {
+      "bom-ref": "pkg:mime@1.3.4",
+      "cpe": "cpe:2.3:a:mime_project:mime:1.3.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "mime",
+      "purl": "pkg:npm/mime@1.3.4",
+      "type": "library",
+      "version": "1.3.4"
+    },
+    {
+      "bom-ref": "pkg:minimatch@3.0.4",
+      "cpe": "cpe:2.3:a:minimatch_project:minimatch:3.0.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "name": "minimatch",
+      "purl": "pkg:npm/minimatch@3.0.4",
+      "type": "library",
+      "version": "3.0.4"
+    },
+    {
+      "bom-ref": "pkg:minimist@0.0.8",
+      "cpe": "cpe:2.3:a:substack:minimist:0.0.8:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "minimist",
+      "purl": "pkg:npm/minimist@0.0.8",
+      "type": "library",
+      "version": "0.0.8"
+    },
+    {
+      "bom-ref": "pkg:mixin-deep@1.3.1",
+      "cpe": "cpe:2.3:a:mixin-deep_project:mixin-deep:1.3.1:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "mixin-deep",
+      "purl": "pkg:npm/mixin-deep@1.3.1",
+      "type": "library",
+      "version": "1.3.1"
+    },
+    {
+      "bom-ref": "pkg:moment@2.15.1",
+      "cpe": "cpe:2.3:a:momentjs:moment:2.15.1:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "moment",
+      "purl": "pkg:npm/moment@2.15.1",
+      "type": "library",
+      "version": "2.15.1"
+    },
+    {
+      "bom-ref": "pkg:mongoose@4.2.4",
+      "cpe": "cpe:2.3:a:mongoosejs:mongoose:4.2.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "mongoose",
+      "purl": "pkg:npm/mongoose@4.2.4",
+      "type": "library",
+      "version": "4.2.4"
+    },
+    {
+      "bom-ref": "pkg:mpath@0.1.1",
+      "cpe": "cpe:2.3:a:mpath_project:mpath:0.1.1:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "mpath",
+      "purl": "pkg:npm/mpath@0.1.1",
+      "type": "library",
+      "version": "0.1.1"
+    },
+    {
+      "bom-ref": "pkg:mquery@1.6.3",
+      "cpe": "cpe:2.3:a:mquery_project:mquery:1.6.3:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "mquery",
+      "purl": "pkg:npm/mquery@1.6.3",
+      "type": "library",
+      "version": "1.6.3"
+    },
+    {
+      "bom-ref": "pkg:ms@0.6.2",
+      "cpe": "cpe:2.3:a:vercel:ms:0.6.2:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "N/A"
+          }
+        }
+      ],
+      "name": "ms",
+      "purl": "pkg:npm/ms@0.6.2",
+      "type": "library",
+      "version": "0.6.2"
+    },
+    {
+      "bom-ref": "pkg:ms@0.7.1",
+      "cpe": "cpe:2.3:a:vercel:ms:0.7.1:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "N/A"
+          }
+        }
+      ],
+      "name": "ms",
+      "purl": "pkg:npm/ms@0.7.1",
+      "type": "library",
+      "version": "0.7.1"
+    },
+    {
+      "bom-ref": "pkg:ms@0.7.3",
+      "cpe": "cpe:2.3:a:vercel:ms:0.7.3:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "ms",
+      "purl": "pkg:npm/ms@0.7.3",
+      "type": "library",
+      "version": "0.7.3"
+    },
+    {
+      "bom-ref": "pkg:negotiator@0.4.9",
+      "cpe": "cpe:2.3:a:negotiator_project:negotiator:0.4.9:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "negotiator",
+      "purl": "pkg:npm/negotiator@0.4.9",
+      "type": "library",
+      "version": "0.4.9"
+    },
+    {
+      "bom-ref": "pkg:negotiator@0.5.3",
+      "cpe": "cpe:2.3:a:negotiator_project:negotiator:0.5.3:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "negotiator",
+      "purl": "pkg:npm/negotiator@0.5.3",
+      "type": "library",
+      "version": "0.5.3"
+    },
+    {
+      "bom-ref": "pkg:path-parse@1.0.5",
+      "cpe": "cpe:2.3:a:path-parse_project:path-parse:1.0.5:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "path-parse",
+      "purl": "pkg:npm/path-parse@1.0.5",
+      "type": "library",
+      "version": "1.0.5"
+    },
+    {
+      "bom-ref": "pkg:qs@2.2.4",
+      "cpe": "cpe:2.3:a:qs_project:qs:2.2.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "qs",
+      "purl": "pkg:npm/qs@2.2.4",
+      "type": "library",
+      "version": "2.2.4"
+    },
+    {
+      "bom-ref": "pkg:qs@2.4.2",
+      "cpe": "cpe:2.3:a:qs_project:qs:2.4.2:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "qs",
+      "purl": "pkg:npm/qs@2.4.2",
+      "type": "library",
+      "version": "2.4.2"
+    },
+    {
+      "bom-ref": "pkg:semver@1.1.4",
+      "cpe": "cpe:2.3:a:npmjs:semver:1.1.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "semver",
+      "purl": "pkg:npm/semver@1.1.4",
+      "type": "library",
+      "version": "1.1.4"
+    },
+    {
+      "bom-ref": "pkg:semver@5.5.0",
+      "cpe": "cpe:2.3:a:npmjs:semver:5.5.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "name": "semver",
+      "purl": "pkg:npm/semver@5.5.0",
+      "type": "library",
+      "version": "5.5.0"
+    },
+    {
+      "bom-ref": "pkg:semver@7.0.0",
+      "cpe": "cpe:2.3:a:npmjs:semver:7.0.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "name": "semver",
+      "purl": "pkg:npm/semver@7.0.0",
+      "type": "library",
+      "version": "7.0.0"
+    },
+    {
+      "bom-ref": "pkg:set-value@0.4.3",
+      "cpe": "cpe:2.3:a:set-value_project:set-value:0.4.3:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "set-value",
+      "purl": "pkg:npm/set-value@0.4.3",
+      "type": "library",
+      "version": "0.4.3"
+    },
+    {
+      "bom-ref": "pkg:set-value@2.0.0",
+      "cpe": "cpe:2.3:a:set-value_project:set-value:2.0.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "set-value",
+      "purl": "pkg:npm/set-value@2.0.0",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "bom-ref": "pkg:st@0.2.4",
+      "cpe": "cpe:2.3:a:st_project:st:0.2.4:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "st",
+      "purl": "pkg:npm/st@0.2.4",
+      "type": "library",
+      "version": "0.2.4"
+    },
+    {
+      "bom-ref": "pkg:tough-cookie@2.5.0",
+      "cpe": "cpe:2.3:a:salesforce:tough-cookie:2.5.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "tough-cookie",
+      "purl": "pkg:npm/tough-cookie@2.5.0",
+      "type": "library",
+      "version": "2.5.0"
+    },
+    {
+      "bom-ref": "pkg:y18n@3.2.1",
+      "cpe": "cpe:2.3:a:y18n_project:y18n:3.2.1:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "name": "y18n",
+      "purl": "pkg:npm/y18n@3.2.1",
+      "type": "library",
+      "version": "3.2.1"
+    },
+    {
+      "bom-ref": "pkg:yargs-parser@8.1.0",
+      "cpe": "cpe:2.3:a:yargs:yargs-parser:8.1.0:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "name": "yargs-parser",
+      "purl": "pkg:npm/yargs-parser@8.1.0",
+      "type": "library",
+      "version": "8.1.0"
+    },
+    {
+      "bom-ref": "pkg:yargs-parser@9.0.2",
+      "cpe": "cpe:2.3:a:yargs:yargs-parser:9.0.2:*:*:*:*:node.js:*:*",
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "name": "yargs-parser",
+      "purl": "pkg:npm/yargs-parser@9.0.2",
+      "type": "library",
+      "version": "9.0.2"
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:adm-zip@0.4.7"
+    },
+    {
+      "ref": "pkg:ansi-regex@3.0.0"
+    },
+    {
+      "ref": "pkg:bootstrap@3.0.0"
+    },
+    {
+      "ref": "pkg:bson@0.4.23"
+    },
+    {
+      "ref": "pkg:debug@2.2.0"
+    },
+    {
+      "ref": "pkg:decode-uri-component@0.2.0"
+    },
+    {
+      "ref": "pkg:express@4.12.4"
+    },
+    {
+      "ref": "pkg:file-type@8.1.0"
+    },
+    {
+      "ref": "pkg:fresh@0.2.4"
+    },
+    {
+      "ref": "pkg:handlebars@4.0.11"
+    },
+    {
+      "ref": "pkg:ini@1.1.0"
+    },
+    {
+      "ref": "pkg:jquery@2.2.4"
+    },
+    {
+      "ref": "pkg:kerberos@0.0.24"
+    },
+    {
+      "ref": "pkg:lodash@4.17.10"
+    },
+    {
+      "ref": "pkg:lodash@4.17.4"
+    },
+    {
+      "ref": "pkg:marked@0.3.5"
+    },
+    {
+      "ref": "pkg:mime@1.2.11"
+    },
+    {
+      "ref": "pkg:mime@1.3.4"
+    },
+    {
+      "ref": "pkg:minimatch@3.0.4"
+    },
+    {
+      "ref": "pkg:minimist@0.0.8"
+    },
+    {
+      "ref": "pkg:mixin-deep@1.3.1"
+    },
+    {
+      "ref": "pkg:moment@2.15.1"
+    },
+    {
+      "ref": "pkg:mongoose@4.2.4"
+    },
+    {
+      "ref": "pkg:mpath@0.1.1"
+    },
+    {
+      "ref": "pkg:mquery@1.6.3"
+    },
+    {
+      "ref": "pkg:ms@0.6.2"
+    },
+    {
+      "ref": "pkg:ms@0.7.1"
+    },
+    {
+      "ref": "pkg:ms@0.7.3"
+    },
+    {
+      "ref": "pkg:negotiator@0.4.9"
+    },
+    {
+      "ref": "pkg:negotiator@0.5.3"
+    },
+    {
+      "ref": "pkg:path-parse@1.0.5"
+    },
+    {
+      "ref": "pkg:qs@2.2.4"
+    },
+    {
+      "ref": "pkg:qs@2.4.2"
+    },
+    {
+      "ref": "pkg:semver@1.1.4"
+    },
+    {
+      "ref": "pkg:semver@5.5.0"
+    },
+    {
+      "ref": "pkg:semver@7.0.0"
+    },
+    {
+      "ref": "pkg:set-value@0.4.3"
+    },
+    {
+      "ref": "pkg:set-value@2.0.0"
+    },
+    {
+      "ref": "pkg:st@0.2.4"
+    },
+    {
+      "ref": "pkg:tough-cookie@2.5.0"
+    },
+    {
+      "ref": "pkg:y18n@3.2.1"
+    },
+    {
+      "ref": "pkg:yargs-parser@8.1.0"
+    },
+    {
+      "ref": "pkg:yargs-parser@9.0.2"
+    }
+  ],
+  "metadata": {
+    "timestamp": "2025-07-07T21:39:23.526496+00:00"
+  },
+  "properties": [
+    {
+      "name": "cisa_kev_enrichment",
+      "value": "True"
+    },
+    {
+      "name": "cyclonedx_generator_version",
+      "value": "2.0"
+    },
+    {
+      "name": "epss_enrichment",
+      "value": "True"
+    },
+    {
+      "name": "generation_method",
+      "value": "api_powered"
+    },
+    {
+      "name": "generation_timestamp",
+      "value": "2025-07-07T21:39:23.554241Z"
+    },
+    {
+      "name": "nvd_enrichment",
+      "value": "False"
+    },
+    {
+      "name": "vulnerability_count",
+      "value": "75"
+    },
+    {
+      "name": "workbench_scan_code",
+      "value": "fossid-ab/js-sample-demo/main"
+    }
+  ],
+  "serialNumber": "urn:uuid:e5f2b8b1-6e52-4acb-9d0c-d7b1a311fe00",
+  "version": 1,
+  "vulnerabilities": [
+    {
+      "affects": [
+        {
+          "ref": "pkg:jquery@2.2.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2015-9251-jquery-2.2.4",
+      "description": "Security vulnerability affecting jquery version 2.2.4",
+      "id": "CVE-2015-9251",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.92601"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.09842"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.1",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:marked@0.3.5"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2016-10531-marked-0.3.5",
+      "description": "Security vulnerability affecting marked version 0.3.5",
+      "id": "CVE-2016-10531",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.51982"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00289"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:negotiator@0.4.9"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2016-10539-negotiator-0.4.9",
+      "description": "Security vulnerability affecting negotiator version 0.4.9",
+      "id": "CVE-2016-10539",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.55067"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00328"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:negotiator@0.5.3"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2016-10539-negotiator-0.5.3",
+      "description": "Security vulnerability affecting negotiator version 0.5.3",
+      "id": "CVE-2016-10539",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.55067"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00328"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:bootstrap@3.0.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2016-10735-bootstrap-3.0.0",
+      "description": "Security vulnerability affecting bootstrap version 3.0.0",
+      "id": "CVE-2016-10735",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.90357"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.06152"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.1",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:marked@0.3.5"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-1000427-marked-0.3.5",
+      "description": "Security vulnerability affecting marked version 0.3.5",
+      "id": "CVE-2017-1000427",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.5911"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00388"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:marked@0.3.5"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-16114-marked-0.3.5",
+      "description": "Security vulnerability affecting marked version 0.3.5",
+      "id": "CVE-2017-16114",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.5056"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00274"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:fresh@0.2.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-16119-fresh-0.2.4",
+      "description": "Security vulnerability affecting fresh version 0.2.4",
+      "id": "CVE-2017-16119",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.55067"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00328"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:debug@2.2.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-16137-debug-2.2.0",
+      "description": "Security vulnerability affecting debug version 2.2.0",
+      "id": "CVE-2017-16137",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.27897"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00097"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mime@1.2.11"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-16138-mime-1.2.11",
+      "description": "Security vulnerability affecting mime version 1.2.11",
+      "id": "CVE-2017-16138",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.61858"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00433"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mime@1.3.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-16138-mime-1.3.4",
+      "description": "Security vulnerability affecting mime version 1.3.4",
+      "id": "CVE-2017-16138",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.61858"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00433"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:st@0.2.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-16224-st-0.2.4",
+      "description": "Security vulnerability affecting st version 0.2.4",
+      "id": "CVE-2017-16224",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.44195"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00215"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:moment@2.15.1"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-18214-moment-2.15.1",
+      "description": "Security vulnerability affecting moment version 2.15.1",
+      "id": "CVE-2017-18214",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.54664"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00322"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:ms@0.6.2"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-20162-ms-0.6.2",
+      "description": "Security vulnerability affecting ms version 0.6.2",
+      "id": "CVE-2017-20162",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.13977"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00046"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:ms@0.7.1"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-20162-ms-0.7.1",
+      "description": "Security vulnerability affecting ms version 0.7.1",
+      "id": "CVE-2017-20162",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.13977"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00046"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:ms@0.7.3"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-20162-ms-0.7.3",
+      "description": "Security vulnerability affecting ms version 0.7.3",
+      "id": "CVE-2017-20162",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.13977"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00046"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:debug@2.2.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2017-20165-debug-2.2.0",
+      "description": "Security vulnerability affecting debug version 2.2.0",
+      "id": "CVE-2017-20165",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.77715"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.0117"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:adm-zip@0.4.7"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-1002204-adm-zip-0.4.7",
+      "description": "Security vulnerability affecting adm-zip version 0.4.7",
+      "id": "CVE-2018-1002204",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.94292"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.15291"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "High EPSS score: 0.153"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.5",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.2",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:bootstrap@3.0.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-14040-bootstrap-3.0.0",
+      "description": "Security vulnerability affecting bootstrap version 3.0.0",
+      "id": "CVE-2018-14040",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.81076"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.01633"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:bootstrap@3.0.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-14042-bootstrap-3.0.0",
+      "description": "Security vulnerability affecting bootstrap version 3.0.0",
+      "id": "CVE-2018-14042",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.8146"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.017"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.10"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-16487-lodash-4.17.10",
+      "description": "Security vulnerability affecting lodash version 4.17.10",
+      "id": "CVE-2018-16487",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.58123"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00371"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.6",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-16487-lodash-4.17.4",
+      "description": "Security vulnerability affecting lodash version 4.17.4",
+      "id": "CVE-2018-16487",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.58123"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00371"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.6",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mpath@0.1.1"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-16490-mpath-0.1.1",
+      "description": "Security vulnerability affecting mpath version 0.1.1",
+      "id": "CVE-2018-16490",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.40833"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00186"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:bootstrap@3.0.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-20676-bootstrap-3.0.0",
+      "description": "Security vulnerability affecting bootstrap version 3.0.0",
+      "id": "CVE-2018-20676",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.9044"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.06255"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.1",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:bootstrap@3.0.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-20677-bootstrap-3.0.0",
+      "description": "Security vulnerability affecting bootstrap version 3.0.0",
+      "id": "CVE-2018-20677",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.94181"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.14795"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "High EPSS score: 0.148"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.1",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2018-3721-lodash-4.17.4",
+      "description": "Security vulnerability affecting lodash version 4.17.4",
+      "id": "CVE-2018-3721",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.40936"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00187"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.5",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.10"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2019-1010266-lodash-4.17.10",
+      "description": "Security vulnerability affecting lodash version 4.17.10",
+      "id": "CVE-2019-1010266",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.42018"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00196"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.5",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2019-1010266-lodash-4.17.4",
+      "description": "Security vulnerability affecting lodash version 4.17.4",
+      "id": "CVE-2019-1010266",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.42018"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00196"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.5",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.10"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2019-10744-lodash-4.17.10",
+      "description": "Security vulnerability affecting lodash version 4.17.10",
+      "id": "CVE-2019-10744",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.8691"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.0341"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "Critical CVSS severity"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.1",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2019-10744-lodash-4.17.4",
+      "description": "Security vulnerability affecting lodash version 4.17.4",
+      "id": "CVE-2019-10744",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.8691"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.0341"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "Critical CVSS severity"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.1",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mixin-deep@1.3.1"
+        }
+      ],
+      "analysis": {
+        "justification": "requires_configuration",
+        "state": "not_affected"
+      },
+      "bom-ref": "vuln-CVE-2019-10746-mixin-deep-1.3.1",
+      "description": "Security vulnerability affecting mixin-deep version 1.3.1",
+      "id": "CVE-2019-10746",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.64991"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00502"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX suppressed: not_affected"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "No"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:48:05"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:48:15"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:set-value@0.4.3"
+        }
+      ],
+      "analysis": {
+        "detail": "more control context",
+        "justification": "protected_by_mitigating_control",
+        "response": [
+          "workaround_available"
+        ],
+        "state": "resolved"
+      },
+      "bom-ref": "vuln-CVE-2019-10747-set-value-0.4.3",
+      "description": "Security vulnerability affecting set-value version 0.4.3",
+      "id": "CVE-2019-10747",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.40599"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00184"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX suppressed: resolved"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "No"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:47:29"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:47:50"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:set-value@2.0.0"
+        }
+      ],
+      "analysis": {
+        "response": [
+          "will_not_fix"
+        ],
+        "state": "false_positive"
+      },
+      "bom-ref": "vuln-CVE-2019-10747-set-value-2.0.0",
+      "description": "Security vulnerability affecting set-value version 2.0.0",
+      "id": "CVE-2019-10747",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.40599"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00184"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX suppressed: false_positive"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "No"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:46:35"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:46:56"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:jquery@2.2.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2019-11358-jquery-2.2.4",
+      "description": "Security vulnerability affecting jquery version 2.2.4",
+      "id": "CVE-2019-11358",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.85602"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.0284"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mongoose@4.2.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2019-17426-mongoose-4.2.4",
+      "description": "Security vulnerability affecting mongoose version 4.2.4",
+      "id": "CVE-2019-17426",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.46763"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00237"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "Critical CVSS severity"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.1",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:handlebars@4.0.11"
+        }
+      ],
+      "analysis": {
+        "justification": "code_not_present",
+        "state": "false_positive"
+      },
+      "bom-ref": "vuln-CVE-2019-19919-handlebars-4.0.11",
+      "description": "Security vulnerability affecting handlebars version 4.0.11",
+      "id": "CVE-2019-19919",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.94487"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.16106"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX suppressed: false_positive"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "No"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:48:17"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:48:22"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.2",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:bson@0.4.23"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2019-2391-bson-0.4.23",
+      "description": "Security vulnerability affecting bson version 0.4.23",
+      "id": "CVE-2019-2391",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.58626"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00379"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.4",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:bootstrap@3.0.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2019-8331-bootstrap-3.0.0",
+      "description": "Security vulnerability affecting bootstrap version 3.0.0",
+      "id": "CVE-2019-8331",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.84006"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.02292"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:jquery@2.2.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-11022-jquery-2.2.4",
+      "description": "Security vulnerability affecting jquery version 2.2.4",
+      "id": "CVE-2020-11022",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.85075"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.02636"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:jquery@2.2.4"
+        }
+      ],
+      "analysis": {
+        "state": "exploitable"
+      },
+      "bom-ref": "vuln-CVE-2020-11023-jquery-2.2.4",
+      "description": "Security vulnerability affecting jquery version 2.2.4",
+      "id": "CVE-2020-11023",
+      "properties": [
+        {
+          "name": "cisa_known_exploited",
+          "value": "true"
+        },
+        {
+          "name": "epss_percentile",
+          "value": "0.95402"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.21392"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "CISA Known Exploited Vulnerability; High EPSS score: 0.214"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.1",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.2",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:kerberos@0.0.24"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-13110-kerberos-0.0.24",
+      "description": "Security vulnerability affecting kerberos version 0.0.24",
+      "id": "CVE-2020-13110",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.21358"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00068"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.8",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.10"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-28500-lodash-4.17.10",
+      "description": "Security vulnerability affecting lodash version 4.17.10",
+      "id": "CVE-2020-28500",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.50618"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00275"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-28500-lodash-4.17.4",
+      "description": "Security vulnerability affecting lodash version 4.17.4",
+      "id": "CVE-2020-28500",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.50618"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00275"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mquery@1.6.3"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-35149-mquery-1.6.3",
+      "description": "Security vulnerability affecting mquery version 1.6.3",
+      "id": "CVE-2020-35149",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.491"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00259"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:minimist@0.0.8"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-7598-minimist-0.0.8",
+      "description": "Security vulnerability affecting minimist version 0.0.8",
+      "id": "CVE-2020-7598",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.48511"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00253"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.6",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:yargs-parser@8.1.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-7608-yargs-parser-8.1.0",
+      "description": "Security vulnerability affecting yargs-parser version 8.1.0",
+      "id": "CVE-2020-7608",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.30306"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.0011"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:yargs-parser@9.0.2"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-7608-yargs-parser-9.0.2",
+      "description": "Security vulnerability affecting yargs-parser version 9.0.2",
+      "id": "CVE-2020-7608",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.30306"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.0011"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.3",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:y18n@3.2.1"
+        }
+      ],
+      "analysis": {
+        "justification": "protected_at_runtime",
+        "state": "resolved_with_pedigree"
+      },
+      "bom-ref": "vuln-CVE-2020-7774-y18n-3.2.1",
+      "description": "Security vulnerability affecting y18n version 3.2.1",
+      "id": "CVE-2020-7774",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.70533"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00676"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX suppressed: resolved_with_pedigree"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "No"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:46:29"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:47:20"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:ini@1.1.0"
+        }
+      ],
+      "analysis": {
+        "detail": "more workaround info",
+        "response": [
+          "workaround_available"
+        ],
+        "state": "resolved"
+      },
+      "bom-ref": "vuln-CVE-2020-7788-ini-1.1.0",
+      "description": "Security vulnerability affecting ini version 1.1.0",
+      "id": "CVE-2020-7788",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.52102"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00291"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX suppressed: resolved"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "No"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:48:24"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:48:40"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.10"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-8203-lodash-4.17.10",
+      "description": "Security vulnerability affecting lodash version 4.17.10",
+      "id": "CVE-2020-8203",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.86626"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.03276"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.4",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2020-8203-lodash-4.17.4",
+      "description": "Security vulnerability affecting lodash version 4.17.4",
+      "id": "CVE-2020-8203",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.86626"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.03276"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.4",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.10"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2021-23337-lodash-4.17.10",
+      "description": "Security vulnerability affecting lodash version 4.17.10",
+      "id": "CVE-2021-23337",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.74033"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00859"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.2",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:lodash@4.17.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2021-23337-lodash-4.17.4",
+      "description": "Security vulnerability affecting lodash version 4.17.4",
+      "id": "CVE-2021-23337",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.74033"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00859"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.2",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:path-parse@1.0.5"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2021-23343-path-parse-1.0.5",
+      "description": "Security vulnerability affecting path-parse version 1.0.5",
+      "id": "CVE-2021-23343",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.65253"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00506"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mpath@0.1.1"
+        }
+      ],
+      "analysis": {
+        "response": [
+          "can_not_fix"
+        ],
+        "state": "exploitable"
+      },
+      "bom-ref": "vuln-CVE-2021-23438-mpath-0.1.1",
+      "description": "Security vulnerability affecting mpath version 0.1.1",
+      "id": "CVE-2021-23438",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.3703"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00154"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX assessment: exploitable; VEX response: unfixable (can_not_fix)"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:47:56"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:48:02"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:set-value@0.4.3"
+        }
+      ],
+      "analysis": {
+        "justification": "code_not_reachable",
+        "response": [
+          "will_not_fix"
+        ],
+        "state": "not_affected"
+      },
+      "bom-ref": "vuln-CVE-2021-23440-set-value-0.4.3",
+      "description": "Security vulnerability affecting set-value version 0.4.3",
+      "id": "CVE-2021-23440",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.20352"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00064"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX suppressed: not_affected"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "No"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:46:37"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:46:49"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:set-value@2.0.0"
+        }
+      ],
+      "analysis": {
+        "state": "in_triage"
+      },
+      "bom-ref": "vuln-CVE-2021-23440-set-value-2.0.0",
+      "description": "Security vulnerability affecting set-value version 2.0.0",
+      "id": "CVE-2021-23440",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.20352"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00064"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "Critical CVSS severity"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:46:33"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:46:33"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:ansi-regex@3.0.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2021-3807-ansi-regex-3.0.0",
+      "description": "Security vulnerability affecting ansi-regex version 3.0.0",
+      "id": "CVE-2021-3807",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.42313"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00198"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:minimist@0.0.8"
+        }
+      ],
+      "analysis": {
+        "response": [
+          "can_not_fix"
+        ],
+        "state": "exploitable"
+      },
+      "bom-ref": "vuln-CVE-2021-44906-minimist-0.0.8",
+      "description": "Security vulnerability affecting minimist version 0.0.8",
+      "id": "CVE-2021-44906",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.77382"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.01134"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX assessment: exploitable; VEX response: unfixable (can_not_fix)"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:46:31"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:47:01"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:marked@0.3.5"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-21680-marked-0.3.5",
+      "description": "Security vulnerability affecting marked version 0.3.5",
+      "id": "CVE-2022-21680",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.63367"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00464"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:marked@0.3.5"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-21681-marked-0.3.5",
+      "description": "Security vulnerability affecting marked version 0.3.5",
+      "id": "CVE-2022-21681",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.63086"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00458"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:moment@2.15.1"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-24785-moment-2.15.1",
+      "description": "Security vulnerability affecting moment version 2.15.1",
+      "id": "CVE-2022-24785",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.66597"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00539"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:express@4.12.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-24999-express-4.12.4",
+      "description": "Security vulnerability affecting express version 4.12.4",
+      "id": "CVE-2022-24999",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.86243"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.03115"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:qs@2.2.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-24999-qs-2.2.4",
+      "description": "Security vulnerability affecting qs version 2.2.4",
+      "id": "CVE-2022-24999",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.86243"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.03115"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:qs@2.4.2"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-24999-qs-2.4.2",
+      "description": "Security vulnerability affecting qs version 2.4.2",
+      "id": "CVE-2022-24999",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.86243"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.03115"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mongoose@4.2.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-2564-mongoose-4.2.4",
+      "description": "Security vulnerability affecting mongoose version 4.2.4",
+      "id": "CVE-2022-2564",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.81702"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.01747"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.0",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:semver@1.1.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-25883-semver-1.1.4",
+      "description": "Security vulnerability affecting semver version 1.1.4",
+      "id": "CVE-2022-25883",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.535"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00308"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:semver@5.5.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-25883-semver-5.5.0",
+      "description": "Security vulnerability affecting semver version 5.5.0",
+      "id": "CVE-2022-25883",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.535"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00308"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:semver@7.0.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-25883-semver-7.0.0",
+      "description": "Security vulnerability affecting semver version 7.0.0",
+      "id": "CVE-2022-25883",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.535"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00308"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:minimatch@3.0.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-3517-minimatch-3.0.4",
+      "description": "Security vulnerability affecting minimatch version 3.0.4",
+      "id": "CVE-2022-3517",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.61816"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00432"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "7.5",
+          "severity": "high"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:file-type@8.1.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-36313-file-type-8.1.0",
+      "description": "Security vulnerability affecting file-type version 8.1.0",
+      "id": "CVE-2022-36313",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.2683"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00091"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "5.5",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:decode-uri-component@0.2.0"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2022-38778-decode-uri-component-0.2.0",
+      "description": "Security vulnerability affecting decode-uri-component version 0.2.0",
+      "id": "CVE-2022-38778",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.71815"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00734"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "6.5",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:tough-cookie@2.5.0"
+        }
+      ],
+      "analysis": {
+        "response": [
+          "can_not_fix"
+        ],
+        "state": "exploitable"
+      },
+      "bom-ref": "vuln-CVE-2023-26136-tough-cookie-2.5.0",
+      "description": "Security vulnerability affecting tough-cookie version 2.5.0",
+      "id": "CVE-2023-26136",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.89437"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.05191"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX assessment: exploitable; VEX response: unfixable (can_not_fix)"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Yes"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:47:54"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:48:00"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "9.8",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.1",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:mongoose@4.2.4"
+        }
+      ],
+      "analysis": {
+        "response": [
+          "update"
+        ],
+        "state": "resolved"
+      },
+      "bom-ref": "vuln-CVE-2023-3696-mongoose-4.2.4",
+      "description": "Security vulnerability affecting mongoose version 4.2.4",
+      "id": "CVE-2023-3696",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.42751"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00202"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "VEX suppressed: resolved"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "No"
+        },
+        {
+          "name": "vex_analysis_created",
+          "value": "2025-07-06 22:46:27"
+        },
+        {
+          "name": "vex_analysis_created_by",
+          "value": "tomas.gonzalez@fossid.com"
+        },
+        {
+          "name": "vex_analysis_updated",
+          "value": "2025-07-07 00:47:24"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "10.0",
+          "severity": "critical"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    },
+    {
+      "affects": [
+        {
+          "ref": "pkg:express@4.12.4"
+        }
+      ],
+      "bom-ref": "vuln-CVE-2024-43796-express-4.12.4",
+      "description": "Security vulnerability affecting express version 4.12.4",
+      "id": "CVE-2024-43796",
+      "properties": [
+        {
+          "name": "epss_percentile",
+          "value": "0.18136"
+        },
+        {
+          "name": "epss_score",
+          "value": "0.00058"
+        },
+        {
+          "name": "high_risk_evidence",
+          "value": "No additional risk context available"
+        },
+        {
+          "name": "high_risk_indicator",
+          "value": "Unknown"
+        }
+      ],
+      "ratings": [
+        {
+          "method": "CVSSv3",
+          "score": "4.7",
+          "severity": "medium"
+        },
+        {
+          "method": "other",
+          "score": "0.0",
+          "source": {
+            "name": "EPSS",
+            "url": "https://www.first.org/epss"
+          }
+        }
+      ]
+    }
+  ]
+}

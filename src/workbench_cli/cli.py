@@ -119,10 +119,14 @@ Example Usage:
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format cyclonedx -o vulns.cdx.json
 
-  # Augment existing CycloneDX SBOM with vulnerability data
+  # Export complete SBOM with all components (not just vulnerable ones)
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
-    export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format cyclonedx -o vulns-with-vulns.cdx.json \\
-    --base-sbom existing-sbom.cdx.json --enrich-nvd --enrich-epss
+    export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format cyclonedx -o complete-sbom.cdx.json --augment-full-bom
+
+  # Export CycloneDX SBOM with external enrichment
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format cyclonedx -o vulns-enriched.cdx.json \\
+    --enrich-nvd --enrich-epss --augment-full-bom
 
   # Export vulnerability results in SPDX 3.0 format with enrichment
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
@@ -311,39 +315,6 @@ Example Usage:
     add_common_monitoring_options(scan_git_parser)
     add_common_result_options(scan_git_parser)
 
-    # --- 'export-sarif' Subcommand ---
-    export_sarif_parser = subparsers.add_parser(
-        'export-sarif',
-        help='Export vulnerability results in SARIF format for security tooling integration.',
-        description='Export vulnerability results from an existing scan in SARIF (Static Analysis Results Interchange Format) v2.1.0 format. This format is compatible with GitHub Advanced Security, security scanners, and other DevSecOps tools.',
-        formatter_class=RawTextHelpFormatter
-    )
-    
-    # Required arguments
-    required_args = export_sarif_parser.add_argument_group("Required")
-    required_args.add_argument("--project-name", help="Project name containing the scan.", type=str, required=True, metavar="NAME")
-    required_args.add_argument("--scan-name", help="Scan name to export vulnerability results from.", type=str, required=True, metavar="NAME")
-    required_args.add_argument("-o", "--output", help="Output file path for the SARIF report (Default: vulns.sarif).", type=str, default="vulns.sarif", metavar="PATH")
-    
-    # External API enrichment
-    external_api_args = export_sarif_parser.add_argument_group("External API Enrichment (Network Calls)")
-    external_api_args.add_argument("--enrich-nvd", help="Fetch CVE descriptions from NVD API (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
-    external_api_args.add_argument("--enrich-epss", help="Fetch EPSS scores from FIRST API (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
-    external_api_args.add_argument("--enrich-cisa-kev", help="Fetch CISA Known Exploited Vulnerabilities (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
-    external_api_args.add_argument("--external-timeout", help="Timeout for external API calls in seconds (Default: 30).", type=int, default=30, metavar="SECONDS")
-    
-    # Output processing & suppression
-    processing_args = export_sarif_parser.add_argument_group("Output Processing & Suppression")
-    processing_args.add_argument("--severity-threshold", help="Filter vulnerabilities by CVSS severity.", choices=["critical", "high", "medium", "low"], metavar="LEVEL")
-    processing_args.add_argument("--disable-dynamic-risk-scoring", dest="disable_dynamic_risk_scoring", help="Disable Dynamic Risk Scoring (VEX suppression and EPSS / KEV escalation).", action="store_true")
-    
-    # Output control
-    output_control_args = export_sarif_parser.add_argument_group("Output Control")
-    output_control_args.add_argument("--quiet", help="Suppress progress output.", action="store_true")
-    output_control_args.add_argument("--validate", help="Validate SARIF schema.", action="store_true")
-    
-    add_common_monitoring_options(export_sarif_parser)
-
     # --- 'export-vulns' Subcommand ---
     export_vulns_parser = subparsers.add_parser(
         'export-vulns',
@@ -374,10 +345,8 @@ Example Usage:
     processing_args = export_vulns_parser.add_argument_group("Output Processing & Suppression")
     processing_args.add_argument("--severity-threshold", help="Filter vulnerabilities by CVSS severity.", choices=["critical", "high", "medium", "low"], metavar="LEVEL")
     processing_args.add_argument("--disable-dynamic-risk-scoring", dest="disable_dynamic_risk_scoring", help="Disable Dynamic Risk Scoring (VEX suppression and EPSS / KEV escalation).", action="store_true")
+    processing_args.add_argument("--augment-full-bom", help="Augment the SBOM from the scan with vulnerability enrichment and dynamic scoring.", action="store_true")
     
-    # CycloneDX-specific options
-    cyclonedx_args = export_vulns_parser.add_argument_group("CycloneDX Format Options")
-    cyclonedx_args.add_argument("--base-sbom", help="Path to existing CycloneDX SBOM to augment with vulnerability data (CycloneDX format only).", type=str, metavar="PATH")
     
     # Output control
     output_control_args = export_vulns_parser.add_argument_group("Output Control")

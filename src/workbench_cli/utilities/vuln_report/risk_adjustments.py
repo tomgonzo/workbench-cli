@@ -31,13 +31,17 @@ class RiskAdjustment:
         adjusted_level: RiskLevel,
         adjustment_reason: str,
         priority_context: str = "",
-        suppressed: bool = False
+        suppressed: bool = False,
+        high_risk_indicator: str = "Unknown",
+        high_risk_evidence: str = ""
     ):
         self.original_level = original_level
         self.adjusted_level = adjusted_level
         self.adjustment_reason = adjustment_reason
         self.priority_context = priority_context
         self.suppressed = suppressed
+        self.high_risk_indicator = high_risk_indicator  # "Yes", "No", or "Unknown"
+        self.high_risk_evidence = high_risk_evidence
     
     @property
     def was_promoted(self) -> bool:
@@ -53,99 +57,138 @@ class RiskAdjustment:
 
 
 def calculate_dynamic_risk(
-    vuln: Dict[str, Any],
-    external_data: Dict[str, Any],
-    enable_vex_suppression: bool = True
+    vuln: Dict[str, Any], 
+    external_data: Dict[str, Any]
 ) -> RiskAdjustment:
     """
-    Calculate dynamic risk level for a vulnerability based on intelligence sources.
+    Calculate dynamic risk level based on vulnerability attributes and external data.
+    
+    This function always applies dynamic risk scoring adjustments when called.
+    Control whether to use dynamic risk scoring at the call site.
     
     Args:
         vuln: Vulnerability dictionary from Workbench API
-        external_data: External enrichment data (EPSS, CISA KEV, NVD)
-        enable_vex_suppression: Whether to apply VEX-based suppression
+        external_data: External enrichment data for this CVE
         
     Returns:
-        RiskAdjustment object containing original and adjusted risk levels
+        RiskAdjustment with original and adjusted risk levels
     """
-    # Start with base severity
-    base_severity = vuln.get("severity", "UNKNOWN").upper()
-    original_level = _map_cvss_severity_to_risk_level(base_severity)
+    original_level = _map_cvss_severity_to_risk_level(vuln.get("severity", "UNKNOWN"))
     
-    # Extract VEX information
+    # Start with original level
+    adjusted_level = original_level
+    adjustments = []
+    
+    # High Risk Indicator logic (3-state: Yes/No/Unknown)
+    high_risk_indicator = "Unknown"  # Default state
+    high_risk_evidence = []
+    
+    # Get VEX status and response for use throughout the function
     vex_status = (vuln.get("vuln_exp_status") or "").lower()
-    vex_response = (vuln.get("vuln_exp_response") or "").lower()
     
-    # Check for promotion to CRITICAL level
-    if external_data.get("cisa_kev"):
-        return RiskAdjustment(
-            original_level=original_level,
-            adjusted_level=RiskLevel.CRITICAL,
-            adjustment_reason="CISA Known Exploited Vulnerability",
-            priority_context="[CISA KEV]"
-        )
+    # Handle VEX response - it can be a string or a list
+    vex_response_raw = vuln.get("vuln_exp_response") or ""
+    if isinstance(vex_response_raw, list):
+        # If it's a list, join with commas and lowercase
+        vex_response = ",".join(str(r).lower() for r in vex_response_raw)
+    else:
+        vex_response = str(vex_response_raw).lower()
     
-    # Check for promotion to HIGH level
-    epss_score = external_data.get("epss_score", 0)
-    if epss_score and epss_score > 0.1:
-        return RiskAdjustment(
-            original_level=original_level,
-            adjusted_level=RiskLevel.HIGH,
-            adjustment_reason=f"High EPSS exploitation probability: {epss_score:.3f}",
-            priority_context=f"[EPSS: {epss_score:.3f}]"
-        )
+    # Check for VEX suppression FIRST - VEX should override other risk factors
+    # VEX status-based suppression (demote to INFO) - High Risk = "No"
+    if vex_status in ["not_affected", "fixed", "mitigated", "resolved", "resolved_with_pedigree", "false_positive"]:
+        adjusted_level = RiskLevel.INFO
+        adjustments.append(f"VEX assessment: {vex_status}")
+        high_risk_indicator = "No"
+        high_risk_evidence.append(f"VEX suppressed: {vex_status}")
     
-    # Check VEX status for promotion to HIGH
-    if vex_status in ["exploitable", "affected"]:
-        return RiskAdjustment(
-            original_level=original_level,
-            adjusted_level=RiskLevel.HIGH,
-            adjustment_reason=f"VEX assessment indicates {vex_status} status",
-            priority_context=f"[VEX: {vex_status.upper()}]"
-        )
+    # VEX response-based suppression - High Risk = "No"
+    elif vex_response in ["will_not_fix", "update"]:
+        adjusted_level = RiskLevel.INFO
+        adjustments.append(f"VEX response: {vex_response}")
+        high_risk_indicator = "No"
+        high_risk_evidence.append(f"VEX response: {vex_response}")
     
-    # Check for VEX-based suppression/demotion
-    if enable_vex_suppression:
-        # Suppress (demote to INFO) if VEX indicates resolved/mitigated
-        if vex_status in ["not_affected", "fixed", "mitigated", "resolved", "false_positive"]:
-            return RiskAdjustment(
-                original_level=original_level,
-                adjusted_level=RiskLevel.INFO,
-                adjustment_reason=f"VEX assessment: {vex_status}",
-                priority_context=f"[VEX: {vex_status.upper()}]",
-                suppressed=True
-            )
+    # If not suppressed by VEX, check for high risk escalation factors - High Risk = "Yes"
+    else:
+        # CISA KEV promotion to CRITICAL level
+        if external_data.get("cisa_kev"):
+            adjusted_level = RiskLevel.CRITICAL
+            adjustments.append("CISA Known Exploited Vulnerability")
+            high_risk_indicator = "Yes"
+            high_risk_evidence.append("CISA Known Exploited Vulnerability")
         
-        # Suppress if VEX response indicates accepted risk
-        if vex_response in ["will_not_fix", "update", "can_not_fix"]:
-            return RiskAdjustment(
-                original_level=original_level,
-                adjusted_level=RiskLevel.INFO,
-                adjustment_reason=f"VEX response: {vex_response}",
-                priority_context=f"[VEX: {vex_response.upper()}]",
-                suppressed=True
-            )
+        # EPSS-based promotion to HIGH level
+        epss_score = external_data.get("epss_score", 0)
+        if epss_score and epss_score > 0.1:
+            adjusted_level = RiskLevel.HIGH
+            adjustments.append(f"High EPSS exploitation probability: {epss_score:.3f}")
+            high_risk_indicator = "Yes"
+            high_risk_evidence.append(f"High EPSS score: {epss_score:.3f}")
+        
+        # VEX status-based promotion to HIGH (exploitable takes priority)
+        if vex_status in ["exploitable", "affected"]:
+            adjusted_level = RiskLevel.HIGH
+            adjustments.append(f"VEX assessment indicates {vex_status} status")
+            high_risk_indicator = "Yes"
+            high_risk_evidence.append(f"VEX assessment: {vex_status}")
+        
+        # VEX response-based promotion for unfixable vulnerabilities
+        if "can_not_fix" in vex_response:
+            adjusted_level = RiskLevel.HIGH
+            adjustments.append(f"VEX response indicates unfixable vulnerability")
+            high_risk_indicator = "Yes"
+            high_risk_evidence.append(f"VEX response: unfixable (can_not_fix)")
+        
+        # Critical severity as high risk indicator
+        if vuln.get("severity", "").upper() == "CRITICAL":
+            # Only set to "Yes" if not already set by other factors
+            if high_risk_indicator == "Unknown":
+                high_risk_indicator = "Yes"
+                high_risk_evidence.append("Critical CVSS severity")
+    
+    # Prepare evidence string
+    if high_risk_indicator == "Yes":
+        evidence_string = "; ".join(high_risk_evidence)
+    elif high_risk_indicator == "No":
+        evidence_string = "; ".join(high_risk_evidence)
+    else:  # Unknown
+        evidence_string = "No additional risk context available"
     
     # No adjustment needed
+    if len(adjustments) == 0:
+        return RiskAdjustment(
+            original_level=original_level,
+            adjusted_level=original_level,
+            adjustment_reason="No risk adjustment applied",
+            high_risk_indicator=high_risk_indicator,
+            high_risk_evidence=evidence_string
+        )
+    
+    # Construct the final adjustment reason
+    adjustment_reason = "Dynamic risk adjustment: " + " -> ".join(adjustments)
+    
     return RiskAdjustment(
         original_level=original_level,
-        adjusted_level=original_level,
-        adjustment_reason="No risk adjustment applied"
+        adjusted_level=adjusted_level,
+        adjustment_reason=adjustment_reason,
+        high_risk_indicator=high_risk_indicator,
+        high_risk_evidence=evidence_string
     )
 
 
 def calculate_batch_risk_adjustments(
     vulnerabilities: List[Dict[str, Any]],
-    external_data: Dict[str, Dict[str, Any]],
-    enable_vex_suppression: bool = True
+    external_data: Dict[str, Dict[str, Any]]
 ) -> Dict[str, RiskAdjustment]:
     """
     Calculate risk adjustments for a batch of vulnerabilities.
     
+    This function always applies dynamic risk scoring. Only call when dynamic risk scoring is enabled.
+    
     Args:
         vulnerabilities: List of vulnerability dictionaries
         external_data: External enrichment data keyed by CVE
-        enable_vex_suppression: Whether to apply VEX-based suppression
         
     Returns:
         Dictionary mapping vulnerability IDs to RiskAdjustment objects
@@ -157,7 +200,7 @@ def calculate_batch_risk_adjustments(
         cve = vuln.get("cve", "UNKNOWN")
         ext_data = external_data.get(cve, {})
         
-        adjustment = calculate_dynamic_risk(vuln, ext_data, enable_vex_suppression)
+        adjustment = calculate_dynamic_risk(vuln, ext_data)
         adjustments[vuln_id] = adjustment
     
     return adjustments
@@ -264,6 +307,8 @@ def apply_vex_suppression_filter(
     """
     Filter vulnerabilities based on VEX suppression rules.
     
+    This function always applies dynamic risk scoring. Only call when dynamic risk scoring is enabled.
+    
     Args:
         vulnerabilities: List of vulnerability dictionaries
         external_data: External enrichment data
@@ -278,7 +323,7 @@ def apply_vex_suppression_filter(
         cve = vuln.get("cve", "UNKNOWN")
         ext_data = external_data.get(cve, {})
         
-        adjustment = calculate_dynamic_risk(vuln, ext_data, enable_vex_suppression=True)
+        adjustment = calculate_dynamic_risk(vuln, ext_data)
         
         if adjustment.suppressed:
             suppressed.append(vuln)
@@ -309,4 +354,100 @@ def map_vex_status_to_sarif_level(
     }
     
     adjustment = calculate_dynamic_risk(mock_vuln, external_data)
-    return risk_level_to_sarif_level(adjustment.adjusted_level) 
+    return risk_level_to_sarif_level(adjustment.adjusted_level)
+
+
+# Business logic functions - moved from sarif_generator.py and export_vulns.py
+
+def extract_unique_cves(vulnerabilities: List[Dict[str, Any]]) -> List[str]:
+    """Extract unique CVEs from vulnerability data, excluding UNKNOWN values."""
+    return list(set(
+        vuln.get("cve", "UNKNOWN") 
+        for vuln in vulnerabilities 
+        if vuln.get("cve") != "UNKNOWN"
+    ))
+
+
+def count_high_risk_vulnerabilities(vulnerabilities: List[Dict[str, Any]], 
+                                   external_data: Dict[str, Dict[str, Any]]) -> Dict[str, int]:
+    """Count high-risk vulnerabilities based on external data."""
+    counts = {
+        "cisa_kev": 0,
+        "high_epss": 0,
+        "critical_severity": 0,
+        "total_high_risk": 0
+    }
+    
+    high_risk_cves = set()
+    
+    for vuln in vulnerabilities:
+        cve = vuln.get("cve", "UNKNOWN")
+        ext_data = external_data.get(cve, {})
+        
+        is_high_risk = False
+        
+        if ext_data.get("cisa_kev"):
+            counts["cisa_kev"] += 1
+            is_high_risk = True
+        
+        epss_score = ext_data.get("epss_score")
+        if epss_score is not None and epss_score > 0.1:
+            counts["high_epss"] += 1
+            is_high_risk = True
+        
+        if vuln.get("severity", "").upper() == "CRITICAL":
+            counts["critical_severity"] += 1
+            is_high_risk = True
+        
+        if is_high_risk:
+            high_risk_cves.add(cve)
+    
+    counts["total_high_risk"] = len(high_risk_cves)
+    return counts
+
+
+def count_high_risk_indicators_detailed(
+    vulnerabilities: List[Dict[str, Any]], 
+    external_data: Dict[str, Dict[str, Any]]
+) -> Dict[str, int]:
+    """Count vulnerabilities by high risk indicator state."""
+    counts = {"yes": 0, "no": 0, "unknown": 0}
+    
+    for vuln in vulnerabilities:
+        cve = vuln.get("cve", "UNKNOWN")
+        ext_data = external_data.get(cve, {})
+        
+        adjustment = calculate_dynamic_risk(vuln, ext_data)
+        state = adjustment.high_risk_indicator.lower()
+        if state in counts:
+            counts[state] += 1
+    
+    return counts
+
+
+# Public API
+__all__ = [
+    # Core types
+    "RiskLevel",
+    "RiskAdjustment",
+    
+    # Main functions
+    "calculate_dynamic_risk",
+    "calculate_batch_risk_adjustments",
+    
+    # Format mappings
+    "risk_level_to_sarif_level",
+    "risk_level_to_cyclonedx_severity",
+    "risk_level_to_spdx_severity",
+    
+    # Filtering functions
+    "apply_vex_suppression_filter",
+    
+    # Business logic functions
+    "extract_unique_cves",
+    "count_high_risk_vulnerabilities",
+    "count_high_risk_indicators_detailed",
+    
+    # Legacy compatibility
+    "map_vex_status_to_sarif_level",
+] 

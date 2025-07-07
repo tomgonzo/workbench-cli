@@ -2,7 +2,7 @@
 Vulnerability data enrichment utilities.
 
 This module provides functionality to enhance vulnerability data with external sources
-including NVD, EPSS scores, CISA KEV data, and alternative vulnerability databases.
+including NVD, EPSS scores, and CISA KEV data.
 """
 
 import json
@@ -21,9 +21,6 @@ EPSS_API_URL = "https://api.first.org/data/v1/epss"
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
-# Alternative vulnerability data sources
-VULNERS_API_URL = "https://vulners.com/api/v3/search/id"
-
 # Rate limiting settings
 NVD_RATE_LIMIT_NO_KEY = 5  # requests per 30 seconds without API key
 NVD_RATE_LIMIT_WITH_KEY = 50  # requests per 30 seconds with API key
@@ -32,6 +29,28 @@ REQUEST_TIMEOUT = 30  # seconds
 
 # Module-level cache for NVD data to persist across function calls
 _NVD_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+class RateLimiter:
+    """Thread-safe rate limiter for API requests."""
+    
+    def __init__(self, max_workers: int, delay: float):
+        self.max_workers = max_workers
+        self.delay = delay
+        self._last_request_time = 0
+        self._lock = threading.Lock()
+    
+    def wait(self) -> None:
+        """Wait if necessary to respect rate limits."""
+        with self._lock:
+            current_time = time.time()
+            elapsed = current_time - self._last_request_time
+            
+            if elapsed < self.delay:
+                sleep_time = self.delay - elapsed
+                time.sleep(sleep_time)
+                
+            self._last_request_time = time.time()
 
 
 def enrich_vulnerabilities(cve_list: List[str], 
@@ -62,6 +81,107 @@ def enrich_vulnerabilities(cve_list: List[str],
         cisa_kev_enrichment,
         api_timeout
     )
+
+
+def create_enriched_vulnerabilities(
+    vulnerabilities: List[Dict[str, Any]],
+    external_data: Optional[Dict[str, Dict[str, Any]]] = None,
+    enable_dynamic_risk_scoring: bool = True
+) -> List[Dict[str, Any]]:
+    """
+    Create format-agnostic enriched vulnerability objects from vulnerability data.
+    
+    This function creates standardized vulnerability objects that include external
+    enrichment and dynamic risk scoring. Format-specific generators can then
+    convert these to their specific formats (CycloneDX, SARIF, SPDX, etc.).
+    
+    Args:
+        vulnerabilities: List of vulnerability dictionaries from Workbench API
+        external_data: Pre-fetched external enrichment data (optional)
+        enable_dynamic_risk_scoring: Whether to apply dynamic risk scoring
+        
+    Returns:
+        List of enriched vulnerability dictionaries with standardized format-agnostic metadata
+    """
+    from .risk_adjustments import calculate_dynamic_risk
+    
+    # Validate external data
+    external_data = external_data or {}
+    
+    enriched_vulnerabilities = []
+    
+    for vuln in vulnerabilities:
+        try:
+            cve = vuln.get("cve", "UNKNOWN")
+            ext_data = external_data.get(cve, {})
+            
+            # Create enriched vulnerability object
+            enriched_vuln = _create_enriched_vulnerability(vuln, ext_data, enable_dynamic_risk_scoring)
+            enriched_vulnerabilities.append(enriched_vuln)
+            
+        except Exception as e:
+            logger.error(f"Failed to enrich vulnerability {vuln.get('cve', 'UNKNOWN')}: {e}")
+            # Include original vulnerability as fallback
+            enriched_vulnerabilities.append(vuln.copy())
+            continue
+    
+    return enriched_vulnerabilities
+
+
+def _create_enriched_vulnerability(
+    vuln: Dict[str, Any], 
+    ext_data: Dict[str, Any],
+    enable_dynamic_risk_scoring: bool
+) -> Dict[str, Any]:
+    """
+    Create a format-agnostic enriched vulnerability object.
+    
+    This creates a standardized vulnerability object that can be consumed by
+    any format-specific generator (CycloneDX, SARIF, SPDX, etc.).
+    """
+    from .risk_adjustments import calculate_dynamic_risk
+    
+    # Start with original vulnerability data
+    enriched_vuln = vuln.copy()
+    
+    # Add external enrichment data
+    if ext_data:
+        # Add external data under a standardized key
+        enriched_vuln["external_enrichment"] = ext_data.copy()
+        
+        # Merge important external fields into top level for convenience
+        if ext_data.get("nvd_description"):
+            enriched_vuln["enriched_description"] = ext_data["nvd_description"]
+        if ext_data.get("epss_score") is not None:
+            enriched_vuln["epss_score"] = ext_data["epss_score"]
+        if ext_data.get("epss_percentile") is not None:
+            enriched_vuln["epss_percentile"] = ext_data["epss_percentile"]
+        if ext_data.get("cisa_kev"):
+            enriched_vuln["cisa_known_exploited"] = ext_data["cisa_kev"]
+        if ext_data.get("nvd_cwe"):
+            enriched_vuln["cwe_ids"] = ext_data["nvd_cwe"]
+        if ext_data.get("nvd_references"):
+            enriched_vuln["external_references"] = ext_data["nvd_references"]
+    
+    # Calculate dynamic risk if enabled
+    if enable_dynamic_risk_scoring:
+        try:
+            dynamic_risk_adjustment = calculate_dynamic_risk(vuln, ext_data)
+            enriched_vuln["dynamic_risk"] = {
+                "original_level": dynamic_risk_adjustment.original_level.value,
+                "adjusted_level": dynamic_risk_adjustment.adjusted_level.value,
+                "adjustment_reason": dynamic_risk_adjustment.adjustment_reason,
+                "priority_context": dynamic_risk_adjustment.priority_context,
+                "suppressed": dynamic_risk_adjustment.suppressed,
+                "high_risk_indicator": dynamic_risk_adjustment.high_risk_indicator,
+                "high_risk_evidence": dynamic_risk_adjustment.high_risk_evidence,
+                "was_promoted": dynamic_risk_adjustment.was_promoted,
+                "was_demoted": dynamic_risk_adjustment.was_demoted
+            }
+        except Exception as e:
+            logger.warning(f"Failed to calculate dynamic risk for {vuln.get('cve', 'UNKNOWN')}: {e}")
+    
+    return enriched_vuln
 
 
 def _fetch_external_vulnerability_data(cve_list: List[str], 
@@ -144,11 +264,23 @@ def _fetch_epss_scores(cve_list: List[str], timeout: int = 30) -> Dict[str, Dict
             if data.get("status") == "OK" and "data" in data:
                 for item in data["data"]:
                     cve = item.get("cve")
-                    if cve:
-                        epss_data[cve] = {
-                            "epss_score": float(item.get("epss", 0)),
-                            "epss_percentile": float(item.get("percentile", 0))
-                        }
+                    epss_val = item.get("epss")
+                    percentile_val = item.get("percentile")
+                    
+                    if cve and epss_val is not None and percentile_val is not None:
+                        try:
+                            epss_score = float(epss_val)
+                            epss_percentile = float(percentile_val)
+                            # Only include if we have valid data (not just defaults)
+                            if epss_score >= 0 and epss_percentile >= 0:
+                                epss_data[cve] = {
+                                    "epss_score": epss_score,
+                                    "epss_percentile": epss_percentile
+                                }
+                        except (ValueError, TypeError):
+                            # Skip invalid data
+                            logger.debug(f"Invalid EPSS data for {cve}: epss={epss_val}, percentile={percentile_val}")
+                            continue
             
             # Rate limiting
             time.sleep(1)
@@ -195,7 +327,6 @@ def _fetch_nvd_data(cve_list: List[str], timeout: int = 30) -> Dict[str, Dict[st
     - Persistent module-level caching for duplicate requests
     - API key support for higher rate limits
     - Progress tracking for large CVE lists
-    - Alternative data source fallback
     """
     nvd_data = {}
     
@@ -244,14 +375,6 @@ def _fetch_nvd_data(cve_list: List[str], timeout: int = 30) -> Dict[str, Dict[st
                     
             except Exception as e:
                 logger.warning(f"Failed to fetch NVD data for {cve}: {e}")
-                # Try alternative data source as fallback
-                try:
-                    alternative_data = _fetch_alternative_vulnerability_data(cve, timeout)
-                    if alternative_data:
-                        nvd_data[cve] = alternative_data
-                        logger.info(f"Used alternative data source for {cve}")
-                except Exception as alt_e:
-                    logger.warning(f"Alternative data source also failed for {cve}: {alt_e}")
     
     # Include cached results in the return data
     for cve in cve_list:
@@ -389,86 +512,55 @@ def _parse_nvd_vulnerability(vuln_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _fetch_alternative_vulnerability_data(cve: str, timeout: int = 30) -> Optional[Dict[str, Any]]:
+# Security metadata processing functions
+
+def build_cvss_vector(vuln: Dict[str, Any]) -> str:
     """
-    Fetch vulnerability data from alternative sources when NVD fails.
-    Currently supports Vulners API as primary alternative.
+    Build a CVSS vector string from available vulnerability data.
+    
+    This function consolidates CVSS vector building logic that was previously
+    duplicated across different format generators.
     """
-    # Try Vulners API first
-    try:
-        vulners_data = _fetch_vulners_data(cve, timeout)
-        if vulners_data:
-            return vulners_data
-    except Exception as e:
-        logger.debug(f"Vulners API failed for {cve}: {e}")
+    version = vuln.get("cvss_version", "3.1")
     
-    # Could add more alternative sources here
-    return None
+    vector_parts = [f"CVSS:{version}"]
+    
+    # Attack Vector
+    av = vuln.get("attack_vector", "")
+    if av:
+        av_map = {"NETWORK": "N", "ADJACENT_NETWORK": "A", "LOCAL": "L", "PHYSICAL": "P"}
+        vector_parts.append(f"AV:{av_map.get(av, av[0] if av else 'N')}")
+    
+    # Attack Complexity
+    ac = vuln.get("attack_complexity", "")
+    if ac:
+        ac_map = {"LOW": "L", "HIGH": "H"}
+        vector_parts.append(f"AC:{ac_map.get(ac, ac[0] if ac else 'L')}")
+    
+    # Availability Impact
+    a = vuln.get("availability_impact", "")
+    if a:
+        a_map = {"NONE": "N", "LOW": "L", "HIGH": "H"}
+        vector_parts.append(f"A:{a_map.get(a, a[0] if a else 'N')}")
+    
+    return "/".join(vector_parts) if len(vector_parts) > 1 else "CVSS vector not available"
 
 
-def _fetch_vulners_data(cve: str, timeout: int = 30) -> Optional[Dict[str, Any]]:
-    """Fetch vulnerability data from Vulners API."""
-    try:
-        # Vulners search API endpoint
-        vulners_url = "https://vulners.com/api/v3/search/id"
-        
-        payload = {
-            "id": cve,
-            "fields": ["*"]
-        }
-        
-        response = requests.post(
-            vulners_url,
-            json=payload,
-            timeout=timeout,
-            headers={"User-Agent": "FossID-Workbench-CLI/1.0"}
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("result") == "OK" and data.get("data"):
-                vuln_data = data["data"]["documents"][0]
-                
-                return {
-                    "nvd_description": vuln_data.get("description", "No description available"),
-                    "nvd_cwe": vuln_data.get("cwe", []),
-                    "nvd_references": [{"url": ref, "source": "vulners"} for ref in vuln_data.get("references", [])[:10]],
-                    "full_cvss_vector": vuln_data.get("cvss", {}).get("vector"),
-                    "cvss_score": vuln_data.get("cvss", {}).get("score"),
-                    "source": "vulners"
-                }
-    
-    except Exception as e:
-        logger.debug(f"Vulners API request failed for {cve}: {e}")
-    
-    return None
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
-
-class RateLimiter:
-    """Thread-safe rate limiter using token bucket algorithm."""
+__all__ = [
+    # Main enrichment functions
+    "enrich_vulnerabilities",
+    "create_enriched_vulnerabilities",
     
-    def __init__(self, max_workers: int, delay: float):
-        self.max_workers = max_workers
-        self.delay = delay
-        self.tokens = max_workers
-        self.last_update = time.time()
-        self.lock = threading.Lock()
+    # Security metadata processing
+    "build_cvss_vector",
     
-    def wait(self):
-        """Wait if necessary to respect rate limits."""
-        with self.lock:
-            now = time.time()
-            # Add tokens based on elapsed time
-            elapsed = now - self.last_update
-            self.tokens = min(self.max_workers, self.tokens + elapsed / self.delay)
-            self.last_update = now
-            
-            if self.tokens >= 1:
-                self.tokens -= 1
-                return
-            
-            # Need to wait
-            wait_time = max(0, self.delay - (elapsed % self.delay))
-            if wait_time > 0:
-                time.sleep(wait_time)
-            self.tokens = max(0, self.tokens - 1) 
+    # Rate limiting
+    "RateLimiter",
+    
+    # Cache access for internal use
+    "_NVD_CACHE",
+] 

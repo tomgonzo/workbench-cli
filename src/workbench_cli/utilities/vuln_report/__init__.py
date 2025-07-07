@@ -11,8 +11,8 @@ All formats share the same data enrichment pipeline but use different output ser
 
 __all__ = [
     # Core enrichment utilities
-    "component_enrichment",
-    "vulnerability_enricher",
+    "bootstrap_bom",
+    "cve_data_gathering",
     
     # Dynamic risk adjustments
     "risk_adjustments",

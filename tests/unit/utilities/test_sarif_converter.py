@@ -22,14 +22,13 @@ from workbench_cli.utilities.sarif_generation import (
     _create_empty_sarif_report
 )
 
-from workbench_cli.utilities.vulnerability_enricher import (
+from src.workbench_cli.utilities.vuln_report.cve_data_gathering import (
     enrich_vulnerabilities,
     _fetch_epss_scores,
     _fetch_cisa_kev_data,
     _fetch_nvd_data,
     _fetch_single_cve_nvd,
     _parse_nvd_vulnerability,
-    _fetch_vulners_data,
     RateLimiter
 )
 
@@ -73,7 +72,7 @@ class TestSarifConverter:
         ]
         
         # Mock the vulnerability enricher to avoid external API calls
-        with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
+        with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
             mock_enrich.return_value = {}
             
             sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_123")
@@ -144,7 +143,7 @@ class TestSarifConverter:
             }
         }
         
-        with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
+        with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
             mock_enrich.return_value = mock_external_data
             
             sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_ENHANCED")
@@ -292,7 +291,7 @@ class TestSarifConverter:
         
         try:
             # Mock the enricher to avoid external API calls
-            with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
+            with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
                 mock_enrich.return_value = {}
                 
                 save_vulns_to_sarif(temp_path, sample_vulns, "TEST_SCAN")
@@ -326,7 +325,7 @@ class TestSarifConverter:
             nested_path = os.path.join(temp_dir, "nested", "subdir", "results.sarif")
             
             # Mock the enricher to avoid external API calls
-            with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
+            with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
                 mock_enrich.return_value = {}
                 
                 save_vulns_to_sarif(nested_path, sample_vulns, "TEST_SCAN")
@@ -353,7 +352,7 @@ class TestSarifConverter:
         invalid_path = "/invalid/path/that/should/not/exist/results.sarif"
         
         with pytest.raises((IOError, OSError)):
-            with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
+            with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
                 mock_enrich.return_value = {}
                 save_vulns_to_sarif(invalid_path, sample_vulns, "TEST_SCAN")
 
@@ -375,7 +374,7 @@ class TestSarifConverter:
             }
         ]
         
-        with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
+        with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
             mock_enrich.return_value = {}
             
             sarif_data = convert_vulns_to_sarif(incomplete_vulns, "TEST_SCAN")
@@ -413,14 +412,14 @@ class TestSarifConverter:
             }
         ]
         
-        with patch('workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
+        with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
             mock_enrich.return_value = {}
             
             sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN")
             
             # Validate required SARIF fields
             assert "$schema" in sarif_data
-            assert sarif_data["$schema"] == "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
+            assert sarif_data["$schema"] == "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/csd01/schemas/sarif-schema-2.1.0.json"
             assert sarif_data["version"] == "2.1.0"
             assert "runs" in sarif_data
             assert len(sarif_data["runs"]) == 1
@@ -506,7 +505,7 @@ class TestVulnerabilityEnricher:
         result = enrich_vulnerabilities([])
         assert result == {}
 
-    @patch('workbench_cli.utilities.vulnerability_enricher.requests.get')
+    @patch('src.workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
     def test_fetch_epss_scores_success(self, mock_get):
         """Test successful EPSS score fetching."""
         mock_response = {
@@ -528,7 +527,7 @@ class TestVulnerabilityEnricher:
         assert result["CVE-2022-12345"]["epss_score"] == 0.85
         assert result["CVE-2022-12345"]["epss_percentile"] == 0.95
 
-    @patch('workbench_cli.utilities.vulnerability_enricher.requests.get')
+    @patch('src.workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
     def test_fetch_cisa_kev_data_success(self, mock_get):
         """Test successful CISA KEV data fetching."""
         mock_response = {
@@ -564,7 +563,7 @@ class TestVulnerabilityEnricher:
         elapsed = time.time() - start_time
         assert elapsed >= 0.1  # Should have waited at least 0.1 seconds
 
-    @patch('workbench_cli.utilities.vulnerability_enricher.requests.get')
+    @patch('src.workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
     def test_parse_nvd_vulnerability(self, mock_get):
         """Test parsing of NVD vulnerability data."""
         nvd_vuln_data = {
@@ -613,32 +612,4 @@ class TestVulnerabilityEnricher:
         assert result["full_cvss_vector"] == "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
         assert result["cvss_score"] == 6.1
 
-    @patch('workbench_cli.utilities.vulnerability_enricher.requests.post')
-    def test_fetch_vulners_data_success(self, mock_post):
-        """Test successful Vulners API data fetching."""
-        mock_response = {
-            "result": "OK",
-            "data": {
-                "documents": [
-                    {
-                        "description": "Test vulnerability from Vulners",
-                        "cwe": ["CWE-79"],
-                        "references": ["https://example.com/ref1"],
-                        "cvss": {
-                            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-                            "score": 6.1
-                        }
-                    }
-                ]
-            }
-        }
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.json.return_value = mock_response
-        
-        result = _fetch_vulners_data("CVE-2022-12345")
-        
-        assert result["nvd_description"] == "Test vulnerability from Vulners"
-        assert result["nvd_cwe"] == ["CWE-79"]
-        assert result["source"] == "vulners"
-        assert result["full_cvss_vector"] == "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
-        assert result["cvss_score"] == 6.1 
+ 

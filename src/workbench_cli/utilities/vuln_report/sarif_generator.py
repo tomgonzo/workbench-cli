@@ -19,9 +19,13 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass
 
-from .vulnerability_enricher import enrich_vulnerabilities
-from .component_enrichment import (
-    _detect_package_ecosystem,
+from .cve_data_gathering import enrich_vulnerabilities, build_cvss_vector
+from .bootstrap_bom import detect_package_ecosystem
+from .risk_adjustments import (
+    calculate_dynamic_risk, 
+    RiskAdjustment,
+    extract_unique_cves,
+    count_high_risk_vulnerabilities
 )
 
 logger = logging.getLogger(__name__)
@@ -40,12 +44,10 @@ __all__ = [
     "map_vex_status_to_sarif_level",
     "generate_vex_properties",
     "analyze_vex_statements",
-    # Internal functions exposed for export_sarif handler
+    # Internal functions exposed for export_vulns handler
     "_fetch_external_enrichment_data",
-    "_count_high_risk_vulnerabilities",
     "_calculate_severity_distribution",
     "_format_severity_breakdown_compact",
-    "_extract_unique_cves",
     "_count_vex_assessments",
 ]
 
@@ -96,45 +98,25 @@ def convert_vulns_to_sarif(
     epss_enrichment: bool = False,
     cisa_kev_enrichment: bool = False,
     api_timeout: int = 30,
-    enable_vex_suppression: bool = True,
+    enable_dynamic_risk_scoring: bool = True,
     quiet: bool = False,
 ) -> Dict[str, Any]:
     """
-    Convert vulnerability data to SARIF v2.1.0 format with sensible defaults.
-    
-    VEX assessments, component grouping, and metadata inclusion are always enabled.
-    External enrichment is OFF by default - users must opt-in for better performance and privacy.
+    Convert vulnerability results to SARIF format.
     
     Args:
-        vulnerabilities: List of vulnerability dictionaries from the Workbench API
+        vulnerabilities: List of vulnerability dictionaries from the API
         scan_code: The scan code for reference
-        external_data: Pre-fetched external enrichment data (optional)
-        include_cve_descriptions: Fetch CVE descriptions from NVD (default: False)
-        include_epss_scores: Fetch EPSS scores from FIRST (default: False)
-        include_exploit_info: Fetch exploit info from CISA KEV (default: False)
-        api_timeout: Timeout for external API calls in seconds (default: 30)
-        enable_vex_suppression: Apply VEX-based suppression (default: True)
-        quiet: Suppress progress messages (default: False)
+        external_data: External enrichment data (optional)
+        nvd_enrichment: Whether NVD enrichment was applied
+        epss_enrichment: Whether EPSS enrichment was applied
+        cisa_kev_enrichment: Whether CISA KEV enrichment was applied
+        api_timeout: API timeout to use for data fetching
+        enable_dynamic_risk_scoring: Apply dynamic risk scoring adjustments (default: True)
+        quiet: Whether to suppress output messages
         
     Returns:
-        Dict containing SARIF-formatted data compatible with GitHub Advanced Security,
-        enhanced with VEX (Vulnerability Exploitability eXchange) information
-        
-    Examples:
-        # Simple usage with defaults (VEX assessments enabled, no external enrichment)
-        sarif_data = convert_vulns_to_sarif(vulnerabilities, scan_code)
-        
-        # Full enrichment with external API calls
-        sarif_data = convert_vulns_to_sarif(
-            vulnerabilities, scan_code,
-            nvd_enrichment=True,
-            epss_enrichment=True,
-            cisa_kev_enrichment=True
-        )
-        
-        # With pre-fetched external data (avoids duplicate enrichment)
-        external_data = _fetch_external_enrichment_data(vulnerabilities, True, True, True, 30)
-        sarif_data = convert_vulns_to_sarif(vulnerabilities, scan_code, external_data)
+        SARIF dictionary
     """
     if not vulnerabilities:
         return _create_empty_sarif_report(scan_code)
@@ -155,7 +137,7 @@ def convert_vulns_to_sarif(
         nvd_enrichment=nvd_enrichment,
         epss_enrichment=epss_enrichment,
         cisa_kev_enrichment=cisa_kev_enrichment,
-        enable_vex_suppression=enable_vex_suppression,
+        enable_dynamic_risk_scoring=enable_dynamic_risk_scoring,
         quiet=quiet
     )
     
@@ -170,7 +152,7 @@ def _fetch_external_enrichment_data(
     api_timeout: int
 ) -> Dict[str, Dict[str, Any]]:
     """Fetch external enrichment data for vulnerabilities."""
-    unique_cves = _extract_unique_cves(vulnerabilities)
+    unique_cves = extract_unique_cves(vulnerabilities)
     
     external_data = {}
     if unique_cves:
@@ -195,7 +177,7 @@ def _build_sarif_structure(
     nvd_enrichment: bool,
     epss_enrichment: bool,
     cisa_kev_enrichment: bool,
-    enable_vex_suppression: bool,
+    enable_dynamic_risk_scoring: bool,
     quiet: bool
 ) -> Dict[str, Any]:
     """Build the main SARIF structure with notifications and metadata."""
@@ -209,7 +191,7 @@ def _build_sarif_structure(
     generated_at_utc = datetime.utcnow().isoformat() + "Z"
     vex_counts = _count_vex_assessments(vulnerabilities)
     summary = {
-        "scanCode": scan_code,
+        "workbenchScanCode": scan_code,
         "generated": generated_at_utc,
         "totalFindings": len(vulnerabilities),
         "severityBreakdown": _calculate_severity_distribution(vulnerabilities),
@@ -230,16 +212,19 @@ def _build_sarif_structure(
                     "notifications": notifications
                 }
             },
-            "results": _generate_enhanced_results(vulnerabilities, external_data),
+            "results": _generate_enhanced_results(vulnerabilities, external_data, enable_dynamic_risk_scoring),
             "properties": {
-                "scan_code": scan_code,
+                "workbench_scan_code": scan_code,
                 "generated_at": generated_at_utc,
                 "total_vulnerabilities": len(vulnerabilities),
                 "severity_distribution": _calculate_severity_distribution(vulnerabilities),
                 "external_data_sources": _get_data_sources_used(external_data),
-                "high_risk_vulnerabilities": _count_high_risk_vulnerabilities(vulnerabilities, external_data),
+                "high_risk_vulnerabilities": count_high_risk_vulnerabilities(vulnerabilities, external_data),
                 "vex_statements": vex_stats,
-                "summary": summary
+                "summary": summary,
+                "nvd_enriched": nvd_enrichment,
+                "epss_enriched": epss_enrichment,
+                "cisa_kev_enriched": cisa_kev_enrichment,
             }
         }]
     }
@@ -302,47 +287,31 @@ def save_vulns_to_sarif(
     vulnerabilities: List[Dict[str, Any]],
     scan_code: str,
     external_data: Optional[Dict[str, Dict[str, Any]]] = None,
-    *,
     nvd_enrichment: bool = False,
     epss_enrichment: bool = False,
     cisa_kev_enrichment: bool = False,
+    enable_dynamic_risk_scoring: bool = True,
     api_timeout: int = 30,
-    enable_vex_suppression: bool = True,
     quiet: bool = False,
+    all_components: Optional[List[Dict[str, Any]]] = None,
+    base_sbom_path: Optional[str] = None
 ) -> None:
     """
-    Save vulnerability results in SARIF format with sensible defaults.
-    
-    VEX assessments, component grouping, and metadata inclusion are always enabled.
-    External enrichment is OFF by default - users must opt-in for better performance and privacy.
+    Save vulnerability results in SARIF format.
     
     Args:
         filepath: Path where the SARIF file should be saved
         vulnerabilities: List of vulnerability dictionaries from the API
         scan_code: The scan code for reference
         external_data: Pre-fetched external enrichment data (optional)
-        nvd_enrichment: Fetch CVE descriptions from NVD (default: False)
-        epss_enrichment: Fetch EPSS scores from FIRST (default: False)
-        cisa_kev_enrichment: Fetch exploit info from CISA KEV (default: False)
-        api_timeout: Timeout for external API calls in seconds (default: 30)
-        enable_vex_suppression: Apply VEX-based suppression (default: True)
-        quiet: Suppress progress messages (default: False)
-        
-    Examples:
-        # Simple usage with defaults (VEX assessments enabled, no external enrichment)
-        save_vulns_to_sarif("vulns.sarif", vulnerabilities, scan_code)
-        
-        # Full enrichment with external API calls
-        save_vulns_to_sarif(
-            "vulns.sarif", vulnerabilities, scan_code,
-            nvd_enrichment=True,
-            epss_enrichment=True,
-            cisa_kev_enrichment=True
-        )
-        
-        # With pre-fetched external data (avoids duplicate enrichment)
-        external_data = _fetch_external_enrichment_data(vulnerabilities, True, True, True, 30)
-        save_vulns_to_sarif("vulns.sarif", vulnerabilities, scan_code, external_data)
+        nvd_enrichment: Whether NVD enrichment was enabled
+        epss_enrichment: Whether EPSS enrichment was enabled
+        cisa_kev_enrichment: Whether CISA KEV enrichment was enabled
+        api_timeout: API timeout used for enrichment
+        enable_dynamic_risk_scoring: Whether dynamic risk scoring is enabled
+        quiet: Whether to suppress output messages
+        all_components: List of all components from scan when --augment-full-bom is used (optional, not used in SARIF)
+        base_sbom_path: Path to base SBOM (for consistency, not used in SARIF)
         
     Raises:
         IOError: If the file cannot be written
@@ -356,7 +325,7 @@ def save_vulns_to_sarif(
         # Calculate how many findings would be suppressed by VEX
         original_count = len(vulnerabilities)
         suppressed_count = 0
-        if enable_vex_suppression:
+        if enable_dynamic_risk_scoring:
             suppressed_count = original_count - len(apply_vex_suppression(vulnerabilities))
         
         sarif_data = convert_vulns_to_sarif(
@@ -365,7 +334,7 @@ def save_vulns_to_sarif(
             epss_enrichment=epss_enrichment,
             cisa_kev_enrichment=cisa_kev_enrichment,
             api_timeout=api_timeout,
-            enable_vex_suppression=enable_vex_suppression,
+            enable_dynamic_risk_scoring=enable_dynamic_risk_scoring,
             quiet=quiet
         )
         
@@ -508,7 +477,7 @@ def _create_empty_sarif_report(scan_code: str) -> Dict[str, Any]:
             },
             "results": [],
             "properties": {
-                "scan_code": scan_code,
+                "workbench_scan_code": scan_code,
                 "generated_at": datetime.utcnow().isoformat() + "Z",
                 "total_vulnerabilities": 0,
                 "severity_distribution": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0},
@@ -545,14 +514,8 @@ def _format_severity_breakdown_compact(severity_dist: Dict[str, int]) -> str:
     return f"[{', '.join(breakdown_parts)}]" if breakdown_parts else ""
 
 
-def _extract_unique_cves(vulnerabilities: List[Dict[str, Any]]) -> List[str]:
-    """Extract unique CVEs from vulnerability data, excluding UNKNOWN values."""
-    return list(set(
-        vuln.get("cve", "UNKNOWN") 
-        for vuln in vulnerabilities 
-        if vuln.get("cve") != "UNKNOWN"
-    ))
-
+# _extract_unique_cves removed - now imported from risk_adjustments
+# _count_high_risk_vulnerabilities removed - now imported from risk_adjustments
 
 def _count_vex_assessments(vulnerabilities: List[Dict[str, Any]]) -> Dict[str, int]:
     """Count various VEX assessment metrics."""
@@ -580,42 +543,7 @@ def _get_data_sources_used(external_data: Dict[str, Dict[str, Any]]) -> List[str
     return sources
 
 
-def _count_high_risk_vulnerabilities(vulnerabilities: List[Dict[str, Any]], 
-                                   external_data: Dict[str, Dict[str, Any]]) -> Dict[str, int]:
-    """Count high-risk vulnerabilities based on external data."""
-    counts = {
-        "cisa_kev": 0,
-        "high_epss": 0,
-        "critical_severity": 0,
-        "total_high_risk": 0
-    }
-    
-    high_risk_cves = set()
-    
-    for vuln in vulnerabilities:
-        cve = vuln.get("cve", "UNKNOWN")
-        ext_data = external_data.get(cve, {})
-        
-        is_high_risk = False
-        
-        if ext_data.get("cisa_kev"):
-            counts["cisa_kev"] += 1
-            is_high_risk = True
-        
-        epss_score = ext_data.get("epss_score")
-        if epss_score is not None and epss_score > 0.1:
-            counts["high_epss"] += 1
-            is_high_risk = True
-        
-        if vuln.get("severity", "").upper() == "CRITICAL":
-            counts["critical_severity"] += 1
-            is_high_risk = True
-        
-        if is_high_risk:
-            high_risk_cves.add(cve)
-    
-    counts["total_high_risk"] = len(high_risk_cves)
-    return counts
+# _count_high_risk_vulnerabilities removed - now imported from risk_adjustments
 
 
 def _map_severity_to_sarif_level(severity: str) -> str:
@@ -674,31 +602,7 @@ def map_vex_status_to_sarif_level(vex_status: str, original_level: str, external
     return "warning"
 
 
-def _build_cvss_vector(vuln: Dict[str, Any]) -> str:
-    """Build a CVSS vector string from available vulnerability data."""
-    version = vuln.get("cvss_version", "3.1")
-    
-    vector_parts = [f"CVSS:{version}"]
-    
-    # Attack Vector
-    av = vuln.get("attack_vector", "")
-    if av:
-        av_map = {"NETWORK": "N", "ADJACENT_NETWORK": "A", "LOCAL": "L", "PHYSICAL": "P"}
-        vector_parts.append(f"AV:{av_map.get(av, av[0] if av else 'N')}")
-    
-    # Attack Complexity
-    ac = vuln.get("attack_complexity", "")
-    if ac:
-        ac_map = {"LOW": "L", "HIGH": "H"}
-        vector_parts.append(f"AC:{ac_map.get(ac, ac[0] if ac else 'L')}")
-    
-    # Availability Impact
-    a = vuln.get("availability_impact", "")
-    if a:
-        a_map = {"NONE": "N", "LOW": "L", "HIGH": "H"}
-        vector_parts.append(f"A:{a_map.get(a, a[0] if a else 'N')}")
-    
-    return "/".join(vector_parts) if len(vector_parts) > 1 else "CVSS vector not available"
+# _build_cvss_vector removed - use build_cvss_vector from cve_data_gathering module
 
 
 def _extract_version_ranges(references: List[Dict[str, Any]]) -> str:
@@ -785,7 +689,7 @@ def _generate_enhanced_rules(vulnerabilities: List[Dict[str, Any]],
                 "properties": {
                     "security-severity": str(vuln.get("base_score", "0.0")),
                     "cvss_version": vuln.get("cvss_version", "N/A"),
-                    "cvss_vector": ext_data.get("full_cvss_vector") or _build_cvss_vector(vuln),
+                    "cvss_vector": ext_data.get("full_cvss_vector") or build_cvss_vector(vuln),
                     "base_score": ext_data.get("cvss_score") or vuln.get("base_score", "N/A"),
                     "attack_vector": vuln.get("attack_vector", "N/A"),
                     "attack_complexity": vuln.get("attack_complexity", "N/A"),
@@ -834,7 +738,8 @@ def _generate_enhanced_rules(vulnerabilities: List[Dict[str, Any]],
 
 
 def _generate_enhanced_results(vulnerabilities: List[Dict[str, Any]], 
-                             external_data: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+                             external_data: Dict[str, Dict[str, Any]],
+                             enable_dynamic_risk_scoring: bool = True) -> List[Dict[str, Any]]:
     """Generate enhanced SARIF results with external data and VEX information."""
     results = []
     
@@ -849,8 +754,13 @@ def _generate_enhanced_results(vulnerabilities: List[Dict[str, Any]],
         ext_data = external_data.get(cve, {})
         vex_info = get_vex_info(vuln)
         
+        # Calculate dynamic risk adjustment (if enabled)
+        dynamic_risk_adjustment = None
+        if enable_dynamic_risk_scoring:
+            dynamic_risk_adjustment = calculate_dynamic_risk(vuln, ext_data)
+        
         # Create enhanced package URL with ecosystem detection
-        ecosystem = _detect_package_ecosystem(component_name, component_version, ext_data.get("purl"))
+        ecosystem = detect_package_ecosystem(component_name, component_version, ext_data.get("purl"))
         artifact_uri = f"pkg:{ecosystem}/{component_name}@{component_version}"
         
         # Create unique rule ID combining CVE, component, and version
@@ -961,6 +871,11 @@ def _generate_enhanced_results(vulnerabilities: List[Dict[str, Any]],
         if vex_info:
             vex_properties = generate_vex_properties(vex_info)
             result["properties"].update(vex_properties)
+        
+        # Add High Risk Indicator properties (NEW)
+        if dynamic_risk_adjustment:
+            result["properties"]["high_risk_indicator"] = dynamic_risk_adjustment.high_risk_indicator
+            result["properties"]["high_risk_evidence"] = dynamic_risk_adjustment.high_risk_evidence
         
         # Add fingerprints for deduplication
         wid = str(vuln.get("id", "unknown"))
