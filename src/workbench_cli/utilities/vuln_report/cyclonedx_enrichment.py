@@ -375,9 +375,15 @@ def augment_cyclonedx_sbom_from_file(
     except (FileNotFoundError, json.JSONDecodeError) as e:
         raise ValueError(f"Failed to load SBOM from {sbom_path}: {e}")
     
-    # Validate SBOM structure
-    from .cyclonedx_generator import _validate_cyclonedx_sbom
-    _validate_cyclonedx_sbom(sbom_json, sbom_path)
+    # Validate SBOM structure using existing validator
+    from ..sbom_validator import SBOMValidator
+    try:
+        # Use existing comprehensive validation
+        sbom_format, version, metadata, _ = SBOMValidator.validate_sbom_file(sbom_path)
+        if sbom_format != "cyclonedx":
+            raise ValueError(f"Expected CycloneDX SBOM, got {sbom_format}")
+    except Exception as e:
+        raise ValueError(f"SBOM validation failed: {e}")
     
     # Extract existing vulnerabilities from the SBOM
     existing_vulnerabilities = sbom_json.get("vulnerabilities", [])
@@ -459,9 +465,7 @@ def augment_cyclonedx_sbom_from_file(
             "nvd_enriched": str(nvd_enrichment).lower(),
             "epss_enriched": str(epss_enrichment).lower(),
             "cisa_kev_enriched": str(cisa_kev_enrichment).lower(),
-            "generation_timestamp": datetime.utcnow().isoformat() + "Z",
-            "generation_method": "sbom_augmentation",
-            "cyclonedx_generator_version": "workbench-cli-2.0",
+            "bom_type": "augmented_bom",
             "vulnerability_count": str(len(existing_vulnerabilities)),
             "augmented_vulnerabilities": str(stats["vulnerabilities_processed"]),
             "enriched_vulnerabilities": str(stats["vulnerabilities_enriched"]),
@@ -493,9 +497,9 @@ def augment_cyclonedx_sbom_from_file(
             import shutil
             shutil.copy2(filepath, backup_path)
         
-        # Use optimized writing for large files
-        from .cyclonedx_generator import _write_cyclonedx_json
-        _write_cyclonedx_json(sbom_json, filepath)
+        # Write the augmented SBOM as JSON
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(sbom_json, f, ensure_ascii=False, indent=2)
         
         if not quiet:
             print(f"   • Augmented CycloneDX SBOM saved to: {filepath}")
