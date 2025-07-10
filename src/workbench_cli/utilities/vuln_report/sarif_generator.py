@@ -1,108 +1,119 @@
-"""workbench_cli.utilities.sarif_generation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-SARIF generation utilities for vulnerability data.
+"""
+SARIF 2.1.0 vulnerability report generation.
 
 This module provides functionality to convert vulnerability data from the Workbench API
-into SARIF (Static Analysis Results Interchange Format) v2.1.0 format, which is
-compatible with GitHub Advanced Security and other security tools.
+into SARIF (Static Analysis Results Interchange Format) v2.1.0 format, optimized for
+GitHub Advanced Security and other security tools.
 
-Enhanced with external API integration for EPSS scores, known exploits, CVE details,
-and VEX (Vulnerability Exploitability eXchange) information.
+The module supports generation-only workflow - building SARIF from vulnerability data.
+SARIF does not support augmentation workflows like SBOM formats.
+
+Enhanced with comprehensive VEX support, risk notifications, and dynamic prioritization
+for maximum utility in security operations workflows.
 """
-from __future__ import annotations
 
 import json
 import logging
 import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from dataclasses import dataclass
-
-from .cve_data_gathering import enrich_vulnerabilities, build_cvss_vector
-from .bootstrap_bom import detect_package_ecosystem
-from .risk_adjustments import (
-    calculate_dynamic_risk, 
-    RiskAdjustment,
-    extract_unique_cves,
-    count_high_risk_vulnerabilities
-)
 
 logger = logging.getLogger(__name__)
 
-
-# Configuration removed - CLI arguments now drive behavior directly
-
-
-__all__ = [
-    # Public API
-    "convert_vulns_to_sarif",
-    "save_vulns_to_sarif",
-    # Selected VEX helpers exposed for risk-guidance logic
-    "apply_vex_suppression",
-    "get_vex_info",
-    "map_vex_status_to_sarif_level",
-    "generate_vex_properties",
-    "analyze_vex_statements",
-    # Internal functions exposed for export_vulns handler
-    "_fetch_external_enrichment_data",
-    "_calculate_severity_distribution",
-    "_format_severity_breakdown_compact",
-    "_count_vex_assessments",
-]
+# Import shared utilities for enrichment pipeline
+from .bootstrap_bom import detect_package_ecosystem
+from .cve_data_gathering import enrich_vulnerabilities, build_cvss_vector, extract_version_ranges
+from .risk_adjustments import (
+    calculate_dynamic_risk, 
+    RiskAdjustment, 
+    extract_unique_cves,
+    risk_level_to_sarif_level,
+    count_high_risk_vulnerabilities
+)
 
 
-def apply_vex_suppression(vulnerabilities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def save_vulns_to_sarif(
+    filepath: str,
+    vulnerabilities: List[Dict[str, Any]],
+    scan_code: str,
+    external_data: Optional[Dict[str, Dict[str, Any]]] = None,
+    nvd_enrichment: bool = False,
+    epss_enrichment: bool = False,
+    cisa_kev_enrichment: bool = False,
+    enable_dynamic_risk_scoring: bool = True,
+    api_timeout: int = 30,
+    quiet: bool = False
+) -> None:
     """
-    Apply VEX-based suppression to vulnerabilities.
-    
-    Suppresses findings that have been assessed through VEX as:
-    - Mitigated/not affected/resolved
-    - Accepted risk
-    - False positives
+    Save vulnerability results in SARIF 2.1.0 format, optimized for GitHub Advanced Security.
     
     Args:
-        vulnerabilities: List of vulnerability dictionaries
+        filepath: Path where the SARIF file should be saved
+        vulnerabilities: List of vulnerability dictionaries from the API
+        scan_code: The scan code for reference
+        external_data: Pre-fetched external enrichment data (optional)
+        nvd_enrichment: Whether NVD enrichment was applied
+        epss_enrichment: Whether EPSS enrichment was applied
+        cisa_kev_enrichment: Whether CISA KEV enrichment was applied
+        enable_dynamic_risk_scoring: Whether dynamic risk scoring is enabled (includes VEX assessments)
+        api_timeout: API timeout used for enrichment
+        quiet: Whether to suppress output messages
+
         
-    Returns:
-        Filtered list of vulnerabilities after applying VEX suppression rules
+    Raises:
+        IOError: If the file cannot be written
+        OSError: If the directory cannot be created
     """
-    filtered_vulns = []
+    output_dir = os.path.dirname(filepath) or "."
     
-    for vuln in vulnerabilities:
-        should_suppress = False
+    try:
+        os.makedirs(output_dir, exist_ok=True)
         
-        # Check VEX status for suppression
-        vex_status = (vuln.get("vuln_exp_status") or "").lower()
-        vex_response = (vuln.get("vuln_exp_response") or "").lower()
+        # Fetch external enrichment data if not provided
+        if external_data is None:
+            external_data = _fetch_external_enrichment_data(
+                vulnerabilities, 
+                nvd_enrichment, 
+                epss_enrichment, 
+                cisa_kev_enrichment,
+                api_timeout
+            )
         
-        # Suppress VEX mitigated findings
-        if vex_status in ["not_affected", "resolved", "false_positive"]:
-            should_suppress = True
+        # Generate SARIF document
+        sarif_document = convert_vulns_to_sarif(
+            vulnerabilities,
+            scan_code,
+            external_data,
+            nvd_enrichment,
+            epss_enrichment,
+            cisa_kev_enrichment,
+            enable_dynamic_risk_scoring
+        )
         
-        # Suppress accepted risk findings
-        if vex_response in ["will_not_fix", "update", "can_not_fix"]:
-            should_suppress = True
+        # Write SARIF file
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(sarif_document, f, indent=2, ensure_ascii=False)
         
-        if not should_suppress:
-            filtered_vulns.append(vuln)
-    
-    return filtered_vulns
+        if not quiet:
+            print(f"   • SARIF report saved to: {filepath}")
+        
+    except (IOError, OSError) as e:
+        if not quiet:
+            print(f"\nWarning: Failed to save SARIF results to {filepath}: {e}")
+        raise
+
 
 def convert_vulns_to_sarif(
     vulnerabilities: List[Dict[str, Any]],
     scan_code: str,
     external_data: Optional[Dict[str, Dict[str, Any]]] = None,
-    *,
     nvd_enrichment: bool = False,
     epss_enrichment: bool = False,
     cisa_kev_enrichment: bool = False,
-    api_timeout: int = 30,
-    enable_dynamic_risk_scoring: bool = True,
-    quiet: bool = False,
+    enable_dynamic_risk_scoring: bool = True
 ) -> Dict[str, Any]:
     """
-    Convert vulnerability results to SARIF format.
+    Convert vulnerability results to SARIF 2.1.0 format, optimized for GitHub Advanced Security.
     
     Args:
         vulnerabilities: List of vulnerability dictionaries from the API
@@ -111,37 +122,31 @@ def convert_vulns_to_sarif(
         nvd_enrichment: Whether NVD enrichment was applied
         epss_enrichment: Whether EPSS enrichment was applied
         cisa_kev_enrichment: Whether CISA KEV enrichment was applied
-        api_timeout: API timeout to use for data fetching
-        enable_dynamic_risk_scoring: Apply dynamic risk scoring adjustments (default: True)
-        quiet: Whether to suppress output messages
+        enable_dynamic_risk_scoring: Whether dynamic risk scoring is enabled (includes VEX assessments)
         
     Returns:
-        SARIF dictionary
+        SARIF document as dictionary
     """
-    if not vulnerabilities:
-        return _create_empty_sarif_report(scan_code)
-    
-    # Use pre-fetched external data if provided, otherwise fetch it
     if external_data is None:
-        external_data = _fetch_external_enrichment_data(
-            vulnerabilities, 
-            nvd_enrichment, 
-            epss_enrichment, 
-            cisa_kev_enrichment,
-            api_timeout
-        )
+        external_data = {}
     
-    # Build SARIF structure
-    sarif_data = _build_sarif_structure(
-        vulnerabilities, scan_code, external_data,
-        nvd_enrichment=nvd_enrichment,
-        epss_enrichment=epss_enrichment,
-        cisa_kev_enrichment=cisa_kev_enrichment,
-        enable_dynamic_risk_scoring=enable_dynamic_risk_scoring,
-        quiet=quiet
-    )
+    # Create SARIF document structure
+    sarif_doc = {
+        "version": "2.1.0",
+        "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json",
+        "runs": [
+            _create_sarif_run(
+                vulnerabilities,
+                scan_code,
+                external_data,
+                nvd_enrichment,
+                epss_enrichment,
+                cisa_kev_enrichment,
+                enable_dynamic_risk_scoring            )
+        ]
+    }
     
-    return sarif_data
+    return sarif_doc
 
 
 def _fetch_external_enrichment_data(
@@ -151,7 +156,11 @@ def _fetch_external_enrichment_data(
     cisa_kev_enrichment: bool,
     api_timeout: int
 ) -> Dict[str, Dict[str, Any]]:
-    """Fetch external enrichment data for vulnerabilities."""
+    """Fetch external enrichment data for vulnerabilities using existing utilities."""
+    if not any([nvd_enrichment, epss_enrichment, cisa_kev_enrichment]):
+        return {}
+    
+    # Use existing CVE extraction logic
     unique_cves = extract_unique_cves(vulnerabilities)
     
     external_data = {}
@@ -170,75 +179,73 @@ def _fetch_external_enrichment_data(
     return external_data
 
 
-def _build_sarif_structure(
-    vulnerabilities: List[Dict[str, Any]], 
-    scan_code: str, 
+
+def _create_sarif_run(
+    vulnerabilities: List[Dict[str, Any]],
+    scan_code: str,
     external_data: Dict[str, Dict[str, Any]],
     nvd_enrichment: bool,
     epss_enrichment: bool,
     cisa_kev_enrichment: bool,
-    enable_dynamic_risk_scoring: bool,
-    quiet: bool
+    enable_dynamic_risk_scoring: bool
 ) -> Dict[str, Any]:
-    """Build the main SARIF structure with notifications and metadata."""
-    # Count VEX statements for reporting
-    vex_stats = analyze_vex_statements(vulnerabilities)
+    """Create a SARIF run object optimized for GitHub Advanced Security."""
     
-    # Generate notifications for high-risk findings
+    # Generate notifications for high-risk findings (includes VEX suppression summary)
     notifications = _generate_risk_notifications(vulnerabilities, external_data)
     
-    # Build concise run-level summary
-    generated_at_utc = datetime.utcnow().isoformat() + "Z"
-    vex_counts = _count_vex_assessments(vulnerabilities)
-    summary = {
-        "workbenchScanCode": scan_code,
-        "generated": generated_at_utc,
-        "totalFindings": len(vulnerabilities),
-        "severityBreakdown": _calculate_severity_distribution(vulnerabilities),
-        "withVEX": vex_counts["total_with_vex"],
-        "suppressedByVEX": vex_counts["suppressed"]
+    # Generate rules and results
+    rules = _generate_enhanced_sarif_rules(vulnerabilities, external_data, enable_dynamic_risk_scoring)
+    results = _generate_enhanced_sarif_results(vulnerabilities, external_data, enable_dynamic_risk_scoring)
+    
+    # Create run object with GitHub Advanced Security optimizations
+    run = {
+        "tool": {
+            "driver": {
+                "name": "FossID Workbench",
+                "version": "1.0.0",
+                "informationUri": "https://fossid.com/products/workbench/",
+                "rules": rules,
+                "notifications": notifications
+            }
+        },
+        "results": results,
+                    "properties": _create_run_properties(
+                scan_code,
+                vulnerabilities,
+                external_data,
+                nvd_enrichment,
+                epss_enrichment,
+                cisa_kev_enrichment
+            )
     }
     
-    return {
-        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-        "version": "2.1.0",
-        "runs": [{
-            "tool": {
-                "driver": {
-                    "name": "FossID Workbench",
-                    "version": "1.0.0",
-                    "informationUri": "https://fossid.com/products/workbench/",
-                    "rules": _generate_enhanced_rules(vulnerabilities, external_data),
-                    "notifications": notifications
-                }
-            },
-            "results": _generate_enhanced_results(vulnerabilities, external_data, enable_dynamic_risk_scoring),
-            "properties": {
-                "workbench_scan_code": scan_code,
-                "generated_at": generated_at_utc,
-                "total_vulnerabilities": len(vulnerabilities),
-                "severity_distribution": _calculate_severity_distribution(vulnerabilities),
-                "external_data_sources": _get_data_sources_used(external_data),
-                "high_risk_vulnerabilities": count_high_risk_vulnerabilities(vulnerabilities, external_data),
-                "vex_statements": vex_stats,
-                "summary": summary,
-                "nvd_enriched": nvd_enrichment,
-                "epss_enriched": epss_enrichment,
-                "cisa_kev_enriched": cisa_kev_enrichment,
-            }
-        }]
-    }
+    return run
 
 
-def _generate_risk_notifications(vulnerabilities: List[Dict[str, Any]], 
-                               external_data: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _generate_risk_notifications(
+    vulnerabilities: List[Dict[str, Any]], 
+    external_data: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     """Generate notifications for high-risk findings."""
     notifications = []
     
-    cisa_kev_count = sum(1 for vuln in vulnerabilities if external_data.get(vuln.get("cve", ""), {}).get("cisa_kev"))
-    high_epss_count = sum(1 for vuln in vulnerabilities if (external_data.get(vuln.get("cve", ""), {}).get("epss_score") or 0) > 0.1)
-    vex_counts = _count_vex_assessments(vulnerabilities)
-    vex_suppressed_count = vex_counts["suppressed"]
+    cisa_kev_count = sum(1 for vuln in vulnerabilities 
+                        if external_data.get(vuln.get("vuln_id") or vuln.get("cve", ""), {}).get("cisa_kev"))
+    high_epss_count = sum(1 for vuln in vulnerabilities 
+                         if (external_data.get(vuln.get("vuln_id") or vuln.get("cve", ""), {}).get("epss_score") or 0) > 0.1)
+    
+    # Count VEX suppressed vulnerabilities using dynamic risk scoring
+    vex_suppressed_count = 0
+    for vuln in vulnerabilities:
+        cve = vuln.get("vuln_id") or vuln.get("cve", "UNKNOWN")
+        ext_data = external_data.get(cve, {})
+        try:
+            risk_adjustment = calculate_dynamic_risk(vuln, ext_data)
+            if risk_adjustment.high_risk_indicator == "No":
+                vex_suppressed_count += 1
+        except Exception:
+            continue
     
     if cisa_kev_count > 0:
         notifications.append({
@@ -282,523 +289,218 @@ def _generate_risk_notifications(vulnerabilities: List[Dict[str, Any]],
     return notifications
 
 
-def save_vulns_to_sarif(
-    filepath: str,
-    vulnerabilities: List[Dict[str, Any]],
-    scan_code: str,
-    external_data: Optional[Dict[str, Dict[str, Any]]] = None,
-    nvd_enrichment: bool = False,
-    epss_enrichment: bool = False,
-    cisa_kev_enrichment: bool = False,
-    enable_dynamic_risk_scoring: bool = True,
-    api_timeout: int = 30,
-    quiet: bool = False,
-    all_components: Optional[List[Dict[str, Any]]] = None,
-    base_sbom_path: Optional[str] = None
-) -> None:
-    """
-    Save vulnerability results in SARIF format.
-    
-    Args:
-        filepath: Path where the SARIF file should be saved
-        vulnerabilities: List of vulnerability dictionaries from the API
-        scan_code: The scan code for reference
-        external_data: Pre-fetched external enrichment data (optional)
-        nvd_enrichment: Whether NVD enrichment was enabled
-        epss_enrichment: Whether EPSS enrichment was enabled
-        cisa_kev_enrichment: Whether CISA KEV enrichment was enabled
-        api_timeout: API timeout used for enrichment
-        enable_dynamic_risk_scoring: Whether dynamic risk scoring is enabled
-        quiet: Whether to suppress output messages
-        all_components: List of all components from scan when --augment-full-bom is used (optional, not used in SARIF)
-        base_sbom_path: Path to base SBOM (for consistency, not used in SARIF)
-        
-    Raises:
-        IOError: If the file cannot be written
-        OSError: If the directory cannot be created
-    """
-    output_dir = os.path.dirname(filepath) or "."
-    
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Calculate how many findings would be suppressed by VEX
-        original_count = len(vulnerabilities)
-        suppressed_count = 0
-        if enable_dynamic_risk_scoring:
-            suppressed_count = original_count - len(apply_vex_suppression(vulnerabilities))
-        
-        sarif_data = convert_vulns_to_sarif(
-            vulnerabilities, scan_code, external_data,
-            nvd_enrichment=nvd_enrichment,
-            epss_enrichment=epss_enrichment,
-            cisa_kev_enrichment=cisa_kev_enrichment,
-            api_timeout=api_timeout,
-            enable_dynamic_risk_scoring=enable_dynamic_risk_scoring,
-            quiet=quiet
-        )
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(sarif_data, f, indent=2, ensure_ascii=False)
-            
-        # Only print messages if not quiet and external_data wasn't pre-provided
-        # (indicating the handler is managing output)
-        if not quiet and external_data is None:
-            print(f"Saved enhanced SARIF results to: {filepath}")
-            
-            # Print summary of external data sources used
-            props = sarif_data["runs"][0]["properties"]
-            if props.get("external_data_sources"):
-                print(f"External data sources used: {', '.join(props['external_data_sources'])}")
-        
-    except (IOError, OSError) as e:
-        if not quiet:
-            print(f"\nWarning: Failed to save SARIF results to {filepath}: {e}")
-        raise
-
-
-# ---------------------------------------------------------------------------
-# VEX Helper Functions
-# ---------------------------------------------------------------------------
-
-def get_vex_info(vuln: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Extract VEX information from vulnerability data."""
-    vex_fields = [
-        "vuln_exp_id", "vuln_exp_status", "vuln_exp_justification",
-        "vuln_exp_response", "vuln_exp_details", "vuln_exp_created",
-        "vuln_exp_updated", "vuln_exp_created_by", "vuln_exp_updated_by",
-        "vuln_exp_created_by_username", "vuln_exp_updated_by_username"
-    ]
-    
-    vex_info = {}
-    has_vex_data = False
-    
-    for field in vex_fields:
-        value = vuln.get(field)
-        if value is not None:
-            vex_info[field] = value
-            has_vex_data = True
-    
-    return vex_info if has_vex_data else None
 
 
 
-
-
-def generate_vex_properties(vex_info: Dict[str, Any]) -> Dict[str, Any]:
+def generate_vex_properties(vuln: Dict[str, Any]) -> Dict[str, Any]:
     """Generate VEX-related properties for SARIF output."""
     properties = {}
     
-    if vex_info.get("vuln_exp_status"):
-        properties["vex_status"] = vex_info["vuln_exp_status"]
+    if vuln.get("vuln_exp_status"):
+        properties["vex_status"] = vuln["vuln_exp_status"]
     
-    if vex_info.get("vuln_exp_justification"):
-        properties["vex_justification"] = vex_info["vuln_exp_justification"]
+    if vuln.get("vuln_exp_justification"):
+        properties["vex_justification"] = vuln["vuln_exp_justification"]
     
-    if vex_info.get("vuln_exp_response"):
-        properties["vex_response"] = vex_info["vuln_exp_response"]
+    if vuln.get("vuln_exp_response"):
+        properties["vex_response"] = vuln["vuln_exp_response"]
     
-    if vex_info.get("vuln_exp_details"):
-        properties["vex_details"] = vex_info["vuln_exp_details"]
+    if vuln.get("vuln_exp_details"):
+        properties["vex_details"] = vuln["vuln_exp_details"]
     
-    if vex_info.get("vuln_exp_created"):
-        properties["vex_created"] = vex_info["vuln_exp_created"]
+    if vuln.get("vuln_exp_created"):
+        properties["vex_created"] = vuln["vuln_exp_created"]
     
-    if vex_info.get("vuln_exp_updated"):
-        properties["vex_updated"] = vex_info["vuln_exp_updated"]
+    if vuln.get("vuln_exp_updated"):
+        properties["vex_updated"] = vuln["vuln_exp_updated"]
     
-    if vex_info.get("vuln_exp_created_by_username"):
-        properties["vex_created_by"] = vex_info["vuln_exp_created_by_username"]
+    if vuln.get("vuln_exp_created_by_username"):
+        properties["vex_created_by"] = vuln["vuln_exp_created_by_username"]
     
-    if vex_info.get("vuln_exp_updated_by_username"):
-        properties["vex_updated_by"] = vex_info["vuln_exp_updated_by_username"]
+    if vuln.get("vuln_exp_updated_by_username"):
+        properties["vex_updated_by"] = vuln["vuln_exp_updated_by_username"]
     
     return properties
 
 
-def analyze_vex_statements(vulnerabilities: List[Dict[str, Any]]) -> Dict[str, int]:
-    """Analyze VEX statements in vulnerability data."""
-    vex_stats = {
-        "total_with_vex": 0,
-        "status_distribution": {},
-        "with_justification": 0,
-        "with_response": 0,
-        "with_details": 0
-    }
-    
-    for vuln in vulnerabilities:
-        # Check if vulnerability has VEX information
-        has_vex = any([
-            vuln.get("vuln_exp_status"),
-            vuln.get("vuln_exp_justification"),
-            vuln.get("vuln_exp_response"),
-            vuln.get("vuln_exp_details")
-        ])
-        
-        if has_vex:
-            vex_stats["total_with_vex"] += 1
-            
-            # Count status distribution
-            status = vuln.get("vuln_exp_status")
-            if status:
-                vex_stats["status_distribution"][status] = vex_stats["status_distribution"].get(status, 0) + 1
-            else:
-                # Count VEX entries without an explicit status
-                vex_stats["status_distribution"]["no status"] = vex_stats["status_distribution"].get("no status", 0) + 1
-            
-            # Count fields with content
-            if vuln.get("vuln_exp_justification"):
-                vex_stats["with_justification"] += 1
-            if vuln.get("vuln_exp_response"):
-                vex_stats["with_response"] += 1
-            if vuln.get("vuln_exp_details"):
-                vex_stats["with_details"] += 1
-    
-    return vex_stats
 
 
-# ---------------------------------------------------------------------------
-# Internal Helper Functions
-# ---------------------------------------------------------------------------
 
-def _create_empty_sarif_report(scan_code: str) -> Dict[str, Any]:
-    """Create an empty SARIF report when no vulnerabilities are found."""
-    return {
-        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-        "version": "2.1.0",
-        "runs": [{
-            "tool": {
-                "driver": {
-                    "name": "FossID Workbench",
-                    "version": "1.0.0",
-                    "informationUri": "https://fossid.com/products/workbench/",
-                    "rules": []
-                }
-            },
-            "results": [],
-            "properties": {
-                "workbench_scan_code": scan_code,
-                "generated_at": datetime.utcnow().isoformat() + "Z",
-                "total_vulnerabilities": 0,
-                "severity_distribution": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0},
-                "external_data_sources": [],
-                "high_risk_vulnerabilities": {"cisa_kev": 0, "high_epss": 0, "critical_severity": 0, "total_high_risk": 0}
-            }
-        }]
-    }
-
-
-def _calculate_severity_distribution(vulnerabilities: List[Dict[str, Any]]) -> Dict[str, int]:
-    """Calculate the distribution of vulnerabilities by severity."""
-    distribution = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
-    
-    for vuln in vulnerabilities:
-        severity = vuln.get("severity", "UNKNOWN").upper()
-        if severity in distribution:
-            distribution[severity] += 1
-        else:
-            distribution["UNKNOWN"] += 1
-    
-    return distribution
-
-
-def _format_severity_breakdown_compact(severity_dist: Dict[str, int]) -> str:
-    """Format severity distribution as compact text for CLI display."""
-    breakdown_parts = []
-    abbreviations = {'CRITICAL': 'C', 'HIGH': 'H', 'MEDIUM': 'M', 'LOW': 'L', 'UNKNOWN': 'U'}
-    for severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN']:
-        if severity_dist.get(severity, 0) > 0:
-            abbrev = abbreviations.get(severity, severity)
-            breakdown_parts.append(f"{abbrev}: {severity_dist[severity]}")
-    
-    return f"[{', '.join(breakdown_parts)}]" if breakdown_parts else ""
-
-
-# _extract_unique_cves removed - now imported from risk_adjustments
-# _count_high_risk_vulnerabilities removed - now imported from risk_adjustments
-
-def _count_vex_assessments(vulnerabilities: List[Dict[str, Any]]) -> Dict[str, int]:
-    """Count various VEX assessment metrics."""
-    return {
-        "total_with_vex": sum(1 for vuln in vulnerabilities if vuln.get("vuln_exp_id")),
-        "with_status": sum(1 for vuln in vulnerabilities if vuln.get("vuln_exp_status")),
-        "with_response": sum(1 for vuln in vulnerabilities if vuln.get("vuln_exp_response")),
-        "exploitable": sum(1 for vuln in vulnerabilities if vuln.get("vuln_exp_status") == "exploitable"),
-        "suppressed": sum(1 for vuln in vulnerabilities if get_vex_info(vuln) and get_vex_info(vuln).get("vuln_exp_status") in ["not_affected", "fixed", "mitigated", "resolved", "false_positive"])
-    }
-
-
-def _get_data_sources_used(external_data: Dict[str, Dict[str, Any]]) -> List[str]:
-    """Get list of external data sources that were successfully used."""
-    sources = []
-    
-    for cve_data in external_data.values():
-        if cve_data.get("epss_score") is not None and "FIRST EPSS" not in sources:
-            sources.append("FIRST EPSS")
-        if cve_data.get("cisa_kev") and "CISA KEV" not in sources:
-            sources.append("CISA KEV")
-        if cve_data.get("nvd_description") and "NVD" not in sources:
-            sources.append("NVD")
-    
-    return sources
-
-
-# _count_high_risk_vulnerabilities removed - now imported from risk_adjustments
-
-
-def _map_severity_to_sarif_level(severity: str) -> str:
-    """Map Workbench severity levels to SARIF levels - defaults to WARNING for intelligent promotion/demotion."""
-    # Default to WARNING - will be intelligently promoted/demoted based on external intelligence
-    return "warning"
-
-
-def map_vex_status_to_sarif_level(vex_status: str, original_level: str, external_data: Dict[str, Any] = None) -> str:
-    """
-    Map VEX status and external intelligence to appropriate SARIF level.
-    
-    New intelligent prioritization logic:
-    - Default: WARNING (from _map_severity_to_sarif_level)
-    - Promote to ERROR if:
-      - High EPSS score (>0.1)
-      - VEX status is "exploitable" with response "can_not_fix"  
-      - CISA KEV vulnerability
-    - Demote to NOTE if:
-      - VEX status indicates resolved/mitigated/not_affected/false_positive
-      - VEX response indicates will_not_fix/update (accepted risk)
-    """
-    if external_data is None:
-        external_data = {}
-    
-    # Check for promotion to ERROR level
-    
-    # Promote if high EPSS score
-    epss_score = external_data.get("epss_score", 0)
-    if epss_score and epss_score > 0.1:
-        return "error"
-    
-    # Promote if CISA KEV
-    if external_data.get("cisa_kev"):
-        return "error"
-    
-    # Promote if VEX status indicates exploitable and can't fix
-    if vex_status:
-        vex_status_lower = vex_status.lower()
-        
-        # For now, we'll handle the "exploitable + can_not_fix" case
-        # This would require also checking the VEX response, but for now we'll focus on the status
-        if vex_status_lower in ["exploitable", "affected"]:
-            return "error"  # Promote exploitable/affected vulnerabilities
-    
-    # Check for demotion to NOTE level
-    
-    if vex_status:
-        vex_status_lower = vex_status.lower()
-        
-        # Demote VEX assessed vulnerabilities that are resolved or mitigated
-        if vex_status_lower in ["not_affected", "fixed", "mitigated", "resolved", "false_positive"]:
-            return "note"
-    
-    # Default to WARNING for everything else
-    return "warning"
-
-
-# _build_cvss_vector removed - use build_cvss_vector from cve_data_gathering module
-
-
-def _extract_version_ranges(references: List[Dict[str, Any]]) -> str:
-    """Extract version information from NVD references where possible."""
-    version_patterns = []
-    
-    for ref in references:
-        url = ref.get("url", "").lower()
-        tags = [tag.lower() for tag in ref.get("tags", [])]
-        
-        # Look for vendor advisory URLs that often contain version info
-        if any(tag in ["vendor advisory", "patch", "mitigation"] for tag in tags):
-            # Common patterns in vendor URLs
-            if "github.com" in url and "/releases/" in url:
-                # GitHub release pages often have version info
-                version_patterns.append("See GitHub releases for affected versions")
-            elif any(vendor in url for vendor in ["apache.org", "nodejs.org", "golang.org", "python.org"]):
-                version_patterns.append("Check vendor advisory for version details")
-    
-    if version_patterns:
-        return "; ".join(set(version_patterns))  # Remove duplicates
-    
-    return ""
-
-
-def _generate_enhanced_rules(vulnerabilities: List[Dict[str, Any]], 
-                           external_data: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Generate enhanced SARIF rules from vulnerability data with external enrichment and VEX information."""
+def _generate_enhanced_sarif_rules(
+    vulnerabilities: List[Dict[str, Any]],
+    external_data: Dict[str, Dict[str, Any]],
+    enable_dynamic_risk_scoring: bool
+) -> List[Dict[str, Any]]:
+    """Generate enhanced SARIF rules with rich NVD data and VEX information."""
     rules = {}
     
     for vuln in vulnerabilities:
-        cve = vuln.get("cve", "UNKNOWN")
+        cve_id = vuln.get("vuln_id") or vuln.get("cve", "UNKNOWN")
         component_name = vuln.get("component_name", "Unknown")
         component_version = vuln.get("component_version", "Unknown")
         
-        # Create unique rule ID combining CVE, component, and version
-        rule_id = f"{cve}:{component_name}@{component_version}" if cve != "UNKNOWN" else f"UNKNOWN:{component_name}@{component_version}"
+        # Skip only if we have absolutely no identifying information
+        if not cve_id and not component_name:
+            continue
+            
+        # Create component-specific rule ID for better tracking
+        rule_id = f"{cve_id}:{component_name}@{component_version}"
         
-        if rule_id not in rules:
-            # Get external data and VEX information
-            ext_data = external_data.get(cve, {})
-            vex_info = get_vex_info(vuln)
+        if rule_id in rules:
+            continue
+        
+        # Get external enrichment data
+        ext_data = external_data.get(cve_id, {})
+        
+        # Calculate dynamic risk if enabled
+        dynamic_risk_adjustment = None
+        if enable_dynamic_risk_scoring:
+            dynamic_risk_adjustment = calculate_dynamic_risk(vuln, ext_data)
+        
+        # Create enhanced descriptions using NVD data
+        short_desc = f"{cve_id} in {component_name}@{component_version} (CVSS {vuln.get('base_score', 'N/A')})"
+        if ext_data.get("nvd_cwe"):
+            cwe_list = ext_data["nvd_cwe"][:2]  # Show first 2 CWEs to keep it concise
+            cwe_text = ", ".join(cwe_list)
+            short_desc += f" - {cwe_text}"
+        
+        # Use NVD description if available, otherwise fall back to generic description
+        nvd_desc = ext_data.get("nvd_description")
+        if nvd_desc and nvd_desc.strip() and nvd_desc != "No description available":
+            full_desc = nvd_desc
+        else:
+            full_desc = f"Security vulnerability {cve_id} affecting {component_name} with CVSS score {vuln.get('base_score', 'N/A')}"
+        
+        # Add component context to NVD description
+        if ext_data.get("nvd_description") and ext_data["nvd_description"] != "No description available":
+            full_desc += f"\n\nAffected Component: {component_name} version {component_version}"
             
-            # Use intelligent prioritization for default configuration level
-            original_level = _map_severity_to_sarif_level(vuln.get("severity", "UNKNOWN"))
-            vex_status = vex_info.get("vuln_exp_status") if vex_info else None
-            intelligent_level = map_vex_status_to_sarif_level(vex_status, original_level, ext_data)
-            
-            # Create enhanced descriptions using NVD data
-            short_desc = f"{cve} in {component_name}@{component_version} (CVSS {vuln.get('base_score', 'N/A')})"
-            if ext_data.get("nvd_cwe"):
-                cwe_list = ext_data["nvd_cwe"][:2]  # Show first 2 CWEs to keep it concise
-                cwe_text = ", ".join(cwe_list)
-                short_desc += f" - {cwe_text}"
-            
-            # Use NVD description if available, otherwise fall back to generic description
-            nvd_desc = ext_data.get("nvd_description")
-            if nvd_desc and nvd_desc.strip() and nvd_desc != "No description available":
-                full_desc = nvd_desc
-            else:
-                full_desc = f"Security vulnerability {cve} affecting {component_name} with CVSS score {vuln.get('base_score', 'N/A')}"
-            
-            # Add component context to NVD description
-            if ext_data.get("nvd_description") and ext_data["nvd_description"] != "No description available":
-                full_desc += f"\n\nAffected Component: {component_name} version {component_version}"
-                
-                # Add affected version ranges if we can extract them from references
-                version_info = _extract_version_ranges(ext_data.get("nvd_references", []))
-                if version_info:
-                    full_desc += f"\nKnown Affected Versions: {version_info}"
+            # Add affected version ranges if we can extract them from references
+            version_info = extract_version_ranges(ext_data.get("nvd_references", []))
+            if version_info:
+                full_desc += f"\nKnown Affected Versions: {version_info}"
 
-            rule = {
-                "id": rule_id,
-                "name": f"{cve} in {component_name}@{component_version}",
-                "shortDescription": {
-                    "text": short_desc
-                },
-                "fullDescription": {
-                    "text": full_desc
-                },
-                "defaultConfiguration": {
-                    "level": intelligent_level
-                },
-                "properties": {
-                    "security-severity": str(vuln.get("base_score", "0.0")),
-                    "cvss_version": vuln.get("cvss_version", "N/A"),
-                    "cvss_vector": ext_data.get("full_cvss_vector") or build_cvss_vector(vuln),
-                    "base_score": ext_data.get("cvss_score") or vuln.get("base_score", "N/A"),
-                    "attack_vector": vuln.get("attack_vector", "N/A"),
-                    "attack_complexity": vuln.get("attack_complexity", "N/A"),
-                    "availability_impact": vuln.get("availability_impact", "N/A"),
-                    "severity": vuln.get("severity", "UNKNOWN"),
-                    "component_name": component_name,
-                    "tags": ["security", "vulnerability"],
-                    "nvd_enriched": bool(ext_data.get("nvd_description"))
-                },
-                "helpUri": f"https://nvd.nist.gov/vuln/detail/{cve}" if cve != "UNKNOWN" else None
-            }
-            
-            # Add external data properties
-            if ext_data.get("epss_score") is not None:
-                rule["properties"]["epss_score"] = ext_data["epss_score"]
-                rule["properties"]["epss_percentile"] = ext_data["epss_percentile"]
-            
-            if ext_data.get("cisa_kev"):
-                rule["properties"]["cisa_known_exploited"] = True
-            
-            if ext_data.get("nvd_cwe"):
-                rule["properties"]["cwe_ids"] = ext_data["nvd_cwe"]
-            
-            # Add NVD references for additional context
-            if ext_data.get("nvd_references"):
-                # Include up to 5 most relevant references
-                relevant_refs = []
-                for ref in ext_data["nvd_references"][:5]:
-                    ref_info = {
-                        "url": ref.get("url", ""),
-                        "source": ref.get("source", "Unknown")
-                    }
-                    if ref.get("tags"):
-                        ref_info["tags"] = ref["tags"]
-                    relevant_refs.append(ref_info)
-                rule["properties"]["nvd_references"] = relevant_refs
-            
-            # Add VEX properties
-            if vex_info:
-                vex_properties = generate_vex_properties(vex_info)
-                rule["properties"].update(vex_properties)
-            
-            rules[rule_id] = rule
+        rule = {
+            "id": rule_id,
+            "name": f"{cve_id} in {component_name}@{component_version}",
+            "shortDescription": {
+                "text": short_desc
+            },
+            "fullDescription": {
+                "text": full_desc
+            },
+            "defaultConfiguration": {
+                "level": _determine_rule_level(vuln, ext_data, dynamic_risk_adjustment)
+            },
+            "properties": {
+                "security-severity": str(vuln.get("base_score", "0.0")),
+                "cvss_version": vuln.get("cvss_version", "N/A"),
+                "cvss_vector": ext_data.get("full_cvss_vector") or build_cvss_vector(vuln),
+                "base_score": ext_data.get("cvss_score") or vuln.get("base_score", "N/A"),
+                "attack_vector": vuln.get("attack_vector", "N/A"),
+                "attack_complexity": vuln.get("attack_complexity", "N/A"),
+                "availability_impact": vuln.get("availability_impact", "N/A"),
+                "severity": vuln.get("severity", "UNKNOWN"),
+                "component_name": component_name,
+                "cve": cve_id,
+                "component": f"{component_name}@{component_version}",
+                "ecosystem": detect_package_ecosystem(component_name, component_version),
+                "tags": ["security", "vulnerability"],
+                "nvd_enriched": bool(ext_data.get("nvd_description"))
+            },
+            "helpUri": f"https://nvd.nist.gov/vuln/detail/{cve_id}" if cve_id != "UNKNOWN" else None
+        }
+        
+        # Add external data properties
+        if ext_data.get("epss_score") is not None:
+            rule["properties"]["epss_score"] = ext_data["epss_score"]
+            rule["properties"]["epss_percentile"] = ext_data["epss_percentile"]
+        
+        if ext_data.get("cisa_kev"):
+            rule["properties"]["cisa_known_exploited"] = True
+        
+        if ext_data.get("nvd_cwe"):
+            rule["properties"]["cwe_ids"] = ext_data["nvd_cwe"]
+        
+        # Add NVD references for additional context
+        if ext_data.get("nvd_references"):
+            # Include up to 5 most relevant references
+            relevant_refs = []
+            for ref in ext_data["nvd_references"][:5]:
+                ref_info = {
+                    "url": ref.get("url", ""),
+                    "source": ref.get("source", "Unknown")
+                }
+                if ref.get("tags"):
+                    ref_info["tags"] = ref["tags"]
+                relevant_refs.append(ref_info)
+            rule["properties"]["nvd_references"] = relevant_refs
+        
+        # Add VEX properties if available
+        if any(field in vuln for field in ["vuln_exp_status", "vuln_exp_justification", "vuln_exp_response", "vuln_exp_details"]):
+            vex_properties = generate_vex_properties(vuln)
+            rule["properties"].update(vex_properties)
+        
+        rules[rule_id] = rule
     
     return list(rules.values())
 
 
-def _generate_enhanced_results(vulnerabilities: List[Dict[str, Any]], 
-                             external_data: Dict[str, Dict[str, Any]],
-                             enable_dynamic_risk_scoring: bool = True) -> List[Dict[str, Any]]:
-    """Generate enhanced SARIF results with external data and VEX information."""
+def _determine_rule_level(
+    vuln: Dict[str, Any], 
+    ext_data: Dict[str, Any], 
+    dynamic_risk_adjustment: Optional[RiskAdjustment]
+) -> str:
+    """Determine the SARIF level for a rule using dynamic risk scoring."""
+    if dynamic_risk_adjustment:
+        return risk_level_to_sarif_level(dynamic_risk_adjustment.adjusted_level)
+    else:
+        return _map_severity_to_sarif_level(vuln.get("severity", "medium"), vuln, ext_data)
+
+
+def _generate_enhanced_sarif_results(
+    vulnerabilities: List[Dict[str, Any]],
+    external_data: Dict[str, Dict[str, Any]],
+    enable_dynamic_risk_scoring: bool
+) -> List[Dict[str, Any]]:
+    """Generate enhanced SARIF results with priority context and comprehensive metadata."""
     results = []
     
     for vuln in vulnerabilities:
-        cve = vuln.get("cve", "UNKNOWN")
+        cve_id = vuln.get("vuln_id") or vuln.get("cve", "UNKNOWN")
         component_name = vuln.get("component_name", "Unknown")
         component_version = vuln.get("component_version", "Unknown")
         severity = vuln.get("severity", "UNKNOWN")
         base_score = vuln.get("base_score", "N/A")
         
-        # Get external data and VEX info
-        ext_data = external_data.get(cve, {})
-        vex_info = get_vex_info(vuln)
+        # Skip only if we have absolutely no identifying information
+        if not cve_id and not component_name:
+            continue
         
-        # Calculate dynamic risk adjustment (if enabled)
+        # Get external data
+        ext_data = external_data.get(cve_id, {})
+        
+        # Calculate dynamic risk if enabled
         dynamic_risk_adjustment = None
         if enable_dynamic_risk_scoring:
             dynamic_risk_adjustment = calculate_dynamic_risk(vuln, ext_data)
         
+        # Determine prioritization context based on dynamic risk adjustment
+        priority_context = _create_priority_context(vuln, ext_data, dynamic_risk_adjustment)
+        
         # Create enhanced package URL with ecosystem detection
-        ecosystem = detect_package_ecosystem(component_name, component_version, ext_data.get("purl"))
+        ecosystem = detect_package_ecosystem(component_name, component_version)
         artifact_uri = f"pkg:{ecosystem}/{component_name}@{component_version}"
         
-        # Create unique rule ID combining CVE, component, and version
-        rule_id = f"{cve}:{component_name}@{component_version}" if cve != "UNKNOWN" else f"UNKNOWN:{component_name}@{component_version}"
-        
-        # Map severity to SARIF level with VEX consideration
-        original_level = _map_severity_to_sarif_level(severity)
-        vex_status = vex_info.get("vuln_exp_status") if vex_info else None
-        final_level = map_vex_status_to_sarif_level(vex_status, original_level, ext_data)
-        
-        # Determine prioritization context based on promotion/demotion logic
-        priority_context = ""
-        
-        # Check if promoted to ERROR by external intelligence
-        if final_level == "error" and original_level == "warning":
-            # Check promotion reasons in order of priority
-            if ext_data.get("cisa_kev"):
-                priority_context = "[CISA KEV] "
-            elif (ext_data.get("epss_score") or 0) > 0.1:
-                priority_context = f"[EPSS: {ext_data['epss_score']:.3f}] "
-            elif vex_status and vex_status.lower() in ["exploitable", "affected"]:
-                priority_context = f"[VEX: {vex_status.upper()}] "
-        
-        # Check if demoted to NOTE by VEX
-        elif final_level == "note" and original_level == "warning":
-            if vex_status:
-                priority_context = f"[VEX: {vex_status.upper()}] "
-        
-        # Create clean message without component details (since grouped by component)
-        message_text = f"{priority_context}[CVSS: {base_score}] {cve}"
-        
+        # Create message with priority context
+        message_text = f"{priority_context}[CVSS: {base_score}] {cve_id}"
         
         result = {
-            "ruleId": rule_id,
-            "level": final_level,
+            "ruleId": f"{cve_id}:{component_name}@{component_version}",
             "message": {
                 "text": message_text
             },
+            "level": _determine_result_level(vuln, ext_data, dynamic_risk_adjustment),
             "locations": [{
                 "physicalLocation": {
                     "artifactLocation": {
@@ -821,6 +523,8 @@ def _generate_enhanced_results(vulnerabilities: List[Dict[str, Any]],
                     "kind": "package"
                 }]
             }],
+            "partialFingerprints": _create_enhanced_partial_fingerprints(vuln, component_name, component_version),
+            "baselineState": _determine_baseline_state(vuln, dynamic_risk_adjustment),
             "properties": {
                 "vulnerability_id": vuln.get("id"),
                 "cvss_version": vuln.get("cvss_version"),
@@ -833,9 +537,12 @@ def _generate_enhanced_results(vulnerabilities: List[Dict[str, Any]],
                 "component_version": component_version,
                 "ecosystem": ecosystem,
                 "package_url": artifact_uri,
+                "cve": cve_id,
+                "component": f"{component_name}@{component_version}",
+                "severity": severity,
                 "baselineState": "unchanged",
                 "tags": {
-                    "vulnerability": [cve],
+                    "vulnerability": [cve_id],
                     "component": [f"{component_name}@{component_version}"],
                     "severity": [severity.lower() if severity != "UNKNOWN" else "unknown"]
                 }
@@ -867,36 +574,235 @@ def _generate_enhanced_results(vulnerabilities: List[Dict[str, Any]],
                 if "vendor advisory" in [tag.lower() for tag in ref.get("tags", [])]
             ])
         
-        # Add VEX properties
-        if vex_info:
-            vex_properties = generate_vex_properties(vex_info)
+        # Add VEX properties if available
+        if any(field in vuln for field in ["vuln_exp_status", "vuln_exp_justification", "vuln_exp_response", "vuln_exp_details"]):
+            vex_properties = generate_vex_properties(vuln)
             result["properties"].update(vex_properties)
         
-        # Add High Risk Indicator properties (NEW)
-        if dynamic_risk_adjustment:
-            result["properties"]["high_risk_indicator"] = dynamic_risk_adjustment.high_risk_indicator
-            result["properties"]["high_risk_evidence"] = dynamic_risk_adjustment.high_risk_evidence
-        
-        # Add fingerprints for deduplication
+        # Add comprehensive fingerprints for deduplication
         wid = str(vuln.get("id", "unknown"))
         result["fingerprints"] = {
             "workbench/component": f"{component_name}@{component_version}",
-            "workbench/vulnerability": f"{cve}#{wid}",
+            "workbench/vulnerability": f"{cve_id}#{wid}",
             "workbench/id": wid,
-            "primary": f"{wid}",
-            "stable": f"{cve}"
+            "primary": wid,
+            "stable": cve_id
         }
         
-        # Add suppression information if VEX status indicates resolved/mitigated
-        if vex_info and vex_info.get("vuln_exp_status"):
-            vex_status = vex_info["vuln_exp_status"].lower()
-            if vex_status in ["not_affected", "fixed", "mitigated", "accepted_risk", "false_positive", "resolved"]:
-                result["suppressions"] = [{
-                    "kind": "externalTriage",
-                    "status": "accepted",
-                    "justification": vex_info.get("vuln_exp_justification", f"VEX status: {vex_status}")
+        # Add remediation guidance if available
+        if vuln.get("fix_version"):
+            result["fixes"] = [{
+                "description": {
+                    "text": f"Update {component_name} to version {vuln['fix_version']} or later"
+                },
+                "artifactChanges": [{
+                    "artifactLocation": {
+                        "uri": f"{component_name}:{component_version}"
+                    },
+                    "replacements": [{
+                        "deletedRegion": {
+                            "startLine": 1,
+                            "startColumn": 1,
+                            "endLine": 1,
+                            "endColumn": 1
+                        },
+                        "insertedContent": {
+                            "text": f"{component_name}:{vuln['fix_version']}"
+                        }
+                    }]
                 }]
+            }]
+        
+        # Add suppression information based on dynamic risk adjustment
+        if dynamic_risk_adjustment and dynamic_risk_adjustment.high_risk_indicator == "No":
+            # This vulnerability has been assessed as low risk - add suppression info
+            result["suppressions"] = [{
+                "kind": "externalTriage",
+                "status": "accepted",
+                "justification": dynamic_risk_adjustment.high_risk_evidence or "Assessed as low risk through dynamic risk scoring"
+            }]
         
         results.append(result)
     
-    return results 
+    return results
+
+
+def _create_priority_context(
+    vuln: Dict[str, Any], 
+    ext_data: Dict[str, Any], 
+    dynamic_risk_adjustment: Optional[RiskAdjustment]
+) -> str:
+    """Determine prioritization context based on dynamic risk adjustment."""
+    priority_context = ""
+    
+    if dynamic_risk_adjustment and dynamic_risk_adjustment.high_risk_indicator == "Yes":
+        # Check promotion reasons in order of priority
+        if ext_data.get("cisa_kev"):
+            priority_context = "[CISA KEV] "
+        elif (ext_data.get("epss_score") or 0) > 0.1:
+            priority_context = f"[EPSS: {ext_data['epss_score']:.3f}] "
+        elif vuln.get("vuln_exp_status") and vuln.get("vuln_exp_status").lower() in ["exploitable", "affected"]:
+            priority_context = f"[VEX: {vuln['vuln_exp_status'].upper()}] "
+    elif dynamic_risk_adjustment and dynamic_risk_adjustment.high_risk_indicator == "No":
+        # Check demotion reasons
+        vex_status = vuln.get("vuln_exp_status")
+        if vex_status:
+            priority_context = f"[VEX: {vex_status.upper()}] "
+    
+    return priority_context
+
+
+def _determine_result_level(
+    vuln: Dict[str, Any], 
+    ext_data: Dict[str, Any], 
+    dynamic_risk_adjustment: Optional[RiskAdjustment]
+) -> str:
+    """Determine the SARIF level for a result using dynamic risk scoring."""
+    if dynamic_risk_adjustment:
+        return risk_level_to_sarif_level(dynamic_risk_adjustment.adjusted_level)
+    else:
+        return _map_severity_to_sarif_level(vuln.get("severity", "medium"), vuln, ext_data)
+
+
+def _create_enhanced_partial_fingerprints(vuln: Dict[str, Any], component_name: str, component_version: str) -> Dict[str, str]:
+    """Create comprehensive partial fingerprints for deduplication."""
+    cve_id = vuln.get("vuln_id") or vuln.get("cve", "")
+    
+    return {
+        "workbenchScan": f"{cve_id}:{component_name}@{component_version}",
+        "primaryLocationHash": f"{component_name}:{component_version}",
+        "cveComponent": f"{cve_id}:{component_name}",
+        "vulnerability": cve_id,
+        "component": f"{component_name}@{component_version}"
+    }
+
+
+def _determine_baseline_state(vuln: Dict[str, Any], dynamic_risk_adjustment: Optional[RiskAdjustment]) -> str:
+    """Determine the baseline state for GitHub Advanced Security using dynamic risk assessment."""
+    # Use dynamic risk assessment to determine baseline state
+    if dynamic_risk_adjustment and dynamic_risk_adjustment.high_risk_indicator == "No":
+        return "reviewed"  # Assessed as low risk
+    elif vuln.get("vuln_exp_status") == "not_affected":
+        return "absent"
+    elif vuln.get("vuln_exp_status") == "fixed":
+        return "absent"
+    elif vuln.get("vuln_exp_response"):
+        return "reviewed"
+    else:
+        return "new"
+
+
+
+
+
+def _create_run_properties(
+    scan_code: str,
+    vulnerabilities: List[Dict[str, Any]],
+    external_data: Dict[str, Dict[str, Any]],
+    nvd_enrichment: bool,
+    epss_enrichment: bool,
+    cisa_kev_enrichment: bool
+) -> Dict[str, Any]:
+    """Create run properties optimized for GitHub Advanced Security."""
+    
+    # Basic scan metadata
+    properties = {
+        "scanCode": scan_code,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "vulnerabilityCount": len(vulnerabilities),
+        "componentCount": len(set(
+            f"{v.get('component_name')}@{v.get('component_version')}" 
+            for v in vulnerabilities 
+            if v.get('component_name') and v.get('component_version')
+        ))
+    }
+    
+    # Severity distribution
+    severity_counts = {}
+    for vuln in vulnerabilities:
+        severity = (vuln.get("severity") or "medium").lower()
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+    
+    properties["severityDistribution"] = severity_counts
+    
+    # Enrichment sources
+    enrichment_sources = []
+    if nvd_enrichment:
+        enrichment_sources.append("NVD")
+    if epss_enrichment:
+        enrichment_sources.append("EPSS")
+    if cisa_kev_enrichment:
+        enrichment_sources.append("CISA KEV")
+    
+    if enrichment_sources:
+        properties["enrichmentSources"] = enrichment_sources
+    
+    # High risk indicators
+    high_risk_counts = count_high_risk_vulnerabilities(vulnerabilities, external_data)
+    if high_risk_counts.get("total_high_risk", 0) > 0:
+        properties["highRiskVulnerabilities"] = high_risk_counts["total_high_risk"]
+    
+    # VEX statistics
+    vex_stats = _calculate_vex_statistics(vulnerabilities)
+    if any(vex_stats.values()):
+        properties["vexStatistics"] = vex_stats
+    
+    return properties
+
+
+def _calculate_vex_statistics(vulnerabilities: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Calculate VEX statistics for the run properties."""
+    vex_stats = {
+        "total_with_vex": 0,
+        "not_affected": 0,
+        "affected": 0,
+        "fixed": 0,
+        "under_investigation": 0,
+        "with_response": 0
+    }
+    
+    for vuln in vulnerabilities:
+        if vuln.get("vuln_exp_id") or vuln.get("vuln_exp_status") or vuln.get("vuln_exp_response"):
+            vex_stats["total_with_vex"] += 1
+        
+        status = vuln.get("vuln_exp_status") or ""
+        if status and status.lower() in vex_stats:
+            vex_stats[status.lower()] += 1
+        
+        if vuln.get("vuln_exp_response"):
+            vex_stats["with_response"] += 1
+    
+    return vex_stats
+
+
+def _map_severity_to_sarif_level(severity: str, vuln: Dict[str, Any] = None, ext_data: Dict[str, Any] = None) -> str:
+    """Map vulnerability severity to SARIF level optimized for GitHub Advanced Security."""
+    if not severity:
+        return "warning"
+    
+    severity_lower = severity.lower()
+    
+    # Check for high-risk indicators that should escalate the level
+    if ext_data and ext_data.get("cisa_kev"):
+        return "error"
+    
+    if ext_data and ext_data.get("epss_score") and float(ext_data["epss_score"]) > 0.7:
+        return "error"
+    
+    # Standard severity mapping
+    if severity_lower in ["critical", "high"]:
+        return "error"
+    elif severity_lower in ["medium", "moderate"]:
+        return "warning"
+    elif severity_lower in ["low", "informational", "info"]:
+        return "note"
+    else:
+        return "warning"
+
+
+# Export public API
+__all__ = [
+    "save_vulns_to_sarif",
+    "convert_vulns_to_sarif",
+    "generate_vex_properties"
+] 

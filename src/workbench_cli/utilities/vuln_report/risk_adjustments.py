@@ -141,7 +141,7 @@ def calculate_dynamic_risk(
             high_risk_evidence.append(f"VEX response: unfixable (can_not_fix)")
         
         # Critical severity as high risk indicator
-        if vuln.get("severity", "").upper() == "CRITICAL":
+        if (vuln.get("severity") or "").upper() == "CRITICAL":
             # Only set to "Yes" if not already set by other factors
             if high_risk_indicator == "Unknown":
                 high_risk_indicator = "Yes"
@@ -197,7 +197,7 @@ def calculate_batch_risk_adjustments(
     
     for vuln in vulnerabilities:
         vuln_id = str(vuln.get("id", "unknown"))
-        cve = vuln.get("cve", "UNKNOWN")
+        cve = vuln.get("vuln_id") or vuln.get("cve", "UNKNOWN")
         ext_data = external_data.get(cve, {})
         
         adjustment = calculate_dynamic_risk(vuln, ext_data)
@@ -297,7 +297,7 @@ def _map_cvss_severity_to_risk_level(severity: str) -> RiskLevel:
         "LOW": RiskLevel.LOW,
         "UNKNOWN": RiskLevel.MEDIUM  # Default to medium for unknown
     }
-    return mapping.get(severity.upper(), RiskLevel.MEDIUM)
+    return mapping.get((severity or "").upper(), RiskLevel.MEDIUM)
 
 
 def apply_vex_suppression_filter(
@@ -320,7 +320,7 @@ def apply_vex_suppression_filter(
     suppressed = []
     
     for vuln in vulnerabilities:
-        cve = vuln.get("cve", "UNKNOWN")
+        cve = vuln.get("vuln_id") or vuln.get("cve", "UNKNOWN")
         ext_data = external_data.get(cve, {})
         
         adjustment = calculate_dynamic_risk(vuln, ext_data)
@@ -362,9 +362,9 @@ def map_vex_status_to_sarif_level(
 def extract_unique_cves(vulnerabilities: List[Dict[str, Any]]) -> List[str]:
     """Extract unique CVEs from vulnerability data, excluding UNKNOWN values."""
     return list(set(
-        vuln.get("cve", "UNKNOWN") 
+        vuln.get("vuln_id") or vuln.get("cve", "UNKNOWN") 
         for vuln in vulnerabilities 
-        if vuln.get("cve") != "UNKNOWN"
+        if (vuln.get("vuln_id") or vuln.get("cve")) != "UNKNOWN"
     ))
 
 
@@ -381,7 +381,7 @@ def count_high_risk_vulnerabilities(vulnerabilities: List[Dict[str, Any]],
     high_risk_cves = set()
     
     for vuln in vulnerabilities:
-        cve = vuln.get("cve", "UNKNOWN")
+        cve = vuln.get("vuln_id") or vuln.get("cve", "UNKNOWN")
         ext_data = external_data.get(cve, {})
         
         is_high_risk = False
@@ -395,7 +395,7 @@ def count_high_risk_vulnerabilities(vulnerabilities: List[Dict[str, Any]],
             counts["high_epss"] += 1
             is_high_risk = True
         
-        if vuln.get("severity", "").upper() == "CRITICAL":
+        if (vuln.get("severity") or "").upper() == "CRITICAL":
             counts["critical_severity"] += 1
             is_high_risk = True
         
@@ -414,7 +414,7 @@ def count_high_risk_indicators_detailed(
     counts = {"yes": 0, "no": 0, "unknown": 0}
     
     for vuln in vulnerabilities:
-        cve = vuln.get("cve", "UNKNOWN")
+        cve = vuln.get("vuln_id") or vuln.get("cve", "UNKNOWN")
         ext_data = external_data.get(cve, {})
         
         adjustment = calculate_dynamic_risk(vuln, ext_data)

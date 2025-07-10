@@ -550,6 +550,29 @@ def build_cvss_vector(vuln: Dict[str, Any]) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
+def extract_version_ranges(references: List[Dict[str, Any]]) -> str:
+    """Extract version information from NVD references where possible."""
+    version_patterns = []
+    
+    for ref in references:
+        url = ref.get("url", "").lower()
+        tags = [tag.lower() for tag in ref.get("tags", [])]
+        
+        # Look for vendor advisory URLs that often contain version info
+        if any(tag in ["vendor advisory", "patch", "mitigation"] for tag in tags):
+            # Common patterns in vendor URLs
+            if "github.com" in url and "/releases/" in url:
+                # GitHub release pages often have version info
+                version_patterns.append("See GitHub releases for affected versions")
+            elif any(vendor in url for vendor in ["apache.org", "nodejs.org", "golang.org", "python.org"]):
+                version_patterns.append("Check vendor advisory for version details")
+    
+    if version_patterns:
+        return "; ".join(set(version_patterns))  # Remove duplicates
+    
+    return ""
+
+
 __all__ = [
     # Main enrichment functions
     "enrich_vulnerabilities",
@@ -557,6 +580,7 @@ __all__ = [
     
     # Security metadata processing
     "build_cvss_vector",
+    "extract_version_ranges",
     
     # Rate limiting
     "RateLimiter",

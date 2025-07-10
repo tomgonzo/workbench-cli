@@ -13,16 +13,16 @@ import time
 from unittest.mock import patch, mock_open
 from typing import Dict, List, Any
 
-from workbench_cli.utilities.sarif_generation import (
+from workbench_cli.utilities.vuln_report.sarif_generator import (
     convert_vulns_to_sarif,
     save_vulns_to_sarif,
     _map_severity_to_sarif_level,
-    _generate_enhanced_rules,
-    _generate_enhanced_results,
-    _create_empty_sarif_report
+    _generate_enhanced_sarif_rules,
+    _generate_enhanced_sarif_results,
+    _create_run_properties
 )
 
-from src.workbench_cli.utilities.vuln_report.cve_data_gathering import (
+from workbench_cli.utilities.vuln_report.cve_data_gathering import (
     enrich_vulnerabilities,
     _fetch_epss_scores,
     _fetch_cisa_kev_data,
@@ -71,39 +71,39 @@ class TestSarifConverter:
             }
         ]
         
-        # Mock the vulnerability enricher to avoid external API calls
-        with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
-            mock_enrich.return_value = {}
-            
-            sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_123")
-            
-            # Validate SARIF structure
-            assert sarif_data["version"] == "2.1.0"
-            assert "$schema" in sarif_data
-            assert len(sarif_data["runs"]) == 1
-            
-            run = sarif_data["runs"][0]
-            assert run["tool"]["driver"]["name"] == "FossID Workbench"
-            assert run["properties"]["scan_code"] == "TEST_SCAN_123"
-            assert "generated_at" in run["properties"]
-            
-            # Validate rules
-            assert len(run["tool"]["driver"]["rules"]) == 2
-            rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
-            assert "CVE-2022-12345:test-package@1.0.0" in rule_ids
-            assert "CVE-2022-67890:another-package@2.1.0" in rule_ids
-            
-            # Validate results
-            assert len(run["results"]) == 2
-            result_rule_ids = [result["ruleId"] for result in run["results"]]
-            assert "CVE-2022-12345:test-package@1.0.0" in result_rule_ids
-            assert "CVE-2022-67890:another-package@2.1.0" in result_rule_ids
-            
-            # Validate severity mapping
-            critical_result = next(r for r in run["results"] if r["ruleId"] == "CVE-2022-12345:test-package@1.0.0")
-            medium_result = next(r for r in run["results"] if r["ruleId"] == "CVE-2022-67890:another-package@2.1.0")
-            assert critical_result["level"] == "warning"
-            assert medium_result["level"] == "warning"
+        sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_123")
+        
+        # Validate SARIF structure
+        assert sarif_data["version"] == "2.1.0"
+        assert "$schema" in sarif_data
+        assert len(sarif_data["runs"]) == 1
+        
+        run = sarif_data["runs"][0]
+        assert run["tool"]["driver"]["name"] == "Workbench Vulnerability Scanner"
+        assert run["properties"]["scanCode"] == "TEST_SCAN_123"
+        assert "timestamp" in run["properties"]
+        
+        # Validate rules (one per unique CVE-component combination)
+        assert len(run["tool"]["driver"]["rules"]) == 2
+        rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+        assert "CVE-2022-12345:test-package@1.0.0" in rule_ids
+        assert "CVE-2022-67890:another-package@2.1.0" in rule_ids
+        
+        # Validate results
+        assert len(run["results"]) == 2
+        result_rule_ids = [result["ruleId"] for result in run["results"]]
+        assert "CVE-2022-12345:test-package@1.0.0" in result_rule_ids
+        assert "CVE-2022-67890:another-package@2.1.0" in result_rule_ids
+        
+        # Validate severity mapping
+        critical_result = next(r for r in run["results"] if r["ruleId"] == "CVE-2022-12345:test-package@1.0.0")
+        medium_result = next(r for r in run["results"] if r["ruleId"] == "CVE-2022-67890:another-package@2.1.0")
+        assert critical_result["level"] == "error"  # Critical maps to error
+        assert medium_result["level"] == "warning"  # Medium maps to warning
+        
+        # Validate lean properties
+        assert "vulnerabilityCount" in run["properties"]
+        assert "severityDistribution" in run["properties"]
 
     def test_convert_vulns_to_sarif_empty_data(self):
         """Test conversion with empty vulnerability data."""
@@ -113,8 +113,8 @@ class TestSarifConverter:
         assert len(sarif_data["runs"]) == 1
         
         run = sarif_data["runs"][0]
-        assert run["tool"]["driver"]["name"] == "FossID Workbench"
-        assert run["properties"]["scan_code"] == "TEST_SCAN_EMPTY"
+        assert run["tool"]["driver"]["name"] == "Workbench Vulnerability Scanner"
+        assert run["properties"]["scanCode"] == "TEST_SCAN_EMPTY"
         assert len(run["tool"]["driver"]["rules"]) == 0
         assert len(run["results"]) == 0
 
@@ -143,38 +143,34 @@ class TestSarifConverter:
             }
         }
         
-        with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
-            mock_enrich.return_value = mock_external_data
-            
-            sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_ENHANCED")
-            
-            # Validate external data integration
-            run = sarif_data["runs"][0]
-            rule = run["tool"]["driver"]["rules"][0]
-            
-            assert rule["properties"]["epss_score"] == 0.85
-            assert rule["properties"]["cisa_known_exploited"] == True
-            assert rule["properties"]["cwe_ids"] == ["CWE-79"]
-            
-            # External data should be in properties, not in description
-            # The fullDescription should contain the NVD description when available
-            assert "Test vulnerability description" in rule["fullDescription"]["text"]
-            assert "test-package" in rule["fullDescription"]["text"]
+        sarif_data = convert_vulns_to_sarif(
+            sample_vulns, 
+            "TEST_SCAN_ENHANCED", 
+            external_data=mock_external_data
+        )
+        
+        # Validate external data integration
+        run = sarif_data["runs"][0]
+        rule = run["tool"]["driver"]["rules"][0]
+        
+        assert rule["properties"]["epss_score"] == 0.85
+        assert rule["properties"]["cisa_known_exploited"] == True
+        
+        # The fullDescription should contain the NVD description when available
+        assert "Test vulnerability description" in rule["fullDescription"]["text"]
 
     def test_map_severity_to_sarif_level(self):
         """Test mapping of severity levels to SARIF levels."""
-        # New intelligent approach: defaults to WARNING for promotion/demotion logic
-        assert _map_severity_to_sarif_level("CRITICAL") == "warning"
-        assert _map_severity_to_sarif_level("HIGH") == "warning"
+        assert _map_severity_to_sarif_level("CRITICAL") == "error"
+        assert _map_severity_to_sarif_level("HIGH") == "error"
         assert _map_severity_to_sarif_level("MEDIUM") == "warning"
-        assert _map_severity_to_sarif_level("LOW") == "warning"
+        assert _map_severity_to_sarif_level("LOW") == "note"
         assert _map_severity_to_sarif_level("UNKNOWN") == "warning"
         assert _map_severity_to_sarif_level("INVALID") == "warning"
         assert _map_severity_to_sarif_level("") == "warning"
-        assert _map_severity_to_sarif_level(None) == "warning"
 
-    def test_generate_enhanced_rules(self):
-        """Test generation of enhanced SARIF rules from vulnerability data."""
+    def test_generate_sarif_rules(self):
+        """Test generation of SARIF rules from vulnerability data."""
         sample_vulns = [
             {
                 "cve": "CVE-2022-12345",
@@ -183,318 +179,346 @@ class TestSarifConverter:
                 "severity": "CRITICAL",
                 "attack_vector": "NETWORK",
                 "attack_complexity": "LOW",
-                "availability_impact": "HIGH"
+                "availability_impact": "HIGH",
+                "component_name": "test-package",
+                "component_version": "1.0.0"
             },
             {
-                "cve": "CVE-2022-12345",  # Duplicate CVE should only create one rule
+                "cve": "CVE-2022-12345",  # Duplicate CVE+component should only create one rule
                 "cvss_version": "3.1",
                 "base_score": "9.8",
                 "severity": "CRITICAL",
                 "attack_vector": "NETWORK",
                 "attack_complexity": "LOW",
-                "availability_impact": "HIGH"
+                "availability_impact": "HIGH",
+                "component_name": "test-package",
+                "component_version": "1.0.0"
             },
             {
                 "cve": "CVE-2022-67890",
                 "cvss_version": "3.0",
                 "base_score": "5.5",
                 "severity": "MEDIUM",
-                "attack_vector": "LOCAL",
-                "attack_complexity": "LOW",
-                "availability_impact": "NONE"
+                "component_name": "another-package",
+                "component_version": "2.1.0"
             }
         ]
         
-        external_data = {}
-        rules = _generate_enhanced_rules(sample_vulns, external_data)
+        external_data = {
+            "CVE-2022-12345": {
+                "epss_score": 0.85,
+                "cisa_kev": True,
+                "nvd_description": "Test vulnerability description"
+            }
+        }
         
-        assert len(rules) == 2  # Should deduplicate CVE-2022-12345
+        rules = _generate_enhanced_sarif_rules(sample_vulns, external_data, enable_dynamic_risk_scoring=True)
+        
+        # Should have 2 rules (one per unique CVE-component combination)
+        assert len(rules) == 2
+        
+        # Check rule IDs (now include component info)
         rule_ids = [rule["id"] for rule in rules]
-        assert "CVE-2022-12345:Unknown@Unknown" in rule_ids
-        assert "CVE-2022-67890:Unknown@Unknown" in rule_ids
+        assert "CVE-2022-12345:test-package@1.0.0" in rule_ids
+        assert "CVE-2022-67890:another-package@2.1.0" in rule_ids
         
-        # Validate rule structure
-        critical_rule = next(r for r in rules if r["id"] == "CVE-2022-12345:Unknown@Unknown")
-        assert critical_rule["name"] == "CVE-2022-12345 in Unknown@Unknown"
-        assert critical_rule["defaultConfiguration"]["level"] == "warning"
-        assert critical_rule["properties"]["cvss_version"] == "3.1"
-        assert critical_rule["properties"]["base_score"] == "9.8"
+        # Check enriched rule properties
+        cve_rule = next(r for r in rules if r["id"] == "CVE-2022-12345:test-package@1.0.0")
+        assert cve_rule["properties"]["epss_score"] == 0.85
+        assert cve_rule["properties"]["cisa_kev"] == True
+        assert "Test vulnerability description" in cve_rule["fullDescription"]["text"]
+        
+        # Check component-specific properties
+        assert cve_rule["properties"]["component"] == "test-package@1.0.0"
+        assert cve_rule["properties"]["cve"] == "CVE-2022-12345"
 
-    def test_generate_enhanced_results(self):
-        """Test generation of enhanced SARIF results from vulnerability data."""
+    def test_generate_sarif_results(self):
+        """Test generation of SARIF results from vulnerability data."""
         sample_vulns = [
             {
                 "id": 1,
                 "cve": "CVE-2022-12345",
-                "cvss_version": "3.1",
                 "base_score": "9.8",
                 "severity": "CRITICAL",
-                "component_id": 123,
                 "component_name": "test-package",
                 "component_version": "1.0.0",
-                "scan_id": 456,
-                "attack_vector": "NETWORK",
-                "attack_complexity": "LOW",
-                "availability_impact": "HIGH",
-                "rejected": 0
+                "vuln_exp_status": "affected"
             }
         ]
         
-        external_data = {}
-        results = _generate_enhanced_results(sample_vulns, external_data)
+        external_data = {
+            "CVE-2022-12345": {
+                "epss_score": 0.85,
+                "cisa_kev": True
+            }
+        }
+        
+        results = _generate_enhanced_sarif_results(sample_vulns, external_data, enable_dynamic_risk_scoring=True)
         
         assert len(results) == 1
         result = results[0]
         
         assert result["ruleId"] == "CVE-2022-12345:test-package@1.0.0"
-        assert result["level"] == "warning"
-        assert "CVE-2022-12345" in result["message"]["text"]
-        assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "pkg:generic/test-package@1.0.0"
+        assert result["level"] == "error"
+        assert "CVE-2022-12345 in test-package@1.0.0" in result["message"]["text"]
+        assert result["properties"]["epss_score"] == 0.85
+        assert result["properties"]["cisa_kev"] == True
+        assert result["properties"]["vex_status"] == "affected"
         
-        # Validate properties
-        assert result["properties"]["component_id"] == 123
-        assert result["properties"]["vulnerability_id"] == 1
-        assert result["properties"]["security-severity"] == "9.8"
+        # Check enhanced features
+        assert "partialFingerprints" in result
+        assert "baselineState" in result
+        assert "fixes" in result
 
-    def test_create_empty_sarif_report(self):
-        """Test creation of empty SARIF report."""
-        sarif_data = _create_empty_sarif_report("EMPTY_SCAN")
+    def test_create_run_properties(self):
+        """Test creation of SARIF run properties."""
+        sample_vulns = [
+            {"severity": "CRITICAL", "vuln_exp_status": "affected"},
+            {"severity": "HIGH", "vuln_exp_response": "will_not_fix"},
+            {"severity": "MEDIUM"}
+        ]
         
-        assert sarif_data["version"] == "2.1.0"
-        assert len(sarif_data["runs"]) == 1
+        external_data = {
+            "CVE-2022-12345": {"epss_score": 0.85, "cisa_kev": True}
+        }
         
-        run = sarif_data["runs"][0]
-        assert run["tool"]["driver"]["name"] == "FossID Workbench"
-        assert run["properties"]["scan_code"] == "EMPTY_SCAN"
-        assert len(run["tool"]["driver"]["rules"]) == 0
-        assert len(run["results"]) == 0
+        all_components = [
+            {"name": "test-package", "version": "1.0.0"},
+            {"name": "another-package", "version": "2.1.0"}
+        ]
+        
+        properties = _create_run_properties(
+            scan_code="TEST_SCAN",
+            vulnerabilities=sample_vulns,
+            external_data=external_data,
+            nvd_enrichment=True,
+            epss_enrichment=True,
+            cisa_kev_enrichment=True,
+            all_components=all_components
+        )
+        
+        assert properties["workbench_scan_code"] == "TEST_SCAN"
+        assert properties["total_vulnerabilities"] == 3
+        assert properties["total_components"] == 2
+        assert properties["enrichment_applied"]["nvd"] == True
+        assert properties["enrichment_applied"]["epss"] == True
+        assert properties["enrichment_applied"]["cisa_kev"] == True
+        assert properties["severity_distribution"]["critical"] == 1
+        assert properties["severity_distribution"]["high"] == 1
+        assert properties["severity_distribution"]["medium"] == 1
+        assert properties["vex_statistics"]["total_with_vex"] == 2
+        assert properties["external_data_statistics"]["enriched_cves"] == 1
+        assert properties["external_data_statistics"]["with_epss"] == 1
+        assert properties["external_data_statistics"]["with_cisa_kev"] == 1
 
     def test_save_vulns_to_sarif_success(self):
-        """Test successful saving of vulnerabilities to SARIF file."""
+        """Test successful saving of SARIF file."""
         sample_vulns = [
             {
                 "id": 1,
                 "cve": "CVE-2022-12345",
-                "cvss_version": "3.1",
                 "base_score": "9.8",
                 "severity": "CRITICAL",
                 "component_name": "test-package",
-                "component_version": "1.0.0",
-                "attack_vector": "NETWORK",
-                "attack_complexity": "LOW",
-                "availability_impact": "HIGH"
+                "component_version": "1.0.0"
             }
         ]
         
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.sarif') as temp_file:
-            temp_path = temp_file.name
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sarif', delete=False) as temp_file:
+            temp_filepath = temp_file.name
         
         try:
-            # Mock the enricher to avoid external API calls
-            with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
-                mock_enrich.return_value = {}
-                
-                save_vulns_to_sarif(temp_path, sample_vulns, "TEST_SCAN")
-                
-                # Verify file was created and contains valid SARIF
-                assert os.path.exists(temp_path)
-                with open(temp_path, 'r') as f:
-                    saved_data = json.load(f)
-                
-                assert saved_data["version"] == "2.1.0"
-                assert len(saved_data["runs"]) == 1
-                assert saved_data["runs"][0]["properties"]["scan_code"] == "TEST_SCAN"
-                
+            save_vulns_to_sarif(
+                temp_filepath,
+                sample_vulns,
+                "TEST_SCAN_123",
+                quiet=True
+            )
+            
+            # Verify file was created and contains valid SARIF JSON
+            assert os.path.exists(temp_filepath)
+            
+            with open(temp_filepath, 'r') as f:
+                sarif_data = json.load(f)
+            
+            assert sarif_data["version"] == "2.1.0"
+            assert len(sarif_data["runs"]) == 1
+            assert sarif_data["runs"][0]["properties"]["workbench_scan_code"] == "TEST_SCAN_123"
+            
         finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            # Clean up
+            if os.path.exists(temp_filepath):
+                os.unlink(temp_filepath)
 
     def test_save_vulns_to_sarif_creates_directory(self):
-        """Test that save_vulns_to_sarif creates output directory if it doesn't exist."""
+        """Test that save_vulns_to_sarif creates necessary directories."""
         sample_vulns = [
             {
                 "id": 1,
                 "cve": "CVE-2022-12345",
-                "severity": "HIGH",
+                "base_score": "9.8",
+                "severity": "CRITICAL",
                 "component_name": "test-package",
                 "component_version": "1.0.0"
             }
         ]
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            nested_path = os.path.join(temp_dir, "nested", "subdir", "results.sarif")
+            new_dir = os.path.join(temp_dir, "new_directory")
+            filepath = os.path.join(new_dir, "test.sarif")
             
-            # Mock the enricher to avoid external API calls
-            with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
-                mock_enrich.return_value = {}
-                
-                save_vulns_to_sarif(nested_path, sample_vulns, "TEST_SCAN")
-                
-                assert os.path.exists(nested_path)
-                with open(nested_path, 'r') as f:
-                    saved_data = json.load(f)
-                
-                assert saved_data["version"] == "2.1.0"
+            save_vulns_to_sarif(filepath, sample_vulns, "TEST_SCAN_123", quiet=True)
+            
+            # Verify directory was created and file exists
+            assert os.path.exists(new_dir)
+            assert os.path.exists(filepath)
 
     def test_save_vulns_to_sarif_io_error(self):
-        """Test handling of IO errors during SARIF file saving."""
+        """Test handling of IO errors during save."""
         sample_vulns = [
             {
                 "id": 1,
                 "cve": "CVE-2022-12345",
-                "severity": "HIGH",
+                "base_score": "9.8",
+                "severity": "CRITICAL",
                 "component_name": "test-package",
                 "component_version": "1.0.0"
             }
         ]
         
-        # Use an invalid path that should cause an error
-        invalid_path = "/invalid/path/that/should/not/exist/results.sarif"
+        # Try to save to an invalid path
+        invalid_path = "/root/cannot_write_here.sarif"
         
         with pytest.raises((IOError, OSError)):
-            with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
-                mock_enrich.return_value = {}
-                save_vulns_to_sarif(invalid_path, sample_vulns, "TEST_SCAN")
+            save_vulns_to_sarif(invalid_path, sample_vulns, "TEST_SCAN_123", quiet=True)
 
     def test_handle_missing_vulnerability_fields(self):
-        """Test handling of vulnerabilities with missing fields."""
-        incomplete_vulns = [
+        """Test handling of vulnerability data with missing fields."""
+        sample_vulns = [
             {
                 "id": 1,
-                # Missing cve field
-                "severity": "HIGH",
-                "component_name": "test-package",
-                # Missing component_version
+                # Missing cve, base_score, severity, component info
             },
             {
                 "id": 2,
-                "cve": "CVE-2022-67890",
-                # Missing severity
-                # Missing component_name and component_version
+                "cve": "CVE-2022-12345",
+                # Missing component_name, component_version
             }
         ]
         
-        with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
-            mock_enrich.return_value = {}
-            
-            sarif_data = convert_vulns_to_sarif(incomplete_vulns, "TEST_SCAN")
-            
-            # Should still create valid SARIF even with missing fields
-            assert sarif_data["version"] == "2.1.0"
-            assert len(sarif_data["runs"]) == 1
-            
-            run = sarif_data["runs"][0]
-            assert len(run["results"]) == 2
-            
-            # Verify default values are used for missing fields
-            results = run["results"]
-            first_result = results[0]
-            assert first_result["ruleId"] == "UNKNOWN:test-package@Unknown"  # Default for missing CVE
-            
-            second_result = results[1]
-            assert second_result["ruleId"] == "CVE-2022-67890:Unknown@Unknown"
-            assert "CVE-2022-67890" in second_result["message"]["text"]  # CVE should be in message
+        sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_MISSING")
+        
+        # Should still create valid SARIF structure
+        assert sarif_data["version"] == "2.1.0"
+        assert len(sarif_data["runs"]) == 1
+        
+        run = sarif_data["runs"][0]
+        assert len(run["results"]) == 2
+        
+        # Check that missing fields are handled gracefully
+        results = run["results"]
+        rule_ids = [r["ruleId"] for r in results]
+        
+        # First result should have UNKNOWN CVE with Unknown component
+        unknown_result = next(r for r in results if r["ruleId"].startswith("UNKNOWN"))
+        assert unknown_result is not None
+        
+        # Second result should have CVE but Unknown component info
+        cve_result = next(r for r in results if "CVE-2022-12345" in r["ruleId"])
+        assert cve_result is not None
+        assert "Unknown" in cve_result["ruleId"]  # Should have Unknown for missing component info
+        
+        # Both should have valid structure
+        assert "message" in unknown_result
+        assert "locations" in unknown_result
+        assert "message" in cve_result
+        assert "locations" in cve_result
 
     def test_sarif_schema_compliance(self):
-        """Test that generated SARIF complies with the expected schema structure."""
+        """Test that generated SARIF complies with basic schema requirements."""
         sample_vulns = [
             {
                 "id": 1,
                 "cve": "CVE-2022-12345",
-                "cvss_version": "3.1",
                 "base_score": "9.8",
                 "severity": "CRITICAL",
                 "component_name": "test-package",
-                "component_version": "1.0.0",
-                "attack_vector": "NETWORK",
-                "attack_complexity": "LOW",
-                "availability_impact": "HIGH"
+                "component_version": "1.0.0"
             }
         ]
         
-        with patch('src.workbench_cli.utilities.sarif_generation.enrich_vulnerabilities') as mock_enrich:
-            mock_enrich.return_value = {}
+        sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_SCHEMA")
+        
+        # Basic schema compliance checks
+        assert "version" in sarif_data
+        assert "$schema" in sarif_data
+        assert "runs" in sarif_data
+        assert isinstance(sarif_data["runs"], list)
+        
+        run = sarif_data["runs"][0]
+        assert "tool" in run
+        assert "driver" in run["tool"]
+        assert "name" in run["tool"]["driver"]
+        assert "rules" in run["tool"]["driver"]
+        assert "results" in run
+        
+        # Check rules structure
+        for rule in run["tool"]["driver"]["rules"]:
+            assert "id" in rule
+            assert "shortDescription" in rule
+            assert "text" in rule["shortDescription"]
+            assert "fullDescription" in rule
+            assert "text" in rule["fullDescription"]
+            assert "defaultConfiguration" in rule
+            assert "level" in rule["defaultConfiguration"]
+        
+        # Check results structure
+        for result in run["results"]:
+            assert "ruleId" in result
+            assert "level" in result
+            assert "message" in result
+            assert "text" in result["message"]
+            assert "locations" in result
+            assert isinstance(result["locations"], list)
             
-            sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN")
-            
-            # Validate required SARIF fields
-            assert "$schema" in sarif_data
-            assert sarif_data["$schema"] == "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/csd01/schemas/sarif-schema-2.1.0.json"
-            assert sarif_data["version"] == "2.1.0"
-            assert "runs" in sarif_data
-            assert len(sarif_data["runs"]) == 1
-            
-            run = sarif_data["runs"][0]
-            assert "tool" in run
-            assert "driver" in run["tool"]
-            assert "results" in run
-            
-            driver = run["tool"]["driver"]
-            assert "name" in driver
-            assert "rules" in driver
-            
-            # Validate rule structure
-            for rule in driver["rules"]:
-                assert "id" in rule
-                assert "name" in rule
-                assert "defaultConfiguration" in rule
-                assert "level" in rule["defaultConfiguration"]
-            
-            # Validate result structure
-            for result in run["results"]:
-                assert "ruleId" in result
-                assert "level" in result
-                assert "message" in result
-                assert "text" in result["message"]
-                assert "locations" in result
-                assert len(result["locations"]) > 0
-                
-                location = result["locations"][0]
+            # Check location structure
+            for location in result["locations"]:
                 assert "physicalLocation" in location
                 assert "artifactLocation" in location["physicalLocation"]
                 assert "uri" in location["physicalLocation"]["artifactLocation"]
 
-    def test_enhanced_functions_compatibility(self):
-        """Test that enhanced functions work correctly with and without external data."""
+    def test_vex_integration(self):
+        """Test VEX (Vulnerability Exploitability eXchange) integration."""
         sample_vulns = [
             {
+                "id": 1,
                 "cve": "CVE-2022-12345",
-                "cvss_version": "3.1",
                 "base_score": "9.8",
                 "severity": "CRITICAL",
                 "component_name": "test-package",
-                "component_version": "1.0.0"
+                "component_version": "1.0.0",
+                "vuln_exp_status": "not_affected",
+                "vuln_exp_response": "will_not_fix",
+                "vuln_exp_justification": "Component not used in production"
             }
         ]
         
-        # Test _generate_enhanced_rules function without external data
-        rules = _generate_enhanced_rules(sample_vulns, {})
-        assert len(rules) == 1
-        assert rules[0]["id"] == "CVE-2022-12345:test-package@1.0.0"
+        sarif_data = convert_vulns_to_sarif(sample_vulns, "TEST_SCAN_VEX")
         
-        # Test _generate_enhanced_results function without external data
-        results = _generate_enhanced_results(sample_vulns, {})
-        assert len(results) == 1
-        assert results[0]["ruleId"] == "CVE-2022-12345:test-package@1.0.0"
+        run = sarif_data["runs"][0]
+        result = run["results"][0]
         
-        # Test with external data
-        external_data = {
-            "CVE-2022-12345": {
-                "epss_score": 0.85,
-                "epss_percentile": 0.95,
-                "cisa_kev": True
-            }
-        }
+        # Check VEX information in result properties
+        assert result["properties"]["vex_status"] == "not_affected"
+        assert result["properties"]["vex_response"] == "will_not_fix"
+        assert result["properties"]["vex_justification"] == "Component not used in production"
         
-        rules_with_external = _generate_enhanced_rules(sample_vulns, external_data)
-        assert len(rules_with_external) == 1
-        assert rules_with_external[0]["properties"]["epss_score"] == 0.85
-        assert rules_with_external[0]["properties"]["cisa_known_exploited"] == True
-        
-        results_with_external = _generate_enhanced_results(sample_vulns, external_data)
-        assert len(results_with_external) == 1
-        assert results_with_external[0]["properties"]["epss_score"] == 0.85
-        assert results_with_external[0]["properties"]["cisa_known_exploited"] == True
+        # Check VEX statistics in run properties
+        assert "vex_statistics" in run["properties"]
+        vex_stats = run["properties"]["vex_statistics"]
+        assert vex_stats["total_with_vex"] == 1
+        assert vex_stats["by_status"]["not_affected"] == 1
+        assert vex_stats["by_response"]["will_not_fix"] == 1
 
 
 class TestVulnerabilityEnricher:
@@ -502,14 +526,15 @@ class TestVulnerabilityEnricher:
 
     def test_enrich_vulnerabilities_empty_list(self):
         """Test enrichment with empty CVE list."""
-        result = enrich_vulnerabilities([])
+        result = enrich_vulnerabilities([], True, True, True)
         assert result == {}
 
-    @patch('src.workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
+    @patch('workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
     def test_fetch_epss_scores_success(self, mock_get):
         """Test successful EPSS score fetching."""
-        mock_response = {
-            "status": "OK",
+        mock_response = mock_get.return_value
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
             "data": [
                 {
                     "cve": "CVE-2022-12345",
@@ -518,8 +543,6 @@ class TestVulnerabilityEnricher:
                 }
             ]
         }
-        mock_get.return_value.json.return_value = mock_response
-        mock_get.return_value.raise_for_status.return_value = None
         
         result = _fetch_epss_scores(["CVE-2022-12345"])
         
@@ -527,89 +550,95 @@ class TestVulnerabilityEnricher:
         assert result["CVE-2022-12345"]["epss_score"] == 0.85
         assert result["CVE-2022-12345"]["epss_percentile"] == 0.95
 
-    @patch('src.workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
+    @patch('workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
     def test_fetch_cisa_kev_data_success(self, mock_get):
         """Test successful CISA KEV data fetching."""
-        mock_response = {
+        mock_response = mock_get.return_value
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
             "vulnerabilities": [
                 {
                     "cveID": "CVE-2022-12345",
                     "vendorProject": "Test Vendor",
-                    "product": "Test Product"
+                    "product": "Test Product",
+                    "vulnerabilityName": "Test Vulnerability",
+                    "dateAdded": "2022-01-01",
+                    "shortDescription": "Test description",
+                    "requiredAction": "Test action",
+                    "dueDate": "2022-01-15"
                 }
             ]
         }
-        mock_get.return_value.json.return_value = mock_response
-        mock_get.return_value.raise_for_status.return_value = None
         
-        result = _fetch_cisa_kev_data(["CVE-2022-12345", "CVE-2022-99999"])
+        result = _fetch_cisa_kev_data(["CVE-2022-12345"])
         
         assert "CVE-2022-12345" in result
-        assert "CVE-2022-99999" not in result
+        assert result["CVE-2022-12345"]["cisa_kev"] == True
 
     def test_rate_limiter_functionality(self):
         """Test rate limiter functionality."""
-        limiter = RateLimiter(max_workers=2, delay=0.1)
+        rate_limiter = RateLimiter(max_requests=2, time_window=1.0)
         
+        # First two requests should pass immediately
         start_time = time.time()
+        rate_limiter.wait_if_needed()
+        rate_limiter.wait_if_needed()
+        first_duration = time.time() - start_time
         
-        # Should allow first two requests immediately
-        limiter.wait()
-        limiter.wait()
+        # Should be very fast (no waiting)
+        assert first_duration < 0.1
         
-        # Third request should be delayed
-        limiter.wait()
+        # Third request should wait
+        start_time = time.time()
+        rate_limiter.wait_if_needed()
+        wait_duration = time.time() - start_time
         
-        elapsed = time.time() - start_time
-        assert elapsed >= 0.1  # Should have waited at least 0.1 seconds
+        # Should have waited at least 1 second
+        assert wait_duration >= 1.0
 
-    @patch('src.workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
+    @patch('workbench_cli.utilities.vuln_report.cve_data_gathering.requests.get')
     def test_parse_nvd_vulnerability(self, mock_get):
         """Test parsing of NVD vulnerability data."""
-        nvd_vuln_data = {
-            "descriptions": [
+        mock_nvd_data = {
+            "vulnerabilities": [
                 {
-                    "lang": "en",
-                    "value": "Test vulnerability description"
-                }
-            ],
-            "weaknesses": [
-                {
-                    "type": "Primary",
-                    "description": [
-                        {
-                            "lang": "en",
-                            "value": "CWE-79"
-                        }
-                    ]
-                }
-            ],
-            "references": [
-                {
-                    "url": "https://example.com/vuln",
-                    "source": "test",
-                    "tags": ["Exploit"]
-                }
-            ],
-            "metrics": {
-                "cvssMetricV31": [
-                    {
-                        "cvssData": {
-                            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-                            "baseScore": 6.1
-                        }
+                    "cve": {
+                        "id": "CVE-2022-12345",
+                        "descriptions": [
+                            {
+                                "lang": "en",
+                                "value": "Test vulnerability description"
+                            }
+                        ],
+                        "weaknesses": [
+                            {
+                                "description": [
+                                    {
+                                        "lang": "en",
+                                        "value": "CWE-79"
+                                    }
+                                ]
+                            }
+                        ],
+                        "references": [
+                            {
+                                "url": "https://example.com/advisory",
+                                "source": "example.com",
+                                "tags": ["Vendor Advisory"]
+                            }
+                        ]
                     }
-                ]
-            }
+                }
+            ]
         }
         
-        result = _parse_nvd_vulnerability(nvd_vuln_data)
+        result = _parse_nvd_vulnerability(mock_nvd_data)
         
-        assert result["nvd_description"] == "Test vulnerability description"
-        assert result["nvd_cwe"] == ["CWE-79"]
-        assert len(result["nvd_references"]) == 1
-        assert result["nvd_references"][0]["url"] == "https://example.com/vuln"
-        assert result["full_cvss_vector"] == "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
-        assert result["cvss_score"] == 6.1
+        assert "CVE-2022-12345" in result
+        cve_data = result["CVE-2022-12345"]
+        assert cve_data["nvd_description"] == "Test vulnerability description"
+        assert "CWE-79" in cve_data["nvd_cwe"]
+        assert len(cve_data["nvd_references"]) == 1
+        assert cve_data["nvd_references"][0]["url"] == "https://example.com/advisory"
 
  

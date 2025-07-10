@@ -209,14 +209,20 @@ def _fetch_vulnerabilities_and_vex(
         vulnerabilities = [v for v in vulnerabilities if sev_order.get(v.get("severity", "").lower(), 0) >= min_level]
 
     if not params.quiet:
-        from ..utilities.vuln_report.sarif_generator import (
-            _calculate_severity_distribution,
-            _format_severity_breakdown_compact,
-        )
-        dist = _calculate_severity_distribution(vulnerabilities)
-        print(
-            f"📋 Retrieved {len(vulnerabilities)} Vulnerabilities {_format_severity_breakdown_compact(dist)}"
-        )
+        # Simple severity breakdown without external dependency
+        severity_counts = {}
+        for vuln in vulnerabilities:
+            severity = vuln.get("severity", "UNKNOWN").upper()
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        
+        # Format compact breakdown
+        breakdown_parts = []
+        for severity in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']:
+            if severity_counts.get(severity, 0) > 0:
+                breakdown_parts.append(f"{severity[0]}: {severity_counts[severity]}")
+        breakdown_text = f"[{', '.join(breakdown_parts)}]" if breakdown_parts else ""
+        
+        print(f"📋 Retrieved {len(vulnerabilities)} Vulnerabilities {breakdown_text}")
         _display_vex_summary(vulnerabilities, indent="   ")
 
     return vulnerabilities
@@ -338,7 +344,6 @@ def _execute_generation_flow(
         'cisa_kev_enrichment': common_params['cisa_kev_enrichment'],
         'enable_dynamic_risk_scoring': common_params['enable_dynamic_risk_scoring'],
         'quiet': common_params['quiet'],
-        'all_components': all_components,
         'base_sbom_path': None  # Generation flow doesn't use base SBOM
     }
     
@@ -421,11 +426,21 @@ def _perform_external_enrichment(
 
 def _display_vex_summary(vulnerabilities: List[Dict[str, Any]], indent: str = "") -> None:
     """Display VEX assessment information in a concise format."""
-    from ..utilities.vuln_report.sarif_generator import _count_vex_assessments
-    vex_counts = _count_vex_assessments(vulnerabilities)
+    # Simple VEX counting without external dependency
+    total_with_vex = 0
+    with_status = 0
+    with_response = 0
     
-    if vex_counts["total_with_vex"] > 0:
-        print(f"{indent}• Retrieved VEX for {vex_counts['total_with_vex']}/{len(vulnerabilities)} CVEs [Status: {vex_counts['with_status']}, Response: {vex_counts['with_response']}]")
+    for vuln in vulnerabilities:
+        if vuln.get("vuln_exp_id") or vuln.get("vuln_exp_status") or vuln.get("vuln_exp_response"):
+            total_with_vex += 1
+        if vuln.get("vuln_exp_status"):
+            with_status += 1
+        if vuln.get("vuln_exp_response"):
+            with_response += 1
+    
+    if total_with_vex > 0:
+        print(f"{indent}• Retrieved VEX for {total_with_vex}/{len(vulnerabilities)} CVEs [Status: {with_status}, Response: {with_response}]")
 
 
 def _count_high_risk_indicators_detailed(
