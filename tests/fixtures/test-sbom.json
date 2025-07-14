@@ -1,0 +1,51 @@
+{
+  "spdxVersion": "SPDX-2.2",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "LPA Firmware",
+  "documentNamespace": "http://volvocars.com/volvocars-oss-spdx-index/spa2/lpa-firmware-v2.5.0-b4dea91f-f4de-40f2-851f-8664c2356aa7",
+  "creationInfo": {
+    "creators": [
+      "Person: Team Trust ()",
+      "Organization: Volvo Cars Corporation ()",
+      "Tool: lpa-sbom-generator-0.4.38 ()"
+    ],
+    "created": "2025-06-18T13:05:27Z"
+  },
+  "packages": [
+    {
+      "name": "lpa-firmware",
+      "SPDXID": "SPDXRef-1",
+      "versionInfo": "2.5.0",
+      "supplier": "Organization: Volvo Cars Corporation ()",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "copyrightText": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION"
+    },
+    {
+      "name": "aes",
+      "SPDXID": "SPDXRef-8",
+      "versionInfo": "0.7.5",
+      "downloadLocation": "https://github.com/RustCrypto/block-ciphers",
+      "filesAnalyzed": false,
+      "copyrightText": "NOASSERTION",
+      "licenseConcluded": "MIT OR Apache-2.0",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "summary": "Pure Rust implementation of the Advanced Encryption Standard (a.k.a. Rijndael)\nincluding support for AES in counter mode (a.k.a. AES-CTR)\n"
+    }
+  ],
+  "hasExtractedLicensingInfos": [],
+  "files": [],
+  "snippets": [],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-1",
+      "relatedSpdxElement": "SPDXRef-8",
+      "relationshipType": "DEPENDS_ON"
+    }
+  ],
+  "annotations": [],
+  "documentDescribes": ["SPDXRef-1"]
+}

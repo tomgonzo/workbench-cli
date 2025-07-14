@@ -436,11 +436,21 @@ def fetch_display_save_results(workbench: 'WorkbenchAPI', params: argparse.Names
     if any_results_requested:
         display_results(collected_results, params)
     
-    save_path = getattr(params, 'path_result', None)
-    if save_path:
+    # Handle JSON output
+    json_path = getattr(params, 'json_result_path', None)
+    if json_path:
         if collected_results:
-            print(f"\nSaving collected results to '{save_path}'...")
-            save_results_to_file(save_path, collected_results, scan_code)
+            print(f"\nSaving collected results to '{json_path}'...")
+            save_results_to_file(json_path, collected_results, scan_code)
+        else:
+            print("\nNo results were successfully collected, skipping JSON save.")
+
+    # Legacy support for --path-result (deprecated, use --json-result-path instead)
+    legacy_path = getattr(params, 'path_result', None)
+    if legacy_path:
+        if collected_results:
+            print(f"\nSaving collected results to '{legacy_path}'...")
+            save_results_to_file(legacy_path, collected_results, scan_code)
         else:
             print("\nNo results were successfully collected, skipping save.")
 

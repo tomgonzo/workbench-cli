@@ -455,9 +455,10 @@ class TestFetchDisplaySaveResults:
     @patch('workbench_cli.utilities.scan_workflows.fetch_results')
     @patch('workbench_cli.utilities.scan_workflows.display_results')
     @patch('workbench_cli.utilities.scan_workflows.save_results_to_file')
-    def test_complete_workflow(self, mock_save, mock_display, mock_fetch, mock_workbench, mock_params):
-        """Test complete fetch, display, and save workflow."""
+    def test_complete_workflow_legacy(self, mock_save, mock_display, mock_fetch, mock_workbench, mock_params):
+        """Test complete fetch, display, and save workflow with legacy path_result."""
         mock_params.path_result = "output.json"
+        mock_params.json_result_path = None
         mock_params.show_licenses = True
         mock_fetch.return_value = {"test": "data"}
         mock_display.return_value = True
@@ -470,9 +471,29 @@ class TestFetchDisplaySaveResults:
     
     @patch('workbench_cli.utilities.scan_workflows.fetch_results')
     @patch('workbench_cli.utilities.scan_workflows.display_results')
+    @patch('workbench_cli.utilities.scan_workflows.save_results_to_file')
+    def test_json_result_path_workflow(self, mock_save, mock_display, mock_fetch, mock_workbench, mock_params):
+        """Test fetch, display, and save workflow with JSON result path."""
+        mock_params.path_result = None
+        mock_params.json_result_path = "output.json"
+        mock_params.show_licenses = True
+        mock_fetch.return_value = {"test": "data"}
+        mock_display.return_value = True
+        
+        fetch_display_save_results(mock_workbench, mock_params, TEST_SCAN_CODE)
+        
+        mock_fetch.assert_called_once_with(mock_workbench, mock_params, TEST_SCAN_CODE)
+        mock_display.assert_called_once_with({"test": "data"}, mock_params)
+        mock_save.assert_called_once_with("output.json", {"test": "data"}, TEST_SCAN_CODE)
+    
+
+    
+    @patch('workbench_cli.utilities.scan_workflows.fetch_results')
+    @patch('workbench_cli.utilities.scan_workflows.display_results')
     def test_no_save_specified(self, mock_display, mock_fetch, mock_workbench, mock_params):
         """Test fetch and display without saving."""
         mock_params.path_result = None
+        mock_params.json_result_path = None
         mock_params.show_licenses = True
         mock_fetch.return_value = {"test": "data"}
         mock_display.return_value = True

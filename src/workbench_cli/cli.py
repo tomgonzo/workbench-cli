@@ -52,7 +52,7 @@ def add_common_result_options(subparser):
     results_display_args.add_argument("--show-scan-metrics", help="Show metrics on file identifications (total files, pending id, identified, no matches).", action="store_true", default=False)
     results_display_args.add_argument("--show-policy-warnings", help="Shows Policy Warnings in identified components or dependencies.", action="store_true", default=False)
     results_display_args.add_argument("--show-vulnerabilities", help="Shows a summary of vulnerabilities found in the scan.", action="store_true", default=False)
-    results_display_args.add_argument("--path-result", help="Saves the requested results to this file/directory (JSON format).", metavar="PATH")
+    results_display_args.add_argument("--json-result-path", help="Saves the requested results to this file/directory (JSON format).", metavar="PATH")
 
 # --- Main Parsing Function ---
 def parse_cmdline_args():
@@ -114,6 +114,24 @@ Example Usage:
   # Download reports for a specific scan (globally)
   workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
     download-reports --scan-name MYSCAN01 --report-scope scan --report-type html --report-save-path reports/
+
+  # Export vulnerability results in CycloneDX format
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format cyclonedx -o vulns.cdx.json
+
+  # Export complete SBOM with all components (not just vulnerable ones)
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format cyclonedx -o complete-sbom.cdx.json --augment-full-bom
+
+  # Export CycloneDX SBOM with external enrichment
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format cyclonedx -o vulns-enriched.cdx.json \\
+    --enrich-nvd --enrich-epss --augment-full-bom
+
+  # Export vulnerability results in SPDX 3.0 format with enrichment
+  workbench-cli --api-url <URL> --api-user <USER> --api-token <TOKEN> \\
+    export-vulns --project-name MYPROJ --scan-name MYSCAN01 --format spdx3 -o vulns.spdx.json \\
+    --enrich-nvd --enrich-epss
 """
     )
 
@@ -296,6 +314,45 @@ Example Usage:
     add_common_scan_options(scan_git_parser)
     add_common_monitoring_options(scan_git_parser)
     add_common_result_options(scan_git_parser)
+
+    # --- 'export-vulns' Subcommand ---
+    export_vulns_parser = subparsers.add_parser(
+        'export-vulns',
+        help='Export vulnerability results in multiple formats (SARIF, CycloneDX, SPDX 3.0).',
+        description='Export vulnerability results from an existing scan in various formats:\n'
+                    '• SARIF (Static Analysis Results Interchange Format) v2.1.0 - compatible with GitHub Advanced Security\n'
+                    '• CycloneDX - Software Bill of Materials with vulnerability information\n'
+                    '• SPDX 3.0 - Security Profile for vulnerability reporting\n\n'
+                    'All formats share the same data enrichment pipeline and VEX assessment processing.',
+        formatter_class=RawTextHelpFormatter
+    )
+    
+    # Required arguments
+    required_args = export_vulns_parser.add_argument_group("Required")
+    required_args.add_argument("--project-name", help="Project name containing the scan.", type=str, required=True, metavar="NAME")
+    required_args.add_argument("--scan-name", help="Scan name to export vulnerability results from.", type=str, required=True, metavar="NAME")
+    required_args.add_argument("--format", help="Output format for the vulnerability report.", choices=["sarif", "cyclonedx", "spdx3"], required=True, metavar="FORMAT")
+    required_args.add_argument("-o", "--output", help="Output file path for the vulnerability report.", type=str, required=True, metavar="PATH")
+    
+    # External API enrichment
+    external_api_args = export_vulns_parser.add_argument_group("External API Enrichment (Network Calls)")
+    external_api_args.add_argument("--enrich-nvd", help="Fetch CVE descriptions from NVD API (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
+    external_api_args.add_argument("--enrich-epss", help="Fetch EPSS scores from FIRST API (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
+    external_api_args.add_argument("--enrich-cisa-kev", help="Fetch CISA Known Exploited Vulnerabilities (Default: False - opt-in).", action=argparse.BooleanOptionalAction, default=False)
+    external_api_args.add_argument("--external-timeout", help="Timeout for external API calls in seconds (Default: 30).", type=int, default=30, metavar="SECONDS")
+    
+    # Output processing & suppression
+    processing_args = export_vulns_parser.add_argument_group("Output Processing & Suppression")
+    processing_args.add_argument("--severity-threshold", help="Filter vulnerabilities by CVSS severity.", choices=["critical", "high", "medium", "low"], metavar="LEVEL")
+    processing_args.add_argument("--disable-dynamic-risk-scoring", dest="disable_dynamic_risk_scoring", help="Disable Dynamic Risk Scoring (VEX suppression and EPSS / KEV escalation).", action="store_true")
+    processing_args.add_argument("--augment-full-bom", help="Augment the SBOM from the scan with vulnerability enrichment and dynamic scoring.", action="store_true")
+    
+    
+    # Output control
+    output_control_args = export_vulns_parser.add_argument_group("Output Control")
+    output_control_args.add_argument("--quiet", help="Suppress progress output.", action="store_true")
+    
+    add_common_monitoring_options(export_vulns_parser)
 
     # --- Validate args after parsing ---
     args = parser.parse_args()
