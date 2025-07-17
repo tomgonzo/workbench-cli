@@ -331,3 +331,29 @@ def test_handler_error_wrapper_preserves_arguments():
     
     result = handler_with_args(workbench, params)
     assert result is True 
+
+@patch('builtins.print')
+def test_format_and_print_error_credential_error(mock_print, mock_params):
+    """Test that credential errors are formatted with user-friendly messages."""
+    # Set up mock params with credential info
+    mock_params.api_user = 'testuser'
+    mock_params.api_url = 'https://example.com/api.php'
+    
+    # Create an API error with the credential error message
+    error = ApiError("Classes.FossID.user_not_found_or_api_key_is_not_correct")
+    
+    # Call the error formatting function
+    format_and_print_error(error, "test_handler", mock_params)
+    
+    # Check that print was called with credential-specific messages
+    print_calls = [call.args[0] for call in mock_print.call_args_list]
+    
+    # Verify the credential-specific message is shown
+    assert any("❌ Invalid credentials" in call for call in print_calls)
+    assert any("The username or API token provided is incorrect" in call for call in print_calls)
+    assert any("testuser" in call for call in print_calls)  # Should show the username
+    assert any("https://example.com/api.php" in call for call in print_calls)  # Should show the API URL
+    
+    # Verify generic API error message is NOT shown
+    assert not any("❌ Workbench API error" in call for call in print_calls)
+    assert not any("Classes.FossID.user_not_found_or_api_key_is_not_correct" in call for call in print_calls) 
