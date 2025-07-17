@@ -100,6 +100,17 @@ def format_and_print_error(error: Exception, handler_name: str, params: argparse
         print(f"   • The API URL is correct: {getattr(params, 'api_url', '<not specified>')}")
     
     elif isinstance(error, ApiError):
+        # Check for credential errors first
+        if "user_not_found_or_api_key_is_not_correct" in error_message:
+            print(f"\n❌ Invalid credentials")
+            print(f"   The username or API token provided is incorrect.")
+            print(f"\n💡 Please check:")
+            print(f"   • Your username: {getattr(params, 'api_user', '<not specified>')}")
+            print(f"   • Your API token is correct and not expired")
+            print(f"   • Your account has access to the Workbench instance")
+            print(f"   • The API URL is correct: {getattr(params, 'api_url', '<not specified>')}")
+            return  # Exit early to avoid showing generic API error details
+        
         print(f"\n❌ Workbench API error")
         print(f"   {error_message}")
         
