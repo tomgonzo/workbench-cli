@@ -342,7 +342,8 @@ class ScansAPI(APIBase, ReportHelper):
         git_tag: Optional[str] = None,
         git_commit: Optional[str] = None,
         git_depth: Optional[int] = None,
-        import_from_report: bool = False
+        import_from_report: bool = False,
+        description: Optional[str] = None
     ) -> bool:
         """
         Creates a new webapp scan inside a project, handling Git parameters as needed.
@@ -356,6 +357,7 @@ class ScansAPI(APIBase, ReportHelper):
             git_commit: Optional commit hash (if git_url is provided, alternative to branch or tag).
             git_depth: Optional git clone depth (if git_url is provided).
             import_from_report: Whether to import the scan from an existing report
+            description: Optional description (can contain build info, commit hash for baseline detection)
             
         Returns:
             True if the scan was successfully created, raises exception otherwise.
@@ -371,6 +373,11 @@ class ScansAPI(APIBase, ReportHelper):
             "scan_name": scan_name,
             "project_code": project_code,
         }
+        
+        # Add optional metadata fields
+        if description:
+            payload_data["description"] = description
+            logger.debug(f"  Setting scan description: {description}")
         
         # Add import_from_report parameter if specified
         if import_from_report:

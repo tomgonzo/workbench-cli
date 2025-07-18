@@ -31,6 +31,7 @@ from .handlers import (
     handle_evaluate_gates,
     handle_download_reports,
     handle_scan_git,
+    handle_scan_bazel,
 )
 
 
@@ -76,9 +77,15 @@ def main() -> int:
         print("------------------------------------")
         logger.debug("Parsed parameters: %s", params)
 
-        # Initialize Workbench API client
-        workbench = WorkbenchAPI(params.api_url, params.api_user, params.api_token)
-        logger.info("Workbench client initialized.")
+        # Initialize Workbench API client (only if needed)
+        discovery_modes = getattr(params, 'discover_targets', False) or getattr(params, 'dry_run', False) or getattr(params, 'auto_suggest_names', False)
+        
+        if discovery_modes:
+            workbench = None  # Discovery modes don't need API access
+            logger.info("Running in discovery mode - API client not needed.")
+        else:
+            workbench = WorkbenchAPI(params.api_url, params.api_user, params.api_token)
+            logger.info("Workbench client initialized.")
 
         # --- Command Dispatch ---
         COMMAND_HANDLERS = {
@@ -89,6 +96,7 @@ def main() -> int:
             "evaluate-gates": handle_evaluate_gates,
             "download-reports": handle_download_reports,
             "scan-git": handle_scan_git,
+            "scan-bazel": handle_scan_bazel,
         }
 
         handler = COMMAND_HANDLERS.get(params.command)

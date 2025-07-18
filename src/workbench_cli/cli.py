@@ -121,23 +121,20 @@ Example Usage:
     global_args = parser.add_argument_group("Global Arguments")
     global_args.add_argument(
         "--api-url",
-        help="API Endpoint URL (e.g., https://workbench.example.com/api.php). Overrides WORKBENCH_URL env var.",
+        help="API Endpoint URL (e.g., https://workbench.example.com/api.php). Overrides WORKBENCH_URL env var. Not required for discovery modes.",
         default=os.getenv("WORKBENCH_URL"),
-        required=not os.getenv("WORKBENCH_URL"), # Required if not in env
         metavar="URL"
     )
     global_args.add_argument(
         "--api-user",
-        help="Workbench Username. Overrides WORKBENCH_USER env var.",
+        help="Workbench Username. Overrides WORKBENCH_USER env var. Not required for discovery modes.",
         default=os.getenv("WORKBENCH_USER"),
-        required=not os.getenv("WORKBENCH_USER"), # Required if not in env
         metavar="USER"
     )
     global_args.add_argument(
         "--api-token",
-        help="Workbench API Token. Overrides WORKBENCH_TOKEN env var.",
+        help="Workbench API Token. Overrides WORKBENCH_TOKEN env var. Not required for discovery modes.",
         default=os.getenv("WORKBENCH_TOKEN"),
-        required=not os.getenv("WORKBENCH_TOKEN"), # Required if not in env
         metavar="TOKEN"
     )
     global_args.add_argument(
@@ -297,12 +294,72 @@ Example Usage:
     add_common_monitoring_options(scan_git_parser)
     add_common_result_options(scan_git_parser)
 
+    # --- 'scan-bazel' Subcommand ---
+    scan_bazel_parser = subparsers.add_parser(
+        'scan-bazel',
+        help='Run a scan on a Bazel workspace.',
+        description='''Analyzes a Bazel workspace and its dependencies using Bazel query capabilities.
+
+ONBOARDING EXAMPLES:
+
+  1. Discover what you can scan:
+     workbench-cli scan-bazel --workspace-path . --discover-targets
+
+  2. Estimate scan scope (dry run):
+     workbench-cli scan-bazel --workspace-path . --target "//..." --dry-run
+
+  3. Scan specific application (names auto-suggested):
+     workbench-cli scan-bazel --workspace-path . --target "//apps/frontend/..." --run-dependency-analysis
+
+  4. Scan with custom names:
+     workbench-cli scan-bazel --workspace-path . --target "//apps/frontend/..." \\
+       --project-name "MyApp-Frontend" --scan-name "v1.0-initial" --run-dependency-analysis
+
+  5. Full workspace scan (auto-named):
+     workbench-cli scan-bazel --workspace-path . --target "//..." --run-dependency-analysis
+
+  6. Incremental scan (CI/CD):
+     workbench-cli scan-bazel --workspace-path . --target "//apps/frontend/..." \\
+       --baseline-commit "$(git merge-base HEAD origin/main)" --run-dependency-analysis
+
+PROJECT AND SCAN STRUCTURE:
+  
+  For Bazel applications, consider this structure:
+  • Each logical application → Separate Workbench Project  
+  • Each scan version → Separate Workbench Scan
+  • Project SBOMs aggregate all scans for that application
+  
+  Example:
+    Bazel target: //apps/frontend:webapp
+    → Project: "MyApp-Frontend" 
+    → Scans: "v1.0", "v1.1", "pr-123", etc.''',
+        formatter_class=RawTextHelpFormatter
+    )
+    scan_bazel_parser.add_argument("--project-name", help="Project name for the scan. If not provided, will be auto-suggested based on Bazel target.", type=str, metavar="NAME")
+    scan_bazel_parser.add_argument("--scan-name", help="Scan name for the scan. If not provided, will be auto-suggested based on target and Git context.", type=str, metavar="NAME")
+    scan_bazel_parser.add_argument("--workspace-path", help="Path to Bazel workspace (containing WORKSPACE or MODULE.bazel).", type=str, required=True, metavar="PATH")
+    scan_bazel_parser.add_argument("--target", help="Specific Bazel target to scan (e.g., //..., //frontend:app). Defaults to //... (all targets).", type=str, default="//...", metavar="TARGET")
+    scan_bazel_parser.add_argument("--baseline-commit", help="Git commit hash to use as baseline for incremental scan. When provided, only files affected by changes since this commit will be scanned.", type=str, metavar="COMMIT")
+    scan_bazel_parser.add_argument("--bazel-query-options", help="Additional options to pass to bazel query/cquery commands.", type=str, default="", metavar="OPTIONS")
+    
+    # Discovery and analysis options
+    discovery_group = scan_bazel_parser.add_argument_group("Discovery and Analysis Options")
+    discovery_group.add_argument("--discover-targets", help="Discover deployable targets in the workspace and suggest good starting points for scanning.", action="store_true")
+    discovery_group.add_argument("--dry-run", help="Estimate scan scope without actually running the scan. Shows target count, file estimates, and recommendations.", action="store_true")
+
+    add_common_scan_options(scan_bazel_parser)
+    add_common_monitoring_options(scan_bazel_parser)
+    add_common_result_options(scan_bazel_parser)
+
     # --- Validate args after parsing ---
     args = parser.parse_args()
     
-    # Validate common parameters
-    if not args.api_url or not args.api_user or not args.api_token:
-        raise ValidationError("API URL, user, and token must be provided")
+    # Check if we're in a discovery mode that doesn't require API access
+    discovery_modes = getattr(args, 'discover_targets', False) or getattr(args, 'dry_run', False)
+    
+    # Validate common parameters (skip for discovery modes)
+    if not discovery_modes and (not args.api_url or not args.api_user or not args.api_token):
+        raise ValidationError("API URL, user, and token must be provided (not required for --discover-targets, --dry-run, or --auto-suggest-names modes)")
     
     # Fix API URL if it doesn't end with '/api.php'
     if args.api_url and not args.api_url.endswith('/api.php'):
@@ -312,7 +369,7 @@ Example Usage:
             args.api_url = args.api_url + '/api.php'
     
     # Validate command-specific parameters
-    if args.command == 'scan' or args.command == 'scan-git':
+    if args.command == 'scan' or args.command == 'scan-git' or args.command == 'scan-bazel':
         # For scan command, validate path exists
         if args.command == 'scan':
             if not args.path:
@@ -333,7 +390,29 @@ Example Usage:
             if args.git_tag and args.git_commit:
                 raise ValidationError("Cannot specify both git tag and commit")
         
-        # Validate ID reuse parameters for both scan and scan-git
+        # For scan-bazel, validate workspace path and Bazel installation
+        if args.command == 'scan-bazel':
+            if not args.workspace_path:
+                raise ValidationError("Workspace path is required for scan-bazel command")
+            if not os.path.exists(args.workspace_path):
+                raise ValidationError(f"Workspace path does not exist: {args.workspace_path}")
+            if not os.path.isdir(args.workspace_path):
+                raise ValidationError(f"Workspace path must be a directory: {args.workspace_path}")
+            
+            # Check for WORKSPACE or MODULE.bazel files
+            workspace_files = ['WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel']
+            if not any(os.path.exists(os.path.join(args.workspace_path, f)) for f in workspace_files):
+                raise ValidationError(f"No Bazel workspace file found in {args.workspace_path}. "
+                                    f"Expected one of: {', '.join(workspace_files)}")
+            
+            # Check if we're in discovery/dry-run modes (which don't require project/scan names)
+            discovery_modes = ['discover_targets', 'dry_run']
+            in_discovery_mode = any(getattr(args, mode, False) for mode in discovery_modes)
+            
+            # Project and scan names are optional for scan-bazel - they will be auto-suggested if missing
+            # Only discovery modes (discover_targets, dry_run) skip the need for eventual names
+        
+        # Validate ID reuse parameters for scan, scan-git, and scan-bazel
         if args.id_reuse and args.id_reuse_type in ['project', 'scan'] and not args.id_reuse_source:
             raise ValidationError("ID reuse source project/scan name is required when id-reuse-type is 'project' or 'scan'")
         if args.id_reuse and args.id_reuse_type not in ['project', 'scan'] and args.id_reuse_source:

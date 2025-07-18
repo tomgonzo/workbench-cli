@@ -21,6 +21,7 @@ from .scan_target_validators import (
     validate_reuse_source,
 )
 from .prep_upload_archive import UploadArchivePrep
+from .bazel_utils import BazelUtils
 
 __all__ = [
     # Error handling
@@ -40,4 +41,6 @@ __all__ = [
     'validate_reuse_source',
     # Archive preparation
     'UploadArchivePrep',
+    # Bazel utilities
+    'BazelUtils',
 ] 

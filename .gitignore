@@ -100,3 +100,5 @@ da-analyzer-results
 test-commands.txt
 
 workbench-cli-log.txt
+
+tests/code

@@ -78,12 +78,23 @@ class ProjectsAPI(APIBase, ReportHelper):
             else:
                 raise ApiError(f"Failed to list scans for project '{project_code}': {error_msg}", details=response)
 
-    def create_project(self, project_name: str) -> str:
+    def create_project(
+        self, 
+        project_name: str, 
+        product_code: Optional[str] = None,
+        product_name: Optional[str] = None, 
+        description: Optional[str] = None,
+        comment: Optional[str] = None
+    ) -> str:
         """
         Create a new project in Workbench.
 
         Args:
             project_name: Name of the project to create
+            product_code: Optional product code (useful for Bazel workspace identification)
+            product_name: Optional product name (human-readable application name)
+            description: Optional description (can contain Bazel workspace info, target details)
+            comment: Optional comment
 
         Returns:
             The project code of the created project
@@ -100,8 +111,20 @@ class ProjectsAPI(APIBase, ReportHelper):
                 if project.get("name") == project_name:
                     raise ProjectExistsError(f"Project '{project_name}' already exists")
 
-            # Create the project
-            payload = {"group": "projects", "action": "create", "data": {"project_name": project_name}}
+            # Create the project with additional metadata
+            payload_data = {"project_name": project_name}
+            
+            # Add optional metadata fields
+            if product_code:
+                payload_data["product_code"] = product_code
+            if product_name:
+                payload_data["product_name"] = product_name
+            if description:
+                payload_data["description"] = description
+            if comment:
+                payload_data["comment"] = comment
+            
+            payload = {"group": "projects", "action": "create", "data": payload_data}
             response = self._send_request(payload)
 
             if response.get("status") == "1":

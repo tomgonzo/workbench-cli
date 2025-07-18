@@ -25,7 +25,15 @@ class ResolveWorkbenchProjectScan(APIBase):
     and scan names to codes/IDs, with optional creation functionality.
     """
 
-    def resolve_project(self, project_name: str, create_if_missing: bool = False) -> str:
+    def resolve_project(
+        self, 
+        project_name: str, 
+        create_if_missing: bool = False,
+        product_code: Optional[str] = None,
+        product_name: Optional[str] = None,
+        description: Optional[str] = None,
+        comment: Optional[str] = None
+    ) -> str:
         """Find a project by name, optionally creating it if not found."""
         # Look for existing project
         projects = self.list_projects()
@@ -38,7 +46,13 @@ class ResolveWorkbenchProjectScan(APIBase):
         if create_if_missing:
             print(f"Creating project '{project_name}'...")
             try:
-                return self.create_project(project_name)
+                return self.create_project(
+                    project_name=project_name,
+                    product_code=product_code,
+                    product_name=product_name,
+                    description=description,
+                    comment=comment
+                )
             except ProjectExistsError:
                 # Handle race condition
                 projects = self.list_projects()
@@ -49,7 +63,7 @@ class ResolveWorkbenchProjectScan(APIBase):
                 
         raise ProjectNotFoundError(f"Project '{project_name}' not found")
 
-    def resolve_scan(self, scan_name: str, project_name: Optional[str], create_if_missing: bool, params: argparse.Namespace, import_from_report: bool = False) -> Tuple[str, int]:
+    def resolve_scan(self, scan_name: str, project_name: Optional[str], create_if_missing: bool, params: argparse.Namespace, import_from_report: bool = False, description: Optional[str] = None) -> Tuple[str, int]:
         """Find a scan by name, optionally creating it if not found."""
         if project_name:
             # Look in specific project
@@ -69,6 +83,7 @@ class ResolveWorkbenchProjectScan(APIBase):
                     project_code=project_code, 
                     scan_name=scan_name, 
                     import_from_report=import_from_report,
+                    description=description,
                     **git_params
                 )
                 time.sleep(2)  # Brief wait for creation to process
