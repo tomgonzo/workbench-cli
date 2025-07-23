@@ -318,9 +318,21 @@ ONBOARDING EXAMPLES:
   5. Full workspace scan (auto-named):
      workbench-cli scan-bazel --workspace-path . --target "//..." --run-dependency-analysis
 
-  6. Incremental scan (CI/CD):
+  6. Delta scanning (incremental):
+     # First run with --scan-delta establishes baseline, subsequent runs are incremental
      workbench-cli scan-bazel --workspace-path . --target "//apps/frontend/..." \\
-       --baseline-commit "$(git merge-base HEAD origin/main)" --run-dependency-analysis
+       --project-name "MyApp-Frontend" --scan-name "main" --scan-delta --run-dependency-analysis
+
+DELTA SCANNING (--scan-delta):
+
+  Use --scan-delta flag for automatic incremental scanning:
+  • First run with --scan-delta: Performs full scan and establishes baseline
+  • Subsequent runs with --scan-delta: Automatically scans only files changed since baseline
+  • Duplicate detection: Skips scan if current commit already analyzed
+  • Without --scan-delta: Always performs full scan (no baseline tracking)
+  • Significantly faster re-scans (typically 5-10x faster for small changes)
+  • Fully automatic: No manual baseline management required
+  • Git required: Delta scans require Git repository context
 
 PROJECT AND SCAN STRUCTURE:
   
@@ -339,13 +351,16 @@ PROJECT AND SCAN STRUCTURE:
     scan_bazel_parser.add_argument("--scan-name", help="Scan name for the scan. If not provided, will be auto-suggested based on target and Git context.", type=str, metavar="NAME")
     scan_bazel_parser.add_argument("--workspace-path", help="Path to Bazel workspace (containing WORKSPACE or MODULE.bazel).", type=str, required=True, metavar="PATH")
     scan_bazel_parser.add_argument("--target", help="Specific Bazel target to scan (e.g., //..., //frontend:app). Defaults to //... (all targets).", type=str, default="//...", metavar="TARGET")
-    scan_bazel_parser.add_argument("--baseline-commit", help="Git commit hash to use as baseline for incremental scan. When provided, only files affected by changes since this commit will be scanned.", type=str, metavar="COMMIT")
     scan_bazel_parser.add_argument("--bazel-query-options", help="Additional options to pass to bazel query/cquery commands.", type=str, default="", metavar="OPTIONS")
     
     # Discovery and analysis options
     discovery_group = scan_bazel_parser.add_argument_group("Discovery and Analysis Options")
     discovery_group.add_argument("--discover-targets", help="Discover deployable targets in the workspace and suggest good starting points for scanning.", action="store_true")
     discovery_group.add_argument("--dry-run", help="Estimate scan scope without actually running the scan. Shows target count, file estimates, and recommendations.", action="store_true")
+    discovery_group.add_argument("--include-resolved-deps", action="store_true", default=True, help="Include resolved external dependencies in scan. Use --no-include-resolved-deps to disable.")
+    discovery_group.add_argument("--no-include-resolved-deps", dest="include_resolved_deps", action="store_false", help="Disable inclusion of resolved external dependencies.")
+    discovery_group.add_argument("--exclude-dev-deps", action="store_true", default=False, help="Exclude development-only dependencies from scan (bzlmod best practice for production scans).")
+    discovery_group.add_argument("--skip-env-check", action="store_true", default=False, help="Skip environment validation checks (use with caution).")
 
     add_common_scan_options(scan_bazel_parser)
     add_common_monitoring_options(scan_bazel_parser)

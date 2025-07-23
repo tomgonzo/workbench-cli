@@ -449,6 +449,123 @@ class ScansAPI(APIBase, ReportHelper):
                 raise ScanExistsError(f"Scan '{scan_name}' already exists", details=getattr(e, 'details', None))
             raise
 
+    def update_scan(
+        self,
+        scan_code: str,
+        scan_name: Optional[str] = None,
+        project_code: Optional[str] = None,
+        description: Optional[str] = None,
+        target_path: Optional[str] = None,
+        git_repo_url: Optional[str] = None,
+        git_branch: Optional[str] = None,
+        git_tag: Optional[str] = None,
+        git_commit: Optional[str] = None,
+        git_depth: Optional[int] = None,
+        jar_file_extraction: Optional[str] = None
+    ) -> bool:
+        """
+        Updates an existing scan with new parameters.
+        
+        Args:
+            scan_code: Code of the scan to update
+            scan_name: Optional new name for the scan
+            project_code: Optional new project code
+            description: Optional new description (useful for tracking commit hashes for incremental scans)
+            target_path: Optional target path
+            git_repo_url: Optional Git repository URL
+            git_branch: Optional Git branch name
+            git_tag: Optional Git tag name  
+            git_commit: Optional Git commit hash
+            git_depth: Optional Git clone depth
+            jar_file_extraction: Optional JAR extraction setting
+            
+        Returns:
+            True if the scan was successfully updated
+            
+        Raises:
+            ApiError: If the API call fails
+            NetworkError: If there's a network issue
+            ScanNotFoundError: If the scan doesn't exist
+        """
+        logger.debug(f"Updating scan '{scan_code}'")
+        
+        payload_data = {
+            "scan_code": scan_code
+        }
+        
+        # Add only provided parameters to avoid overwriting with None values
+        if scan_name is not None:
+            payload_data["scan_name"] = scan_name
+            logger.debug(f"  Updating scan name: {scan_name}")
+            
+        if project_code is not None:
+            payload_data["project_code"] = project_code
+            logger.debug(f"  Updating project code: {project_code}")
+            
+        if description is not None:
+            payload_data["description"] = description
+            logger.debug(f"  Updating description: {description}")
+            
+        if target_path is not None:
+            payload_data["target_path"] = target_path
+            logger.debug(f"  Updating target path: {target_path}")
+            
+        if jar_file_extraction is not None:
+            payload_data["jar_file_extraction"] = jar_file_extraction
+            logger.debug(f"  Updating JAR extraction: {jar_file_extraction}")
+        
+        # Handle Git parameters
+        git_ref_value = None
+        git_ref_type = None
+        
+        if git_tag:
+            git_ref_value = git_tag
+            git_ref_type = "tag"
+            logger.debug(f"  Updating Git tag: {git_tag}")
+        elif git_branch:
+            git_ref_value = git_branch
+            git_ref_type = "branch"
+            logger.debug(f"  Updating Git branch: {git_branch}")
+        elif git_commit:
+            git_ref_value = git_commit
+            git_ref_type = "commit"
+            logger.debug(f"  Updating Git commit: {git_commit}")
+        
+        if git_repo_url is not None:
+            payload_data["git_repo_url"] = git_repo_url
+            logger.debug(f"  Updating Git URL: {git_repo_url}")
+            
+        if git_ref_value:
+            payload_data["git_branch"] = git_ref_value
+            if git_ref_type:
+                payload_data["git_ref_type"] = git_ref_type
+                logger.debug(f"  Updating Git ref type: {git_ref_type}")
+                
+        if git_depth is not None:
+            payload_data["git_depth"] = str(git_depth)
+            logger.debug(f"  Updating Git depth: {git_depth}")
+        
+        payload = {
+            "group": "scans",
+            "action": "update",
+            "data": payload_data
+        }
+        
+        try:
+            response = self._send_request(payload)
+            if response.get("status") == "1":
+                logger.debug(f"Successfully updated scan '{scan_code}'")
+                return True
+            else:
+                logger.warning(f"Unexpected response when updating scan: {response}")
+                error_msg = response.get("error", "Unknown error")
+                raise ApiError(f"Failed to update scan: {error_msg}", details=response)
+        except ApiError as e:
+            if "not found" in str(e).lower() or "does not exist" in str(e).lower():
+                logger.debug(f"Scan '{scan_code}' not found.")
+                raise ScanNotFoundError(f"Scan '{scan_code}' not found", details=getattr(e, 'details', None))
+            raise
+
     def download_content_from_git(self, scan_code: str) -> bool:
         """
         Initiates the Git clone process for a scan.

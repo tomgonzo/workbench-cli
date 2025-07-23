@@ -22,6 +22,7 @@ from .scan_target_validators import (
 )
 from .prep_upload_archive import UploadArchivePrep
 from .bazel_utils import BazelUtils
+from .git_utils import GitUtils
 
 __all__ = [
     # Error handling
@@ -43,4 +44,6 @@ __all__ = [
     'UploadArchivePrep',
     # Bazel utilities
     'BazelUtils',
+    # Git utilities
+    'GitUtils',
 ] 
